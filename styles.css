@@ -465,6 +465,87 @@ nav a:focus-visible {
   line-height: 1.85;
 }
 
+.podcast {
+  background: var(--paper);
+}
+
+.podcast-heading {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: end;
+  margin-bottom: 52px;
+}
+
+.podcast-heading h2 {
+  max-width: 720px;
+}
+
+.podcast-heading > p {
+  max-width: 580px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 2;
+}
+
+.podcast-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.podcast-card {
+  display: flex;
+  min-height: 250px;
+  flex-direction: column;
+  border-top: 3px solid var(--blue);
+  background: var(--white);
+  padding: 28px;
+  box-shadow: 0 14px 38px rgba(7, 26, 49, 0.06);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.podcast-card:hover,
+.podcast-card:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 46px rgba(7, 26, 49, 0.12);
+}
+
+.podcast-language {
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.podcast-card h3 {
+  margin: 28px 0 10px;
+  font-size: 22px;
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+}
+
+.podcast-card > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.podcast-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .collaboration {
   display: grid;
   grid-template-columns: 0.85fr 1.15fr;
@@ -664,6 +745,10 @@ footer {
   .collaboration {
     grid-template-columns: 1fr;
   }
+
+  .podcast-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -719,6 +804,16 @@ footer {
     grid-template-columns: 1fr;
     gap: 28px;
     margin-bottom: 42px;
+  }
+
+  .podcast-heading {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    margin-bottom: 42px;
+  }
+
+  .podcast-card {
+    min-height: 220px;
   }
 
   .research-card {
