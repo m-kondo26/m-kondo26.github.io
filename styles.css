@@ -465,6 +465,76 @@ nav a:focus-visible {
   line-height: 1.85;
 }
 
+
+.tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  align-items: center;
+  gap: 9vw;
+  background: var(--navy);
+  color: var(--white);
+}
+
+.tools-copy > p:not(.eyebrow) {
+  max-width: 650px;
+  margin: 28px 0 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  line-height: 2;
+}
+
+.tool-button {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-top: 34px;
+  background: var(--cyan);
+  color: var(--navy);
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.tool-button:hover,
+.tool-button:focus-visible {
+  background: #83e6eb;
+  transform: translateY(-2px);
+}
+
+.tool-preview {
+  display: grid;
+  min-height: 310px;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #0b2442;
+  padding: 34px;
+}
+
+.tool-status,
+.tool-phase {
+  color: var(--cyan);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+}
+
+.tool-preview strong {
+  margin: 20px 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: clamp(64px, 9vw, 122px);
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.tool-phase {
+  color: rgba(255, 255, 255, 0.52);
+}
+
 .podcast {
   background: var(--paper);
 }
@@ -742,6 +812,7 @@ footer {
   }
 
   .approach,
+  .tools,
   .collaboration {
     grid-template-columns: 1fr;
   }
@@ -804,6 +875,15 @@ footer {
     grid-template-columns: 1fr;
     gap: 28px;
     margin-bottom: 42px;
+  }
+
+  .tool-preview {
+    min-height: 230px;
+    padding: 24px;
+  }
+
+  .tool-preview strong {
+    font-size: clamp(58px, 20vw, 90px);
   }
 
   .podcast-heading {
