@@ -61,6 +61,16 @@ a {
   letter-spacing: 0.12em;
 }
 
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
 .brand strong,
 .brand small {
   display: block;
@@ -81,7 +91,7 @@ a {
 
 nav {
   display: flex;
-  gap: 32px;
+  gap: 22px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -535,6 +545,144 @@ nav a:focus-visible {
   color: rgba(255, 255, 255, 0.52);
 }
 
+.achievements {
+  background: var(--white);
+}
+
+.achievement-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.achievement-card {
+  display: flex;
+  min-height: 490px;
+  flex-direction: column;
+  border-top: 4px solid var(--blue);
+  background: var(--paper);
+  padding: 36px;
+  box-shadow: 0 16px 42px rgba(7, 26, 49, 0.07);
+}
+
+.achievement-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.achievement-rank {
+  width: fit-content;
+  margin: 54px 0 14px;
+  background: var(--navy);
+  color: var(--white);
+  padding: 8px 11px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+}
+
+.achievement-card h3 {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 42px);
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+
+.achievement-title {
+  max-width: 660px;
+  margin: 28px 0 34px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.65;
+}
+
+.achievement-person {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: auto 0 0;
+  font-size: 15px;
+}
+
+.achievement-person span,
+.achievement-event {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.achievement-event {
+  margin: 16px 0 0;
+}
+
+.achievement-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.achievement-card-certificate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 34px;
+}
+
+.achievement-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.certificate-preview {
+  position: relative;
+  align-self: stretch;
+  overflow: hidden;
+  min-height: 340px;
+  background: var(--white);
+  box-shadow: 0 10px 30px rgba(7, 26, 49, 0.12);
+}
+
+.certificate-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  transition: transform 220ms ease;
+}
+
+.certificate-preview span {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(7, 26, 49, 0.9);
+  color: var(--white);
+  padding: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.certificate-preview:hover img,
+.certificate-preview:focus-visible img {
+  transform: scale(1.025);
+}
+
 .podcast {
   background: var(--paper);
 }
@@ -576,6 +724,14 @@ nav a:focus-visible {
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
+.podcast-cover {
+  width: calc(100% + 56px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: -28px -28px 24px;
+  object-fit: cover;
+}
+
 .podcast-card:hover,
 .podcast-card:focus-visible {
   transform: translateY(-4px);
@@ -591,7 +747,7 @@ nav a:focus-visible {
 }
 
 .podcast-card h3 {
-  margin: 28px 0 10px;
+  margin: 22px 0 10px;
   font-size: 22px;
   letter-spacing: -0.025em;
   line-height: 1.35;
@@ -820,6 +976,10 @@ footer {
   .podcast-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .achievement-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -890,6 +1050,28 @@ footer {
     grid-template-columns: 1fr;
     gap: 28px;
     margin-bottom: 42px;
+  }
+
+  .achievement-card {
+    min-height: 0;
+    padding: 28px;
+  }
+
+  .achievement-rank {
+    margin-top: 38px;
+  }
+
+  .achievement-person {
+    margin-top: 34px;
+  }
+
+  .achievement-card-certificate {
+    grid-template-columns: 1fr 105px;
+    gap: 20px;
+  }
+
+  .certificate-preview {
+    min-height: 250px;
   }
 
   .podcast-card {
