@@ -555,6 +555,26 @@ nav a:focus-visible {
   gap: 22px;
 }
 
+.achievements-more {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 42px;
+  margin: 42px 0 0 auto;
+  border-bottom: 1px solid var(--blue);
+  padding: 10px 0;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.achievements-more:hover,
+.achievements-more:focus-visible {
+  color: var(--navy);
+  border-color: var(--navy);
+}
+
 .achievement-card {
   display: flex;
   min-height: 490px;
@@ -681,6 +701,66 @@ nav a:focus-visible {
 .certificate-preview:hover img,
 .certificate-preview:focus-visible img {
   transform: scale(1.025);
+}
+
+.subpage-hero {
+  min-height: 510px;
+  background: var(--navy);
+  color: var(--white);
+  padding: 176px 7vw 92px;
+}
+
+.subpage-hero h1 {
+  max-width: 950px;
+  margin: 18px 0 0;
+  font-size: clamp(54px, 8vw, 108px);
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.subpage-hero > p:last-child {
+  max-width: 720px;
+  margin: 38px 0 0;
+  color: rgba(255, 255, 255, 0.67);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.achievement-archive {
+  background: var(--white);
+}
+
+.archive-year {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 34px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+.archive-year h2 {
+  color: var(--blue);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: clamp(34px, 5vw, 58px);
+  letter-spacing: -0.04em;
+}
+
+.archive-year span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.archive-back {
+  display: inline-block;
+  margin-top: 54px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .podcast {
@@ -999,6 +1079,19 @@ footer {
   .hero {
     min-height: 0;
     padding: 130px 22px 126px;
+  }
+
+  .subpage-hero {
+    min-height: 430px;
+    padding: 138px 22px 72px;
+  }
+
+  .subpage-hero h1 {
+    font-size: clamp(48px, 14vw, 70px);
+  }
+
+  .lang-ja .subpage-hero h1 {
+    font-size: clamp(43px, 12.5vw, 62px);
   }
 
   .hero h1 {

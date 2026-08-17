@@ -15,4 +15,18 @@
     <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/" />
   </url>
+  <url>
+    <loc>https://m-kondo26.github.io/achievements/</loc>
+    <lastmod>2026-08-17</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/achievements/" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/achievements/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/achievements/" />
+  </url>
+  <url>
+    <loc>https://m-kondo26.github.io/ja/achievements/</loc>
+    <lastmod>2026-08-17</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/achievements/" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/achievements/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/achievements/" />
+  </url>
 </urlset>
