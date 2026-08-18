@@ -1009,6 +1009,13 @@ footer {
   text-align: right;
 }
 
+.top-visit-counter {
+  position: absolute;
+  top: 7px;
+  right: 5vw;
+  white-space: nowrap;
+}
+
 .visit-counter {
   margin: 0;
   color: rgba(255, 255, 255, 0.5);
@@ -1088,7 +1095,13 @@ footer {
 
 @media (max-width: 680px) {
   .site-header {
-    padding: 18px 20px;
+    padding: 22px 20px 18px;
+  }
+
+  .top-visit-counter {
+    top: 5px;
+    right: 20px;
+    font-size: 8px;
   }
 
   .brand strong {
