@@ -1002,6 +1002,30 @@ footer {
   letter-spacing: 0.08em;
 }
 
+.footer-meta {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  text-align: right;
+}
+
+.visit-counter {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.visit-counter span {
+  margin-left: 8px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.visit-counter strong {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 650;
+}
+
 :focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: 4px;
@@ -1189,6 +1213,11 @@ footer {
     align-items: flex-start;
     flex-direction: column;
     padding: 42px 22px;
+  }
+
+  .footer-meta {
+    justify-items: start;
+    text-align: left;
   }
 
   .profile-card {
