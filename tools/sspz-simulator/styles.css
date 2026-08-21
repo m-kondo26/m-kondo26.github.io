@@ -232,6 +232,26 @@ th:first-child, td:first-child { text-align: left; }
 .reference-citation a { color: var(--blue); font-weight: 700; text-underline-offset: 0.16em; }
 .model-note { margin: 0 0 1rem; padding: 0.9rem 1rem; border-left: 4px solid var(--blue); border-radius: 8px; background: #eef6fb; color: var(--ink); line-height: 1.7; }
 .compact-note { margin-top: 0.65rem; font-size: 0.86rem; }
+.feedback-intro { clear: both; padding-top: 0.8rem; line-height: 1.7; }
+.feedback-list { margin: 0.55rem 0 1rem; padding-left: 1.4rem; line-height: 1.7; }
+.feedback-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1rem; }
+.feedback-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.65rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #b9c6ce;
+  border-radius: 8px;
+  color: var(--ink);
+  background: white;
+  font-weight: 650;
+  text-decoration: none;
+}
+.feedback-link:hover { border-color: var(--blue); color: var(--blue); }
+.feedback-link:focus-visible { outline: 3px solid rgba(39,111,174,0.3); outline-offset: 2px; }
+.feedback-link.primary-feedback { border-color: var(--blue); color: white; background: var(--blue); }
+.feedback-link.primary-feedback:hover { color: white; background: #1f5f97; }
 .secondary-analysis { margin: 1.15rem 0 1.5rem; border: 1px solid var(--line); border-radius: 10px; background: #f8fafb; }
 .secondary-analysis > summary { display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 1rem; cursor: pointer; color: var(--ink); }
 .secondary-analysis > summary span { color: var(--muted); font-size: 0.8rem; }
