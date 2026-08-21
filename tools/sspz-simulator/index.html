@@ -217,14 +217,9 @@
 
       <div class="subsection-heading">
         <div><strong>3B　設定厚反映後の低振幅裾</strong><span>0.1%以上を対数表示</span></div>
-        <p>3Aと同じ設定厚反映後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。0.1%未満は描画しません。</p>
+        <p>3Aのうちコーン幾何を反映した設定厚反映後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。0.1%未満は描画しません。</p>
       </div>
-      <div class="chart-grid two">
-        <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム近似・低振幅裾</span></div>
-          <canvas id="overlay-tail-off" width="900" height="650" aria-label="評価点までの距離変化を反映しない設定厚反映後360状態SSPzの低振幅裾"></canvas>
-          <button class="download-link" data-canvas="overlay-tail-off">投稿用PNG（600 dpi）</button>
-        </article>
+      <div class="chart-grid single-panel">
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映する</h3><span>周期的距離変化・低振幅裾</span></div>
           <canvas id="overlay-tail-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映する設定厚反映後360状態SSPzの低振幅裾"></canvas>

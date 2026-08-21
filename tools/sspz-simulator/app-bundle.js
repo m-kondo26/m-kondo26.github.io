@@ -1767,9 +1767,9 @@ function drawOverlayLegend(ctx, x, y, color) {
   ctx.restore();
 }
 
-function configuredOverlayBounds(result, threshold, minimumHalfSpan) {
+function configuredOverlayBounds(result, threshold, minimumHalfSpan, conditions = ["off", "on"]) {
   const overlay = result.overlay;
-  const summaries = [overlay.off.finalSummary, overlay.on.finalSummary];
+  const summaries = conditions.map(condition => overlay[condition].finalSummary);
   let first = overlay.zCount - 1;
   let last = 0;
   let found = false;
@@ -1792,7 +1792,7 @@ function configuredOverlayBounds(result, threshold, minimumHalfSpan) {
 
 function configuredOverlayAxes(result) {
   const core = configuredOverlayBounds(result, 0.1, 0.75 * result.params.sliceThicknessMm);
-  const tail = configuredOverlayBounds(result, 0.001, core.xMax);
+  const tail = configuredOverlayBounds(result, 0.001, core.xMax, ["on"]);
   return { core, tail };
 }
 
@@ -1896,8 +1896,9 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   } else {
     plot.ctx.fillText(stageLabel, plot.margin.left, 10);
     plot.ctx.fillStyle = MUTED;
-    plot.ctx.font = `20px ${FIGURE_FONT}`;
-    plot.ctx.fillText(`${conditionLabel}／完全状態 ${summary.completeCount}/${overlay.stateCount}`, plot.margin.left, 44);
+    const statusLabel = `${conditionLabel}／完全状態 ${summary.completeCount}/${overlay.stateCount}`;
+    setFittedFigureFont(plot.ctx, statusLabel, 20, 15, plot.innerWidth);
+    plot.ctx.fillText(statusLabel, plot.margin.left, 44);
   }
   plot.ctx.restore();
   drawOverlayLegend(plot.ctx, plot.margin.left, publicationMode ? 82 : 92, color);
@@ -1926,7 +1927,9 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     canvas.dataset.displayYMinLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMin);
     canvas.dataset.displayYMaxLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMax);
   }
-  canvas.dataset.sharedXDomain = `configured-output-${viewMode}-off-on`;
+  canvas.dataset.sharedXDomain = tailView
+    ? "configured-output-tail-cone-on"
+    : "configured-output-core-off-on";
   canvas.setAttribute("aria-label", tailView
     ? `${conditionLabel}における設定厚反映後360状態SSPzの0.1%以上の低振幅裾を対数表示`
     : `${conditionLabel}における設定厚反映後360状態SSPzの10%以上の中心形状を線形表示`);
@@ -2086,7 +2089,7 @@ function renderSummary(result) {
 
 function updateProfileModelNote(result) {
   const multiComponent = Math.max(result.selectedOff.halfComponents, result.selectedOn.halfComponents) > 1;
-  const modelText = `主要表示と幅指標はすべて、1回転寝台移動量内の360状態について、設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを反映したモデルSSPzから作成します。中心形状は10%水準以上を線形表示し、0.1%以上の低振幅裾は別の対数表示で示します。設定厚適用前の中間SSPzとその幅は公開図・幅解析から除外しました。候補間隔ΔzをTで除したΔz/Tだけを、計算経路を確認する幾何学的補助指標として残します。FWHMは合わせ込まず、設定厚反映後の曲線から計算しています。`;
+  const modelText = `主要表示と幅指標はすべて、1回転寝台移動量内の360状態について、設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを反映したモデルSSPzから作成します。中心形状は10%水準以上を線形表示し、コーン幾何を反映した条件の0.1%以上の低振幅裾だけを別の対数表示で示します。設定厚適用前の中間SSPzとその幅は公開図・幅解析から除外しました。候補間隔ΔzをTで除したΔz/Tだけを、計算経路を確認する幾何学的補助指標として残します。FWHMは合わせ込まず、設定厚反映後の曲線から計算しています。`;
   const topologyText = multiComponent
     ? " 注意：50%水準が複数成分に分かれています。FWHMだけで形状を代表させないでください。"
     : "";
@@ -2129,7 +2132,6 @@ function renderAll(result) {
   drawGapMap(document.querySelector("#gap-map-on"), result, true);
   drawProfileOverlay(document.querySelector("#overlay-core-off"), result, false, "core", overlayAxes.core);
   drawProfileOverlay(document.querySelector("#overlay-core-on"), result, true, "core", overlayAxes.core);
-  drawProfileOverlay(document.querySelector("#overlay-tail-off"), result, false, "tail", overlayAxes.tail);
   drawProfileOverlay(document.querySelector("#overlay-tail-on"), result, true, "tail", overlayAxes.tail);
   const overlayScope = document.querySelector("#overlay-scope");
   if (overlayScope && result.overlay) {

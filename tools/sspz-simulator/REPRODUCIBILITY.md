@@ -16,7 +16,7 @@ At each tube angle, the calculation searches the ideal infinite helix for the ne
 
 The reader-facing order is: the configured-output 360-state center-shape overlay, a separate configured-output low-amplitude-tail overlay, and scalar width summaries. The pre-thickness intermediate SSPz and its widths are not exposed in public figures, publication PNGs, or CSV files. The `delta-z/T` heat map remains available in a collapsed secondary-details panel as a geometry audit rather than a reconstructed-thickness output. The 360 reconstruction states are distinct from the user-selected number of full-scan tube-angle views used inside each SSPz calculation. The public input is configured slice thickness, not effective FWHM. No model parameter is fitted to the computed FWHM; FWHM, FWTM, standard deviation, centroid, and configured-output profile shape are outputs.
 
-The numerical SSPz grid uses one state-, cone-condition-, and configured-thickness-independent longitudinal domain large enough to contain one table feed, the maximum idealized row aperture, and the allowed 20-mm configured-thickness window. The user-selected grid count is a minimum; it is automatically increased up to 4000 samples when narrow detector rows require finer sampling. This prevents a changing numerical search window from being mistaken for geometry-driven SSPz variation. The calculation domain is not reused as the visible domain. The selected-state detail and 360-state center-shape charts use symmetric outward-rounded axes derived only from configured-output values at or above 10% of peak. A separate logarithmic tail chart uses configured-output values at or above 0.1%. Off/on panels share horizontal limits only within the same center or tail role.
+The numerical SSPz grid uses one state-, cone-condition-, and configured-thickness-independent longitudinal domain large enough to contain one table feed, the maximum idealized row aperture, and the allowed 20-mm configured-thickness window. The user-selected grid count is a minimum; it is automatically increased up to 4000 samples when narrow detector rows require finer sampling. This prevents a changing numerical search window from being mistaken for geometry-driven SSPz variation. The calculation domain is not reused as the visible domain. The selected-state detail and 360-state center-shape charts use symmetric outward-rounded axes derived only from configured-output values at or above 10% of peak. A separate logarithmic tail chart uses cone-geometry-scaled configured-output values at or above 0.1%. The center off/on panels share horizontal limits; the single tail panel derives its horizontal limits only from the retained cone-geometry-scaled curves.
 
 The same version removes relative reconstruction position, reference z position, state-sweep count, and diagram turn count from the acquisition-condition form. The full 360-state set is automatic. A result-side selector chooses one of those states only for detailed inspection. The unwrapped overview automatically covers the finite turn set inspected by the SSPz candidate search, retains every detector row, and stores shared parametric trace arrays rather than a nested point array for every row/turn trajectory. The radial-position interface spans 0--250 mm; 250 mm is identified as the geometric edge of a 500-mm field of view, not as a guarantee of a scanner-specific usable field.
 
@@ -71,7 +71,7 @@ The following were verified:
 - browser-visible scope text reporting the automatically derived turn range and candidate-line count for both default and 80-row conditions;
 - SSPz whole-profile overlay;
 - configured-output SSPz shown first as a 10%-and-above linear center-shape figure;
-- configured-output values from 0.1% upward shown separately as a logarithmic low-amplitude-tail figure;
+- cone-geometry-scaled configured-output values from 0.1% upward shown separately as a single logarithmic low-amplitude-tail figure;
 - `delta-z/T` maps retained behind a collapsed secondary-details control, with a shared linear color scale when opened;
 - 360-state native-coordinate SSPz overlays with all 360 states rendered as separate thin paths and no synthetic pointwise summary curve or filled range;
 - configured-thickness SSPz as the only public one-rotation width stage, with FWHM/T, FWTM/T, or standard-deviation/T selection;
@@ -82,7 +82,7 @@ The following were verified:
 - responsive layout;
 - absence of browser console errors after reload.
 - natural outward-rounded axis limits and constant decimal precision, including an 80-row, 250-mm test condition in which the complete candidate range requires a broader round endpoint than 150 mm;
-- role-specific shared horizontal domains for the configured-output center pair and tail pair;
+- a shared horizontal domain for the configured-output center pair and a cone-geometry-only domain for the single low-amplitude-tail panel;
 - 80-mm panel and 180-mm full-width publication PNG re-rendering at approximately 600 dpi, including embedded PNG physical-resolution metadata;
 - successful direct `file://` launch, calculation completion, and FWHM result rendering in Google Chrome.
 - successful 5-mm configured-thickness direct `file://` calculation at a 150-mm radial position, including the non-calibration disclosure and configured-output-only profile display.
@@ -90,7 +90,7 @@ The following were verified:
 - an 80-mm publication export at 1890 x 1470 pixels with a PNG `pHYs` value of 23622 pixels/m in both directions, equivalent to 599.9988 dpi.
 - an 80-row, 0.5-mm configured-thickness, 250-mm-radius SSPz-overlay publication export at 1890 x 1365 pixels and 599.9988 dpi, confirming that all 360 profile paths remain visible without a summary curve or filled band.
 
-Rendered QA images are kept locally under `output/playwright/` and are intentionally excluded from the public repository by `.gitignore`. The complete 2026-08-21 full-scan page is recorded as `full-scan-default-20260821.png`. The dense all-row overview is recorded as `full-scan-80rows-r250-overview-20260821.png`, and its 600-dpi publication export as `full-scan-80rows-r250-overview-publication-20260821.png`. The N=160, row-width=0.5 mm, beam-pitch=1.35, T=1.0 mm regression view is recorded as `n160-p1p35-T1-configured-core-off.png`; its low-amplitude-tail companion is `n160-p1p35-T1-configured-tail-off.png`.
+Rendered QA images are kept locally under `output/playwright/` and are intentionally excluded from the public repository by `.gitignore`. The complete 2026-08-21 full-scan page is recorded as `full-scan-default-20260821.png`. The dense all-row overview is recorded as `full-scan-80rows-r250-overview-20260821.png`, and its 600-dpi publication export as `full-scan-80rows-r250-overview-publication-20260821.png`. The N=160, row-width=0.5 mm, beam-pitch=1.35, T=1.0 mm regression view is recorded as `n160-p1p35-T1-configured-core-off.png`. Low-amplitude-tail QA is performed only for the retained cone-geometry-scaled panel.
 
 ## Publishing
 

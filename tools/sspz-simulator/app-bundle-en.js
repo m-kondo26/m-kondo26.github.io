@@ -1767,9 +1767,9 @@ function drawOverlayLegend(ctx, x, y, color) {
   ctx.restore();
 }
 
-function configuredOverlayBounds(result, threshold, minimumHalfSpan) {
+function configuredOverlayBounds(result, threshold, minimumHalfSpan, conditions = ["off", "on"]) {
   const overlay = result.overlay;
-  const summaries = [overlay.off.finalSummary, overlay.on.finalSummary];
+  const summaries = conditions.map(condition => overlay[condition].finalSummary);
   let first = overlay.zCount - 1;
   let last = 0;
   let found = false;
@@ -1792,7 +1792,7 @@ function configuredOverlayBounds(result, threshold, minimumHalfSpan) {
 
 function configuredOverlayAxes(result) {
   const core = configuredOverlayBounds(result, 0.1, 0.75 * result.params.sliceThicknessMm);
-  const tail = configuredOverlayBounds(result, 0.001, core.xMax);
+  const tail = configuredOverlayBounds(result, 0.001, core.xMax, ["on"]);
   return { core, tail };
 }
 
@@ -1896,8 +1896,9 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   } else {
     plot.ctx.fillText(stageLabel, plot.margin.left, 10);
     plot.ctx.fillStyle = MUTED;
-    plot.ctx.font = `20px ${FIGURE_FONT}`;
-    plot.ctx.fillText(`${conditionLabel} / complete states ${summary.completeCount}/${overlay.stateCount}`, plot.margin.left, 44);
+    const statusLabel = `${conditionLabel} / complete states ${summary.completeCount}/${overlay.stateCount}`;
+    setFittedFigureFont(plot.ctx, statusLabel, 20, 15, plot.innerWidth);
+    plot.ctx.fillText(statusLabel, plot.margin.left, 44);
   }
   plot.ctx.restore();
   drawOverlayLegend(plot.ctx, plot.margin.left, publicationMode ? 82 : 92, color);
@@ -1926,7 +1927,9 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     canvas.dataset.displayYMinLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMin);
     canvas.dataset.displayYMaxLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMax);
   }
-  canvas.dataset.sharedXDomain = `configured-output-${viewMode}-off-on`;
+  canvas.dataset.sharedXDomain = tailView
+    ? "configured-output-tail-cone-on"
+    : "configured-output-core-off-on";
   canvas.setAttribute("aria-label", tailView
     ? `Log-scale display of post-thickness SSPz tails at or above 0.1% for 360 states: ${conditionLabel}`
     : `Linear display of post-thickness SSPz central profiles at or above 10% for 360 states: ${conditionLabel}`);
@@ -2086,7 +2089,7 @@ function renderSummary(result) {
 
 function updateProfileModelNote(result) {
   const multiComponent = Math.max(result.selectedOff.halfComponents, result.selectedOn.halfComponents) > 1;
-  const modelText = `All primary displays and width metrics are derived from model SSPz curves after applying the configured slice thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm to 360 states within one table feed. Central profiles at or above 10% are shown linearly, and low-amplitude tails at or above 0.1% are shown separately on a log scale. Intermediate SSPz curves and widths before thickness application are excluded from publication figures and width analyses. Only Δz/T, the candidate spacing Δz divided by T, is retained as a supplementary geometric indicator of the computational pathway. FWHM is measured from the post-thickness curve and is not fitted to T.`;
+  const modelText = `All primary displays and width metrics are derived from model SSPz curves after applying the configured slice thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm to 360 states within one table feed. Central profiles at or above 10% are shown linearly. Only the low-amplitude tails at or above 0.1% for the cone-geometry-scaled condition are shown separately on a log scale. Intermediate SSPz curves and widths before thickness application are excluded from publication figures and width analyses. Only Δz/T, the candidate spacing Δz divided by T, is retained as a supplementary geometric indicator of the computational pathway. FWHM is measured from the post-thickness curve and is not fitted to T.`;
   const topologyText = multiComponent
     ? " Caution: the 50% level is split into multiple components; do not represent the profile by FWHM alone."
     : "";
@@ -2129,7 +2132,6 @@ function renderAll(result) {
   drawGapMap(document.querySelector("#gap-map-on"), result, true);
   drawProfileOverlay(document.querySelector("#overlay-core-off"), result, false, "core", overlayAxes.core);
   drawProfileOverlay(document.querySelector("#overlay-core-on"), result, true, "core", overlayAxes.core);
-  drawProfileOverlay(document.querySelector("#overlay-tail-off"), result, false, "tail", overlayAxes.tail);
   drawProfileOverlay(document.querySelector("#overlay-tail-on"), result, true, "tail", overlayAxes.tail);
   const overlayScope = document.querySelector("#overlay-scope");
   if (overlayScope && result.overlay) {
