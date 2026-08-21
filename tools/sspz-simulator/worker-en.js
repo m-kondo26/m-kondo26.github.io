@@ -1,5 +1,5 @@
 "use strict";
-const MODEL_VERSION = "2026-08-21.4";
+const MODEL_VERSION = "2026-08-21.5";
 
 const PROFILE_MODES = Object.freeze({
   LAYERED_RECT: "layered-rect",

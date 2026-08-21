@@ -1,6 +1,6 @@
 (() => {
 "use strict";
-const MODEL_VERSION = "2026-08-21.4";
+const MODEL_VERSION = "2026-08-21.5";
 
 const PROFILE_MODES = Object.freeze({
   LAYERED_RECT: "layered-rect",
@@ -1154,6 +1154,23 @@ function drawWeightedMarker(ctx, row, totalRows, x, y, radius, weight) {
   ctx.stroke();
 }
 
+function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
+  const segments = String(text).split(/\s*[／/]\s*/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const segment of segments) {
+    const candidate = line ? `${line} / ${segment}` : segment;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = segment;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  lines.forEach((value, index) => ctx.fillText(value, left, y + index * lineHeight));
+}
+
 function drawWeightLegend(ctx, left, top, width, totalRows, countText) {
   const y0 = top + 6;
   ctx.save();
@@ -1185,7 +1202,7 @@ function drawWeightLegend(ctx, left, top, width, totalRows, countText) {
   if (countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
-    ctx.fillText(countText, left, y0 + 108);
+    drawWrappedLegendText(ctx, countText, left, y0 + 108, width);
   }
   ctx.restore();
 }
@@ -1228,11 +1245,18 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  ctx.fillText("検出器列", left, top + 21);
-  const available = Math.max(300, width - 92);
-  const spacing = rows.length > 1 ? Math.min(108, available / rows.length) : 100;
+  const rowLabel = "検出器列";
+  ctx.fillText(rowLabel, left, top + 21);
+  const rowLabelWidth = ctx.measureText(rowLabel).width;
+  ctx.font = `18px ${FIGURE_FONT}`;
+  const itemWidths = rows.map(row => 34 + ctx.measureText(`${row + 1}`).width);
+  const itemWidthTotal = itemWidths.reduce((sum, value) => sum + value, 0);
+  const rowLegendStart = left + rowLabelWidth + 24;
+  const remainingGapWidth = Math.max(0, left + width - rowLegendStart - itemWidthTotal);
+  const itemGap = rows.length > 1 ? Math.max(12, Math.min(32, remainingGapWidth / (rows.length - 1))) : 0;
+  let rowLegendX = rowLegendStart;
   rows.forEach((row, index) => {
-    const x0 = left + 92 + index * spacing;
+    const x0 = rowLegendX;
     const y = top + 21;
     ctx.strokeStyle = rowColor(row, diagram.totalRows);
     ctx.globalAlpha = 0.9;
@@ -1242,21 +1266,38 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
     ctx.fillText(`${row + 1}`, x0 + 34, y);
+    rowLegendX += itemWidths[index] + itemGap;
   });
   ctx.font = `19px ${FIGURE_FONT}`;
+  const acquiredLabel = "実取得データ";
+  const targetLabel = "目的断面（zᵢ−z₀=0）";
+  const secondRowY = top + 54;
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.2;
   ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(left, top + 54); ctx.lineTo(left + 42, top + 54); ctx.stroke();
-  ctx.fillStyle = INK; ctx.fillText("実取得データ", left + 52, top + 54);
+  ctx.beginPath(); ctx.moveTo(left, secondRowY); ctx.lineTo(left + 42, secondRowY); ctx.stroke();
+  const acquiredTextX = left + 52;
+  ctx.fillStyle = INK; ctx.fillText(acquiredLabel, acquiredTextX, secondRowY);
+  const acquiredTextRight = acquiredTextX + ctx.measureText(acquiredLabel).width;
+  const targetTextWidth = ctx.measureText(targetLabel).width;
+  let targetMarkerX = acquiredTextRight + 24;
+  let targetTextX = targetMarkerX + 12;
+  let targetY = secondRowY;
+  let countY = top + 84;
+  if (targetTextX + targetTextWidth > left + width) {
+    targetMarkerX = left;
+    targetTextX = left + 12;
+    targetY = top + 84;
+    countY = top + 114;
+  }
   ctx.strokeStyle = RED;
   ctx.lineWidth = 2.4;
-  ctx.beginPath(); ctx.moveTo(left + 256, top + 42); ctx.lineTo(left + 256, top + 66); ctx.stroke();
-  ctx.fillStyle = INK; ctx.fillText("目的断面（zᵢ−z₀=0）", left + 268, top + 54);
+  ctx.beginPath(); ctx.moveTo(targetMarkerX, targetY - 12); ctx.lineTo(targetMarkerX, targetY + 12); ctx.stroke();
+  ctx.fillStyle = INK; ctx.fillText(targetLabel, targetTextX, targetY);
   if (countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
-    ctx.fillText(countText, left, top + 84);
+    drawWrappedLegendText(ctx, countText, left, countY, width);
   }
   ctx.restore();
 }

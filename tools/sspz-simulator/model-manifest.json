@@ -1,6 +1,6 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
-  "modelVersion": "2026-08-21.4",
+  "modelVersion": "2026-08-21.5",
   "purpose": "Visualize how angular-longitudinal candidate geometry can affect the configured slice thickness, using configured-output SSPz center-shape and low-amplitude-tail views, with the nearest-bracketing gap ratio retained only as a geometry audit.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
@@ -9,7 +9,7 @@
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "a9829585af375f14724c1d3ff21ad980ee509bb3e74637c5a40d99cf57901e54"
+    "sha256": "babe5b58a6cd7eb2cb9c75bbd20c351de34ba52382e322907a72b718b4e477a3"
   },
   "regressionFixture": {
     "fileName": "tests/full-scan-reference.json",

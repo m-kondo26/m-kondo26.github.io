@@ -1,4 +1,4 @@
-export const MODEL_VERSION = "2026-08-21.4";
+export const MODEL_VERSION = "2026-08-21.5";
 
 export const PROFILE_MODES = Object.freeze({
   LAYERED_RECT: "layered-rect",
