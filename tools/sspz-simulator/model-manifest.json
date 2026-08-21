@@ -1,0 +1,95 @@
+{
+  "modelName": "CT unwrapped-diagram and SSPz geometry reference",
+  "modelVersion": "2026-08-21.4",
+  "purpose": "Visualize how angular-longitudinal candidate geometry can affect the configured slice thickness, using configured-output SSPz center-shape and low-amplitude-tail views, with the nearest-bracketing gap ratio retained only as a geometry audit.",
+  "referenceImplementation": {
+    "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
+    "sha256": "c2f554f89cf5bced2504381a7c5955e1eee1598cdf3cf270438c1c9235da0cab",
+    "note": "The web calculation now follows only the Python application's actual-data-only 360-degree path. Its 180-degree half-scan paths are not used. The web implementation remains a focused port rather than a literal reproduction of every feature."
+  },
+  "browserCore": {
+    "fileName": "sim-core.js",
+    "sha256": "a9829585af375f14724c1d3ff21ad980ee509bb3e74637c5a40d99cf57901e54"
+  },
+  "regressionFixture": {
+    "fileName": "tests/full-scan-reference.json",
+    "generatorFileName": "tests/full_scan_reference.py",
+    "generatorSha256": "9c029c416fd73f518ff949a15f405870eaca466f825a3cd89eac062539912e98",
+    "sha256": "95cd6030d5e836da9a7fda5beb1709186860b0f58d2971da739c670da9ab6732",
+    "parameters": {
+      "detectorRows": 4,
+      "rowWidthMm": 1.0,
+      "beamPitch": 0.875,
+      "sourceToIsocenterMm": 600.0,
+      "radialPositionMm": 102.0,
+      "referenceReconstructionPositionMm": 9.0,
+      "relativeReconstructionPositionWithinOneRotation": 0.5,
+      "viewSamplesOverFull360Degrees": 360,
+      "zSamples": 800
+    },
+    "candidateSelectionRule": "nearest-bracketing-linear",
+    "note": "The 102-mm radial position is retained only as a fixed numerical regression fixture from the study; it is not a recommended public preset.",
+    "status": "PASS",
+    "verifiedOn": "2026-08-21"
+  },
+  "implemented": [
+    "actual-data-only 0-to-360-degree full-scan candidate geometry with equal angular sampling",
+    "centered detector-row and multiple-turn candidate enumeration",
+    "adaptive nearest-smaller-z and nearest-larger-z candidate selection without a fixed support cutoff",
+    "within-view linear interpolation weights normalized to one",
+    "nearest-bracketing gap ratio delta-z over configured slice thickness",
+    "unit-area rectangular detector-row response",
+    "one-way mapping from configured slice thickness to an equal-weight rectangular explanatory kernel",
+    "computed FWHM, FWTM, standard deviation, centroid, and whole-profile output without FWHM fitting",
+    "native-coordinate overlays of 360 equally spaced relative reconstruction states as individual profiles without a synthetic pointwise summary curve or filled range",
+    "idealized source-to-point distance scaling toggle",
+    "automatic candidate search that expands until the target plane is bracketed, with every detector row retained in the unwrapped overview",
+    "result-side inspection of one selected model state without treating that state as an acquisition input",
+    "configured-output-only symmetric horizontal scaling for the selected-state SSPz detail, derived from the response at or above 10 percent",
+    "public radial-position range from 0 to 250 mm, including the geometric edge of a 500-mm field of view",
+    "configured-output SSPz split into a linear center-shape view at or above 10 percent and a separate logarithmic low-amplitude-tail view at or above 0.1 percent, with off/on comparisons sharing a domain only within the same view role",
+    "public figures, scalar width sweeps, and CSV exports restricted to configured-output SSPz so the internal pre-thickness intermediate response cannot be mistaken for reconstructed slice thickness",
+    "nearest-bracketing gap ratio retained as a collapsed geometry audit rather than a reconstructed-thickness output"
+  ],
+  "notImplemented": [
+    "Schaller adaptive axial interpolation",
+    "Feldkamp or other three-dimensional backprojection",
+    "TCOT- or MUSCOT-specific projection selection and weighting",
+    "scanner-specific redundancy weighting, cone-beam weighting, and backprojection weighting",
+    "iterative reconstruction, deep-learning reconstruction, and noise",
+    "temporal sensitivity profile and motion response"
+  ],
+  "literatureBackground": [
+    {
+      "doi": "10.1118/1.597199",
+      "role": "Conceptual basis for transverse-position-dependent SSP variation in spiral CT.",
+      "implementationBoundary": "The original 180-degree half-scan formulation is not directly implemented."
+    },
+    {
+      "doi": "10.3233/XST-2003-00064",
+      "role": "Conceptual basis for angular-longitudinal SSP analysis in multi-row-detector spiral CT.",
+      "implementationBoundary": "Extended 180-degree interpolation and synthesized opposing data are not used."
+    },
+    {
+      "doi": "10.1109/42.887832",
+      "role": "Theoretical background for longitudinal interpolation and normalized weighting in multislice spiral CT.",
+      "implementationBoundary": "The adaptive axial interpolator is not implemented."
+    },
+    {
+      "doi": "10.1088/0031-9155/49/13/011",
+      "role": "Theoretical background for helical cone-beam reconstruction and data-use considerations.",
+      "implementationBoundary": "The exact and approximate reconstruction algorithms are not implemented; the web distance scaling is an idealized geometry display."
+    }
+  ],
+  "scanCalculationConvention": "Each SSPz is calculated from one actual-data family sampled at equally spaced relative tube angles beta in the half-open interval 0 <= beta < 360 degrees. Angles from 180 to 360 degrees are calculated by the same actual-data rule as angles from 0 to 180 degrees; they are not generated by converting, copying, or relabeling a 180-degree half-scan. Within each beta, the nearest candidate with z smaller than z0 and the nearest candidate with z larger than z0 are selected over the ideal infinite helix and assigned linear interpolation weights normalized to one. Smaller/larger z refers to the longitudinal coordinate, not to the upper/lower direction of the unwrapped diagram. No fixed candidate support cutoff or scanner-specific redundancy weight is applied.",
+  "angleConvention": "The diagram uses a model-relative tube angle beta with 0 degrees at the top and 360 degrees at the bottom. It is not a measured absolute tube angle. The drawn endpoint at 360 degrees closes the displayed helix period but is not double-counted in SSPz integration.",
+  "overlayConvention": "The overlay samples 360 equally spaced relative reconstruction states within one table feed per rotation. All 360 configured-output profiles are rendered as 360 separate thin paths without state decimation, an overlaid pointwise summary curve, or a filled range. These are not 360 acquisitions or measured absolute tube angles. Every profile is peak-normalized and kept on its native z-minus-z0 coordinate without additional alignment. The linear center-shape view derives its symmetric horizontal domain from configured-output values at or above 10 percent of peak. The separate logarithmic tail view derives its domain from configured-output values at or above 0.1 percent. Off/on panels share a domain only within the same view role. The internal pre-thickness response is not exposed as a public SSPz or width result.",
+  "candidateDisplayConvention": "The overview spans every turn containing a row-wise nearest smaller-z or larger-z candidate over the selected full-scan period plus one neighboring turn on either side, and renders every detector row without row subsampling. Detector-row identity is encoded by hue. All 0-to-360-degree actual-data trajectories use solid lines; no opposing-data family is synthesized. The off/on panels share a horizontal scale. The ideal helix is infinite; the displayed finite range is a reproducible view around the target plane, not the complete acquisition trajectory.",
+  "weightDisplayConvention": "Candidate markers have a fixed size. Within each detector-row hue, color intensity from pale to dark represents the normalized linear interpolation weight from low to high. All markers are circles because the full-scan calculation contains one actual-data family.",
+  "geometryIndicatorConvention": "For every relative reconstruction state and tube angle, delta-z is the distance between the nearest candidates bracketing the target plane; an exact candidate match is assigned delta-z zero because no interpolation is required. Delta-z divided by configured slice thickness T is displayed on a shared linear color scale. It is an acquisition-geometry sensitivity indicator, not a reconstruction success criterion or a prediction of a proprietary scanner SSPz.",
+  "launchModes": [
+    "double-click index.html (tested with Google Chrome using the file protocol)",
+    "HTTP static server",
+    "GitHub Pages"
+  ]
+}

@@ -3,14 +3,14 @@
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://m-kondo26.github.io/</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-21</lastmod>
     <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/" />
   </url>
   <url>
     <loc>https://m-kondo26.github.io/ja/</loc>
-    <lastmod>2026-08-20</lastmod>
+    <lastmod>2026-08-21</lastmod>
     <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/" />
@@ -28,5 +28,19 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/achievements/" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/achievements/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/achievements/" />
+  </url>
+  <url>
+    <loc>https://m-kondo26.github.io/tools/sspz-simulator/index-en.html</loc>
+    <lastmod>2026-08-21</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/tools/sspz-simulator/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html" />
+  </url>
+  <url>
+    <loc>https://m-kondo26.github.io/tools/sspz-simulator/</loc>
+    <lastmod>2026-08-21</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/tools/sspz-simulator/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html" />
   </url>
 </urlset>
