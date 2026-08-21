@@ -562,6 +562,8 @@ nav a:focus-visible {
 
 .sspz-preview {
   display: block;
+  width: min(100%, 620px);
+  justify-self: end;
   min-height: 0;
   overflow: hidden;
   padding: 0;
@@ -1164,6 +1166,10 @@ footer {
   .tools,
   .collaboration {
     grid-template-columns: 1fr;
+  }
+
+  .research-tool .sspz-preview {
+    justify-self: center;
   }
 
   .podcast-list {
