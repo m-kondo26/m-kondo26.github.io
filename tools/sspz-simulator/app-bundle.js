@@ -620,6 +620,10 @@ const ROW_COLORS = ["#0072b2", "#d55e00", "#009e73", "#e69f00", "#cc79a7", "#56b
 const FIGURE_FONT = "Arial, Helvetica, sans-serif";
 const PUBLICATION_DPI = 600;
 const PUBLICATION_WIDTH_MM = Object.freeze({ panel: 80, full: 180 });
+// The log-tail plot still renders values only at or above 0.1%.  These limits
+// add print-space around the 100% peak and the 0.1% endpoints so neither is
+// hidden by the plot frame in the 80-mm publication export.
+const PROFILE_TAIL_DISPLAY_BOUNDS = Object.freeze({ yMin: -3.08, yMax: 0.08 });
 const RESULT_CANVAS_SELECTOR = "canvas";
 
 const form = document.querySelector("#parameter-form");
@@ -1013,6 +1017,18 @@ function axisContext(canvas, bounds, labels) {
   return { ctx, width, height, margin, innerWidth, innerHeight, x, y, yDown, labels, style, renderScale };
 }
 
+function setFittedFigureFont(ctx, text, preferredPx, minimumPx, maximumWidth, weight = "") {
+  let size = preferredPx;
+  const prefix = weight ? `${weight} ` : "";
+  while (size > minimumPx) {
+    ctx.font = `${prefix}${size}px ${FIGURE_FONT}`;
+    if (ctx.measureText(text).width <= maximumWidth) return size;
+    size -= 1;
+  }
+  ctx.font = `${prefix}${minimumPx}px ${FIGURE_FONT}`;
+  return minimumPx;
+}
+
 function drawAxes(plot, xTicks, yTicks, useYDown = false) {
   const { ctx, margin, innerWidth, innerHeight, x, y, yDown, labels, width, height, style } = plot;
   const xValues = xTicks.filter(Number.isFinite);
@@ -1072,15 +1088,18 @@ function drawAxes(plot, xTicks, yTicks, useYDown = false) {
   ctx.lineTo(margin.left + innerWidth, margin.top + innerHeight);
   ctx.stroke();
   ctx.fillStyle = INK;
-  ctx.font = `${style.axisFontPx}px ${FIGURE_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  ctx.fillText(labels.x, margin.left + innerWidth / 2, height - 11);
+  const xLabelCenter = margin.left + innerWidth / 2;
+  const xLabelWidth = Math.max(1, Math.min(innerWidth, 2 * Math.min(xLabelCenter, width - xLabelCenter)) - 16);
+  setFittedFigureFont(ctx, labels.x, style.axisFontPx, 21, xLabelWidth);
+  ctx.fillText(labels.x, xLabelCenter, height - 11);
   ctx.save();
   // Keep the rotated y-axis title inside the export canvas at the final
   // 80/180-mm sizes; 31 px allowed glyph overhang to touch the left edge.
   ctx.translate(width <= 950 ? 46 : 44, margin.top + innerHeight / 2);
   ctx.rotate(-Math.PI / 2);
+  setFittedFigureFont(ctx, labels.y, style.axisFontPx, 21, innerHeight - 16);
   ctx.fillText(labels.y, 0, 0);
   ctx.restore();
   ctx.restore();
@@ -1794,14 +1813,20 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     : layered
       ? `主要表示：設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の中心形状`
       : `モデルSSPz T=${fmt(result.params.sliceThicknessMm, 1)} mm`;
-  const plot = axisContext(canvas, { xMin, xMax, yMin: tailView ? -3 : 0, yMax: tailView ? 0 : 1.04 }, {
+  const plot = axisContext(canvas, {
+    xMin,
+    xMax,
+    yMin: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMin : 0,
+    yMax: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMax : 1.04,
+  }, {
     x: "再構成面からの位置  z − z₀  (mm)",
     y: tailView ? "正規化SSPz（対数）" : "正規化SSPz",
     xFormatter: xAxis.formatter,
     yFormatter: tailView
       ? value => ({ "-3": "0.1%", "-2": "1%", "-1": "10%", "0": "100%" }[String(value)] ?? "")
       : value => value.toFixed(1),
-    topMargin: publicationMode ? 84 : 126,
+    topMargin: publicationMode ? 116 : 126,
+    leftMargin: tailView ? 158 : undefined,
   });
 
   plot.ctx.save();
@@ -1863,7 +1888,11 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
       : layered
         ? `設定厚反映後・中心形状（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
         : `モデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`;
-    plot.ctx.fillText(`${conciseStage}／${conciseCondition}`, plot.margin.left, 10);
+    // Keep the scientific stage and geometry condition on separate lines.
+    // A single English line exceeds the fixed 80-mm journal figure width.
+    plot.ctx.fillText(conciseStage, plot.margin.left, 8);
+    plot.ctx.font = `20px ${FIGURE_FONT}`;
+    plot.ctx.fillText(conciseCondition, plot.margin.left, 38);
   } else {
     plot.ctx.fillText(stageLabel, plot.margin.left, 10);
     plot.ctx.fillStyle = MUTED;
@@ -1871,7 +1900,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     plot.ctx.fillText(`${conditionLabel}／完全状態 ${summary.completeCount}/${overlay.stateCount}`, plot.margin.left, 44);
   }
   plot.ctx.restore();
-  drawOverlayLegend(plot.ctx, plot.margin.left, publicationMode ? 56 : 92, color);
+  drawOverlayLegend(plot.ctx, plot.margin.left, publicationMode ? 82 : 92, color);
   plot.ctx.save();
   plot.ctx.fillStyle = INK;
   plot.ctx.font = `18px ${FIGURE_FONT}`;
@@ -1892,6 +1921,11 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   canvas.dataset.xStep = String(xAxis.step);
   canvas.dataset.profileStage = "configured-output-only";
   canvas.dataset.viewMode = viewMode;
+  if (tailView) {
+    canvas.dataset.renderedMinimum = "0.001";
+    canvas.dataset.displayYMinLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMin);
+    canvas.dataset.displayYMaxLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMax);
+  }
   canvas.dataset.sharedXDomain = `configured-output-${viewMode}-off-on`;
   canvas.setAttribute("aria-label", tailView
     ? `${conditionLabel}における設定厚反映後360状態SSPzの0.1%以上の低振幅裾を対数表示`
