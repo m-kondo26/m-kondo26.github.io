@@ -18,7 +18,7 @@
     <link rel="alternate" hreflang="en" href="https://m-kondo26.github.io/" />
     <link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/ja/" />
     <link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260821-sspz-preview" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -131,14 +131,16 @@
           <p>ブラウザで無料利用でき、登録・インストールは不要です。検出器列の幾何、ビームピッチ、横断面内位置、設定スライス厚が、体軸方向の候補X線位置、線形補間重み、説明用の体軸方向スライス感度プロファイル（SSPz）に与え得る影響を可視化します。0～360°フルスキャンの実取得データを用いる簡略モデルであり、商用装置固有の再構成を再現するものではありません。</p>
           <a class="tool-button" href="/tools/sspz-simulator/">無料のSSPz幾何リファレンスを開く <span aria-hidden="true">→</span></a>
         </div>
-        <div class="tool-preview sspz-preview" aria-hidden="true">
-          <div class="sspz-angle-scale"><span>0°</span><span>180°</span><span>360°</span></div>
-          <div class="sspz-diagram">
-            <i></i><i></i><i></i><i></i><i></i><i></i>
-            <b></b>
-          </div>
-          <span class="tool-phase">角度 × 体軸位置</span>
-        </div>
+        <a class="tool-preview sspz-preview" href="/tools/sspz-simulator/" aria-label="この条件で表示した無料のSSPz幾何リファレンスを開く">
+          <figure class="sspz-figure">
+            <img src="/assets/sspz-angular-longitudinal-160x0p5-r250-ja.png" alt="160列、1列幅0.5 mm、回転中心から250 mmの位置について、シミュレーターで作成した角度–体軸位置展開図。" width="1890" height="1470" loading="lazy" decoding="async" />
+            <figcaption>
+              <strong class="figure-condition-primary">160列 × 0.5 mm</strong>
+              <span class="figure-condition-detail">r = 250 mm ・ビームピッチ0.875・コーン幾何を反映</span>
+              <span class="figure-condition-link">無料シミュレーターで生成 <span aria-hidden="true">→</span></span>
+            </figcaption>
+          </figure>
+        </a>
       </section>
 
       <section class="tools section utility-tool">
