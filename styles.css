@@ -581,9 +581,7 @@ nav a:focus-visible {
 .app-preview img {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 11;
-  object-fit: cover;
-  object-position: top center;
+  height: auto;
 }
 
 .sspz-preview {
