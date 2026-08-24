@@ -264,9 +264,20 @@ th:first-child, td:first-child { text-align: left; }
 .chart-controls select { min-height: 2.35rem; padding: 0.4rem 0.65rem; border: 1px solid #bdc9d1; border-radius: 7px; color: var(--ink); background: white; }
 footer { padding: 2rem max(1rem, calc((100vw - 1440px) / 2)); color: #d8e7ee; background: #16364b; font-size: 0.78rem; }
 footer p { margin: 0.2rem 0; }
-.rights-notice { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid rgba(216,231,238,0.28); line-height: 1.65; }
-.rights-notice a { color: #ffffff; font-weight: 700; text-underline-offset: 0.16em; }
-.rights-notice a:hover { color: #d8e7ee; }
+.rights-banner {
+  width: min(100% - 2rem, 1440px);
+  margin: 1rem auto 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #c7d8e3;
+  border-left: 4px solid var(--blue);
+  border-radius: 9px;
+  color: var(--ink);
+  background: #eef6fb;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.rights-banner p { margin: 0.15rem 0; }
+.rights-banner a { color: var(--blue); font-weight: 700; text-underline-offset: 0.16em; }
 
 @media (max-width: 1000px) {
   .parameter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
