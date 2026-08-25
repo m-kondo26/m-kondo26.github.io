@@ -57,7 +57,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        width: min(100% - 32px, 1100px);
+        width: min(calc(100% - 32px), 1100px);
         margin: 14px auto 22px;
         padding: 13px 16px;
         border: 1px solid rgba(33, 102, 172, 0.22);
@@ -113,7 +113,7 @@
         .ctlab-feedback {
           align-items: stretch;
           flex-direction: column;
-          width: min(100% - 24px, 1100px);
+          width: min(calc(100% - 24px), 1100px);
         }
         .ctlab-feedback-button {
           width: 100%;
