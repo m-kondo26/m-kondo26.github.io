@@ -1,0 +1,42 @@
+name: Update latest podcast episodes
+
+on:
+  schedule:
+    # 06:15 JST every day (GitHub Actions schedules use UTC).
+    - cron: "15 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-podcasts
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the website
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Spotify and update the pages
+        run: python scripts/update_podcasts.py
+
+      - name: Commit an updated episode, if found
+        run: |
+          if git diff --quiet -- index.html ja/index.html; then
+            echo "No new podcast episode found."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html ja/index.html
+          git commit -m "Update latest podcast episodes"
+          git push
