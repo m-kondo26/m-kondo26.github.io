@@ -947,6 +947,33 @@ nav a:focus-visible {
   font-size: 13px;
 }
 
+.podcast-latest {
+  display: grid;
+  gap: 3px;
+  margin-top: 16px !important;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.podcast-latest span {
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.podcast-latest time {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.podcast-latest small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .podcast-link {
   display: flex;
   align-items: center;
