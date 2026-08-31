@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A free, browser-based research and education simulator requiring no registration, for angular-longitudinal acquisition geometry and assumed longitudinal weighting using acquired projection data from a 0-360° full scan">
+  <meta name="description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <title>CT Angular-Longitudinal Diagram and SSPz Geometry Reference</title>
   <link rel="canonical" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/tools/sspz-simulator/">
@@ -11,7 +11,7 @@
   <link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <meta property="og:type" content="website">
   <meta property="og:title" content="CT Angular-Longitudinal Diagram and SSPz Geometry Reference">
-  <meta property="og:description" content="A free, browser-based research and education simulator requiring no registration, for angular-longitudinal acquisition geometry and assumed longitudinal weighting using acquired projection data from a 0-360° full scan">
+  <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1720'/%3E%3Cpath d='M12 45c10-25 30-25 40 0' fill='none' stroke='%2343c2a1' stroke-width='6'/%3E%3Ccircle cx='32' cy='22' r='6' fill='%23f5b85c'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
@@ -32,7 +32,7 @@
         <a class="language-link" href="index.html" data-language-target="index.html" lang="ja">Japanese</a>
       </div>
       <h1>CT Angular-Longitudinal Diagram and SSPz Geometry Reference</h1>
-      <p class="lead">For acquired projection data from a 0-360° full scan, this reference displays the relationships among longitudinal candidate-ray positions, linear interpolation weights, and the longitudinal slice sensitivity profile (SSPz). Results are shown for a parallel-beam approximation without cone-geometry scaling and for an idealized model that includes the periodic variation in source-to-point distance.</p>
+      <p class="lead">The primary analysis uses 180LI acquisition geometry to associate each direct-ray view with the two acquired complementary-ray views bracketing the ideal fan-angle-dependent complementary angle. It displays the relationships among candidate-ray positions, linear interpolation weights, and the longitudinal slice sensitivity profile (SSPz). A direct-ray-only 0-360° full-scan calculation is also available as a comparator.</p>
     </div>
     <div class="hero-badge" aria-label="Access and model scope">
       <strong>Free to use · No registration required</strong>
@@ -40,8 +40,6 @@
       <span>Simplified reference model; not an emulation of a commercial reconstruction</span>
     </div>
   </header>
-
-
 
   <main>
     <section class="control-shell" aria-labelledby="conditions-title">
@@ -87,6 +85,13 @@
           <span class="fixed-value">Linear interpolation between the two nearest candidates that bracket the target-plane z-coordinate</span>
           <small class="field-help">The ideal helical trajectory is searched until candidates are found on both the smaller-z and larger-z sides of z₀; the search is not truncated by a fixed support width. These sides refer to z-coordinate values, not to the vertical direction of the diagram.</small>
         </label>
+        <label>Acquisition geometry applied to SSPz
+          <select id="reconstructionPath" name="reconstructionPath">
+            <option value="fan-beam-180li" selected>180LI acquisition geometry (primary analysis)</option>
+            <option value="direct-full-scan">Direct-ray 0-360° full scan (comparator)</option>
+          </select>
+          <small class="field-help">For the primary analysis, all detector-row candidates from the direct and complementary ray families are merged separately at the two acquired views bracketing the ideal complementary angle. Longitudinal linear interpolation is performed across the target plane in each branch, and the two branches are then combined by linear angular interpolation. Scanner-specific detector-channel interpolation, redundancy weighting, cone-beam weighting, and backprojection are not reproduced.</small>
+        </label>
         <label>Relative tube-angle samples per rotation
           <select id="viewSamples" name="viewSamples">
             <option value="180">180 views (preview)</option>
@@ -94,7 +99,7 @@
             <option value="720">720 views (fine)</option>
             <option value="1200">1200 views (high precision)</option>
           </select>
-          <small class="field-help">Each SSPz is computed from acquired views over 0° to less than 360°. This is distinct from the 360 model states below.</small>
+          <small class="field-help">Direct-ray reference views for each SSPz are distributed at equal angular intervals from 0° to less than 360°. In the primary 180LI analysis, the neighboring acquired views in the complementary-ray angular region are also searched for each reference view. This number is distinct from the 360 model states shown below.</small>
         </label>
         <label>Base SSPz grid size
           <select id="zSamples" name="zSamples">
@@ -102,6 +107,7 @@
             <option value="800" selected>800 (standard)</option>
             <option value="1200">1200 (fine)</option>
             <option value="2000">2000 (high precision)</option>
+            <option value="4000">4000 (manuscript precision)</option>
           </select>
           <small class="field-help">The selected value is the minimum grid size. It is increased automatically when needed to preserve a common longitudinal range across conditions.</small>
         </label>
@@ -124,7 +130,7 @@
     <section aria-labelledby="geometry-title">
       <div class="section-heading">
         <div><p class="step">2</p><h2 id="geometry-title">Inspect the angular-longitudinal diagram and weights</h2></div>
-        <p class="section-note">The full 0-360° angular-longitudinal diagram and the linear weights of the two nearest candidates around the target plane are displayed to trace their relationship to SSPz.</p>
+        <p class="section-note">The diagrams show the acquired-view trajectories, the 180LI angular correspondence, and longitudinal linear weights near the target plane, allowing the selected acquisition geometry to be followed through to SSPz.</p>
       </div>
       <div class="state-inspector" aria-labelledby="state-inspector-title">
         <div>
@@ -139,18 +145,19 @@
         </div>
       </div>
       <div class="flow-strip" aria-label="Flow from the angular-longitudinal diagram to SSPz">
-        <span><b>2A</b> Angular-longitudinal diagram over 0-360°</span><i aria-hidden="true">→</i>
-        <span><b>2B</b> Two nearest bracketing candidates and linear weights</span><i aria-hidden="true">→</i>
+        <span><b>2A</b> All-row candidate diagram</span><i aria-hidden="true">→</i>
+        <span><b>2B</b> Selected endpoints and linear weights</span><i aria-hidden="true">→</i>
+        <span><b>2C</b> 180LI complementary angles, absolute-view pairs, and two-point bracketing</span><i aria-hidden="true">→</i>
         <span><b>3</b> Overlaid SSPz curves and post-thickness SSPz</span>
       </div>
 
       <div class="subsection-heading">
         <div>
-          <strong>2A  Angular-longitudinal diagram over 0-360° (complete display range)</strong>
-          <span id="overview-scope">Display: rotation range automatically determined by the SSPz candidate search</span>
-          <span id="calculation-scope">One acquired projection-data series over 0-360° and all detector rows</span>
+          <strong>2A  Angular-longitudinal diagram over 0-360° with every detector row retained as a candidate</strong>
+          <span id="overview-scope">Display: all-row candidate trajectories (rotations containing selected endpoints)</span>
+          <span id="calculation-scope">All-row candidates retained; no exclusion based on configured thickness T</span>
         </div>
-        <p>The horizontal axis is the longitudinal distance between a candidate-row center and the target plane, and the vertical axis is the relative tube angle in the model. The left column ignores the transaxial-position-dependent variation in source-to-point distance. The right column applies that variation to candidate-row positions and row widths in an idealized manner. The two conditions coincide at isocenter.</p>
+        <p>The horizontal axis is the distance between a candidate detector-row center and the target plane; the vertical axis is the model-relative tube angle. Thin trajectories show all <i>N</i> detector rows at each displayed angle. Candidate searching retains all <i>N</i> rows in every acquired view as its population and does not exclude candidates according to configured slice thickness <i>T</i>. The left column ignores the change in source-to-point distance with transverse position, whereas the right column applies an idealized distance scaling to candidate row positions and widths. Thus, the columns differ in the geometry of the candidate positions, not in the number of detector rows admitted as candidates. The two conditions coincide at isocenter.</p>
         <p class="geometry-equation-note">
           For the right column, the distance ratio to a fixed evaluation point is defined as
           <span class="equation">q(β) = L(β)/R = √{1 + (r/R)² − 2(r/R)cosβ}</span>
@@ -159,34 +166,64 @@
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>Without cone-geometry scaling</h3><span>Parallel-beam approximation</span></div>
-          <canvas id="diagram-overview-off" width="900" height="700" aria-label="Angular-longitudinal diagram of all candidates without source-to-point distance scaling"></canvas>
+          <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; all N rows</span></div>
+          <canvas id="diagram-overview-off" width="900" height="700" aria-label="Angular-longitudinal diagram showing every detector row without configured-thickness candidate exclusion and without source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-overview-off">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone-geometry scaling</h3><span>Periodic source-to-point distance</span></div>
-          <canvas id="diagram-overview-on" width="900" height="700" aria-label="Angular-longitudinal diagram of all candidates with idealized source-to-point distance scaling"></canvas>
+          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam complement + periodic distance scaling; all N rows</span></div>
+          <canvas id="diagram-overview-on" width="900" height="700" aria-label="Angular-longitudinal diagram showing every detector row without configured-thickness candidate exclusion and with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-overview-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
 
       <div class="subsection-heading">
-        <div><strong>2B  Two nearest candidates that bracket the target-plane z-coordinate and their linear weights</strong><span>Enlarged view around the target plane</span></div>
-        <p>Circles identify the nearest acquired candidates on the smaller-z and larger-z sides of the target plane at each angle over 0-360°. Marker size is constant; within each detector-row color, increasing color saturation represents increasing linear interpolation weight. When a candidate coincides with the target plane, that candidate alone receives a weight of 1.</p>
+        <div><strong>2B  Nearest endpoints selected from all-row candidates and their linear weights</strong><span>Enlarged view around the target plane</span></div>
+        <p>Thin trajectories are the same all-<i>N</i>-row candidate population shown in Section 2A. Circles are endpoints near the target plane selected from that population by the explanatory interpolation model. Configured slice thickness <i>T</i> is not used for endpoint selection; it is applied later to SSPz. In the primary 180LI analysis, all detector-row candidates from the direct and complementary ray families are merged separately at the lower and upper acquired views bracketing the ideal complementary angle, and the nearest endpoints bracketing the target plane are selected within each branch. Color saturation shows the explanatory-model contribution obtained by multiplying the longitudinal linear weight by the angular linear weight. Endpoints tied at the same z-coordinate share the weight equally. This figure does not show the number of projection samples actually adopted by a commercial scanner.</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>Without cone-geometry scaling</h3><span>Parallel-beam approximation; nearest candidates</span></div>
-          <canvas id="diagram-zoom-off" width="900" height="700" aria-label="Enlarged contributing-candidate diagram without source-to-point distance scaling"></canvas>
+          <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° endpoints selected from all rows</span></div>
+          <canvas id="diagram-zoom-off" width="900" height="700" aria-label="Enlarged diagram showing every detector-row candidate and the interpolation endpoints selected from them, without source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-off">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone-geometry scaling</h3><span>Periodic distance scaling; nearest candidates</span></div>
-          <canvas id="diagram-zoom-on" width="900" height="700" aria-label="Enlarged contributing-candidate diagram with idealized source-to-point distance scaling"></canvas>
+          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam endpoints selected from all rows</span></div>
+          <canvas id="diagram-zoom-on" width="900" height="700" aria-label="Enlarged diagram showing every detector-row candidate and the interpolation endpoints selected from them, with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
-      <p class="diagram-footnote">Angle β is the relative tube angle in this model; 0° is not a measured absolute tube angle. Every acquired angle from 0° to less than 360° is processed by the same rule, with no replacement by opposite-ray data at 180°. Because the ideal helical trajectory continues indefinitely, candidate searching is not truncated at a fixed number of rotations. For all detector rows, the overview includes rotations containing the nearest candidates on the smaller-z and larger-z sides of the target-plane coordinate, plus one adjacent rotation before and after that range.</p>
+      <p class="diagram-footnote">Angle β is a model-relative tube angle; 0° is not a measured absolute tube angle. The no-cone condition is the parallel-beam reference γ=0, β<sub>c</sub>=β+180°, and q=1; the cone-geometry condition uses β<sub>c</sub>=β+180°+2γ together with the distance ratio q. Thus, the comparison does not isolate q alone. In Section 2A, the thin trajectories are the candidate population retaining every detector row under both conditions. In Section 2B, circles are endpoints selected from that all-row population by the explanatory interpolation model; they do not show the total candidate count or the number of data samples actually used by a commercial reconstruction. Configured slice thickness T is not used to exclude candidates or select endpoints; it is applied later to the configured-thickness SSPz. In the primary 180LI analysis, the two acquired views bracketing the ideal complementary angle from Section 2C are used. Within each branch, all detector-row candidates from the direct and complementary ray families are merged to form the nearest bracket, and the two branches are then combined by linear angular interpolation. Because the ideal helical trajectory is unbounded, only the display range is made finite: it includes the rotations containing the selected endpoints plus one neighboring rotation on each side.</p>
+
+      <div class="subsection-heading">
+        <div><strong>2C  180LI complementary angles, absolute-view pairs, and two-point bracketing</strong><span>Pair direct and complementary rays in absolute acquisition order</span></div>
+      </div>
+      <div class="complementary-intro">
+        <p>For the direct ray at each acquired view β, the line joining the x-ray source and the evaluation point is extended to its second intersection with the source orbit. This defines the source angle β<sub>c</sub> of the complementary ray. Under the displayed sign convention, β<sub>c</sub>=β+180°+2γ. The first plot shows the ideal complementary angle and the immediately preceding and following acquired views that bracket it. Rather than only rounding to one nearest view, the calculation retains the angular residuals to both neighboring views and the angular interpolation fraction.</p>
+        <p>The second plot separately shows the two spans in absolute acquisition order: direct ray<sub>n</sub> to complementary ray<sub>n</sub>, and complementary ray<sub>n</sub> to direct ray<sub>n+1</sub>. The arrows indicate acquisition order, not longitudinal order. Within each span, all detector rows are searched for the minimum bracket around the target plane, allowing either family to provide the smaller-z endpoint. This display audits the geometry of both consecutive spans instead of assessing the 180°+2γ correspondence from only one candidate.</p>
+        <p>The third plot merges all detector-row candidates from the direct and complementary ray families into one set and selects the nearest two points on the smaller-z and larger-z sides of the target plane. The endpoints are retained jointly as one bracket rather than evaluated independently. If d<sub>−</sub> and d<sub>+</sub> denote the distances to the smaller-z and larger-z candidates, respectively, the merged bracket width is G<sub>merge</sub>=d<sub>−</sub>+d<sub>+</sub>. A selected pair may be direct-direct, direct-complementary, complementary-direct, or complementary-complementary. Candidates tied at the same z-coordinate share the endpoint's total weight equally, and exact matches to the target plane are retained. In the primary 180LI analysis, this merging and longitudinal linear interpolation are performed separately for the lower and upper acquired views bracketing the ideal complementary angle, and the two branches are combined according to the angular position.</p>
+        <p class="model-note compact-note">The complementary-ray family is not a separate acquisition; it is the same acquired projection data re-indexed through the 180LI angular relationship. Each absolute view has as many candidates as the entered number of detector rows. The plotted endpoints do not represent the total candidate count. When 180LI acquisition geometry is selected, the angular correspondence, neighboring acquired views, all-row candidate merging, longitudinal weights, and angular weights are applied to the explanatory SSPz. When the direct-ray 0-360° full scan is selected, Section 2C remains as a comparative acquisition-geometry audit and is not applied to SSPz. Scanner-specific detector-channel interpolation, redundancy weighting, cone-beam weighting, and backprojection are not reproduced.</p>
+      </div>
+      <div class="chart-grid two">
+        <article class="chart-card">
+          <div class="chart-title"><h3>Fan-beam complementary-ray angle</h3><span>β<sub>c</sub>−β = 180° + 2γ</span></div>
+          <canvas id="complementary-angle-chart" width="900" height="700" aria-label="Angular correspondence between the direct and complementary rays"></canvas>
+          <button class="download-link" data-canvas="complementary-angle-chart">Publication PNG (600 dpi)</button>
+        </article>
+        <article class="chart-card">
+          <div class="chart-title"><h3>Two spans linked in absolute acquisition order</h3><span>Direct rayₙ→complementary rayₙ / complementary rayₙ→direct rayₙ₊₁</span></div>
+          <canvas id="complementary-distance-chart" width="900" height="700" aria-label="Two direct/complementary-ray spans in absolute acquisition order"></canvas>
+          <button class="download-link" data-canvas="complementary-distance-chart">Publication PNG (600 dpi)</button>
+        </article>
+        <article class="chart-card span-two">
+          <div class="chart-title"><h3>Nearest bracketing pair after merging all candidates</h3><span>Acquisition-geometry reference for generalized two-point linear interpolation</span></div>
+          <canvas id="complementary-general-pair-chart" width="1200" height="700" aria-label="Nearest two-point bracketing after merging all detector-row candidates from the direct and complementary ray families"></canvas>
+          <button class="download-link" data-canvas="complementary-general-pair-chart">Publication PNG (600 dpi)</button>
+        </article>
+      </div>
+      <div class="action-row compact">
+        <button id="download-complementary-geometry-button" type="button" class="secondary" disabled>180LI acquisition-geometry CSV</button>
+      </div>
     </section>
 
     <section aria-labelledby="response-title">
@@ -194,7 +231,7 @@
         <div><p class="step">3</p><h2 id="response-title">Inspect complete SSPz shapes and variation</h2></div>
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
-      <p id="profile-model-note" class="model-note">First, all 360 model SSPz curves after application of the configured slice thickness are overlaid individually to show the positional and shape variation remaining relative to that thickness. Intermediate SSPz curves before thickness application are not displayed; only the candidate-spacing ratio Δz/T is retained as a supplementary geometric indicator of the computational pathway.</p>
+      <p id="profile-model-note" class="model-note">First, all 360 model SSPz curves after application of the configured slice thickness are overlaid individually to show the remaining changes in position and shape. Intermediate SSPz curves before thickness application are not displayed. The geometry display reports the unweighted longitudinal standard deviation of detector-row-center positions across all rows in the direct view and all rows in the acquired views bracketing the ideal complementary angle. Candidate selection, interpolation or reconstruction weighting, and thresholds based on the configured slice thickness are not applied.</p>
 
       <div class="subsection-heading">
         <div>
@@ -211,12 +248,12 @@
         </div>
         <div class="chart-grid two">
           <article class="chart-card">
-            <div class="chart-title"><h3>Without cone-geometry scaling</h3><span>Parallel-beam approximation; post-thickness</span></div>
+            <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; post-thickness</span></div>
              <canvas id="overlay-core-off" width="900" height="650" aria-label="Post-thickness central SSPz profiles for 360 states without source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-off">Publication PNG (600 dpi)</button>
           </article>
           <article class="chart-card">
-            <div class="chart-title"><h3>With cone-geometry scaling</h3><span>Periodic distance scaling; post-thickness</span></div>
+            <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; post-thickness</span></div>
              <canvas id="overlay-core-on" width="900" height="650" aria-label="Post-thickness central SSPz profiles for 360 states with idealized source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-on">Publication PNG (600 dpi)</button>
           </article>
@@ -229,30 +266,47 @@
       </div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone-geometry scaling</h3><span>Periodic distance scaling; low-amplitude tails</span></div>
+          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; low-amplitude tails</span></div>
           <canvas id="overlay-tail-on" width="900" height="650" aria-label="Low-amplitude tails of post-thickness SSPz for 360 states with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="overlay-tail-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
 
-      <section class="secondary-analysis" aria-labelledby="secondary-analysis-heading">
-        <div class="secondary-analysis-heading">
-          <strong id="secondary-analysis-heading">3C  Supplementary display: discreteness of candidate geometry relative to configured thickness, Δz/T</strong>
+      <section class="geometry-analysis" aria-labelledby="gap-analysis-heading">
+        <div class="geometry-analysis-heading">
+          <strong id="gap-analysis-heading">3C  Axial spread of candidate points</strong>
+          <span>All candidate points before selection or weighting, compared by projection angle</span>
         </div>
+        <figure id="axial-position-explainer" class="axial-position-explainer" aria-labelledby="axial-position-figure-title" aria-describedby="axial-position-figure-caption acquisition-geometry-summary">
+          <div class="axial-position-visual">
+            <h3 id="axial-position-figure-title">3D geometry of multislice helical acquisition and candidates nearest the reconstruction plane</h3>
+            <canvas id="acquisition-geometry-3d" width="1200" height="720" role="img" aria-labelledby="axial-position-figure-title" aria-describedby="acquisition-geometry-description acquisition-geometry-summary">
+              A three-dimensional schematic showing the relative helical focal-spot trajectory, selected reconstruction plane, direct- and complementary-side rays, and candidates nearest the reconstruction plane.
+            </canvas>
+            <p id="acquisition-geometry-description" class="visually-hidden">This not-to-scale schematic uses object-fixed coordinates. The left panel shows the relative helical focal-spot trajectory, selected reconstruction plane, and representative direct- and complementary-side rays. The right panel shows every detector-row-center position as a short tick and uses circles and triangles for candidates nearest the reconstruction plane. Candidate selection and weighting are not shown.</p>
+          </div>
+          <figcaption id="axial-position-figure-caption" class="axial-position-key">
+            <h3>Scope of this figure</h3>
+            <p>This is a not-to-scale schematic in object-fixed coordinates. From the current inputs, it shows the table feed per rotation <i>F</i>=<i>pNd</i>, the selected reconstruction plane <i>z</i><sub>0</sub>=<i>z</i><sub>ref</sub>+<i>sF</i>, the direct-side angle <i>β</i>, and the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>.</p>
+            <dl class="acquisition-geometry-legend">
+              <div><dt><span class="geometry-swatch direct"></span>Direct side</dt><dd>Thin lines show all row positions; circles mark candidates nearest the reconstruction plane</dd></div>
+              <div><dt><span class="geometry-swatch complement"></span>Complementary side</dt><dd>Thin lines show all row positions in the two acquired views bracketing the ideal complementary angle; triangles mark candidates nearest the reconstruction plane</dd></div>
+              <div><dt><span class="geometry-swatch ideal"></span>Ideal complementary angle</dt><dd>Angular counterpart <i>β</i><sub>c</sub>, drawn with a dashed encoding to distinguish it from acquired views</dd></div>
+              <div><dt><span class="geometry-swatch plane"></span>Selected reconstruction plane <i>z</i><sub>0</sub></dt><dd>The plane at which the geometry is examined for the current settings. <i>s</i>=0 is the reference plane, and <i>s</i>=1 is the next position one table feed <i>F</i> away</dd></div>
+            </dl>
+            <p id="acquisition-geometry-summary" class="axial-position-map-note">After computation, the geometry corresponding to the current inputs and inspected state is shown here.</p>
+            <p class="axial-position-limit-note"><strong>Display boundary:</strong> Thin rays in the left panel show nine representative rows, and short ticks in the right panel show all <i>N</i> rows. Circles and triangles are positional guides for the candidates nearest the reconstruction plane; they do not indicate candidate selection, weighting, or a threshold based on configured thickness. Because detector-to-isocenter distance is not an input, the figure shows row-center positions on the longitudinal line through the evaluation point rather than a physical detector plane. The AAI weighting function <i>h</i>(<i>z</i>) of Schaller et al. is not applied.</p>
+          </figcaption>
+        </figure>
         <div class="subsection-heading compact-subheading">
-          <div><span id="gap-scope">Horizontal axis: relative reconstruction position within one table feed / vertical axis: relative tube angle</span></div>
-          <p>At each angle, Δz is the longitudinal distance between the nearest candidates on the smaller-z and larger-z sides of the target-plane coordinate z₀. These sides refer to z-coordinate values, not to the vertical direction of the diagram. Δz/T is a supplementary indicator of potential interpolation sensitivity in the acquisition geometry; it does not indicate whether image reconstruction succeeds and does not predict the final SSPz of a commercial scanner.</p>
+          <div><span id="gap-scope">Horizontal axis: relative tube angle β (0-360°) / Vertical axis: longitudinal standard deviation of candidate positions σ<sub>z</sub> (mm)</span></div>
+          <p id="gap-analysis-description">For each direct-side view, the unweighted standard deviation of the longitudinal positions is calculated from all <i>N</i> rows in that view and all <i>N</i> rows in the acquired views bracketing the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>. An acquired view that coincides with another is included only once. Candidate selection, interpolation or reconstruction weighting, and thresholds based on the configured slice thickness <i>T</i> are not applied. This curve shows the spread of candidate positions produced by the acquisition geometry; it is not the final SSPz.</p>
         </div>
-        <div class="chart-grid two">
-          <article class="chart-card">
-            <div class="chart-title"><h3>Without cone-geometry scaling</h3><span>Parallel-beam approximation; Δz/T</span></div>
-            <canvas id="gap-map-off" width="900" height="700" aria-label="Angle-state map of the nearest-candidate spacing ratio without source-to-point distance scaling"></canvas>
-            <button class="download-link" data-canvas="gap-map-off">Publication PNG (600 dpi)</button>
-          </article>
-          <article class="chart-card">
-            <div class="chart-title"><h3>With cone-geometry scaling</h3><span>Periodic distance scaling; Δz/T</span></div>
-            <canvas id="gap-map-on" width="900" height="700" aria-label="Angle-state map of the nearest-candidate spacing ratio with idealized source-to-point distance scaling"></canvas>
-            <button class="download-link" data-canvas="gap-map-on">Publication PNG (600 dpi)</button>
+        <div class="chart-grid single-panel">
+          <article class="chart-card span-two">
+            <div class="chart-title"><h3>Unweighted longitudinal standard deviation of all candidate detector-row centers</h3><span>Without versus with cone-geometry scaling</span></div>
+            <canvas id="candidate-axial-spread-chart" width="1200" height="700" aria-label="Comparison curves without and with cone-geometry scaling, with relative tube angle on the horizontal axis and the unweighted longitudinal standard deviation of all candidate detector-row centers on the vertical axis" aria-describedby="gap-analysis-description"></canvas>
+            <button class="download-link" data-canvas="candidate-axial-spread-chart">Publication PNG (600 dpi)</button>
           </article>
         </div>
       </section>
@@ -270,7 +324,7 @@
         <div><strong>3E  Summarize SSPz using width metrics</strong><span>FWHM, FWTM, and standard deviation after inspection of the complete profile</span></div>
         <p>Only model SSPz curves after application of the configured slice thickness are summarized using width metrics. The displayed variation compares the potential influence of acquisition geometry relative to that thickness. Intermediate SSPz widths before thickness application are omitted from this primary analysis because they can be mistaken for reconstructed slice thickness. FWHM uses only the two outer 50% crossings and therefore does not retain changes in the tails or centroid.</p>
       </div>
-      <div class="chart-controls" aria-label="Display settings for variation among model states within one table feed">
+      <div class="chart-controls" aria-label="Display settings for variation with reconstruction-plane position within one table feed">
         <label>Displayed metric
           <select id="widthMetric">
             <option value="fwhm" selected>Full width at half maximum (FWHM)</option>
@@ -282,7 +336,7 @@
       <p id="sweep-interpretation" class="model-note compact-note" hidden></p>
       <article class="chart-card">
         <div class="chart-title"><h3>Within-rotation width variation of post-thickness SSPz</h3><span id="metric-label">FWHM</span></div>
-        <canvas id="sweep-chart" width="1200" height="650" aria-label="Width variation of post-thickness model SSPz among states within one table feed"></canvas>
+        <canvas id="sweep-chart" width="1200" height="650" aria-label="Width variation of post-thickness model SSPz with reconstruction-plane position within one table feed"></canvas>
         <button class="download-link" data-canvas="sweep-chart">Publication PNG (600 dpi)</button>
       </article>
 
@@ -290,10 +344,10 @@
       <div class="table-wrap">
         <table>
           <caption id="result-caption">Results for inspected model state 0/359</caption>
-          <thead><tr><th>Condition</th><th>FWHM (mm)</th><th>FWTM (mm)</th><th>σ (mm)</th><th>Maximum Δz/T</th></tr></thead>
+          <thead><tr><th>Condition</th><th>FWHM (mm)</th><th>FWTM (mm)</th><th>σ (mm)</th><th id="gap-summary-heading">Maximum Gₑff/T (audit)</th></tr></thead>
           <tbody id="result-table"></tbody>
         </table>
-        <p class="table-note">Definitions: SSPz, longitudinal slice sensitivity profile; FWHM, full width at half maximum; FWTM, full width at tenth maximum; σ, standard deviation of the area-normalized SSPz; Δz/T, spacing between the nearest candidates that bracket the target plane divided by the configured slice thickness. Displayed precision is for recording model output and does not represent measurement accuracy.</p>
+        <p id="gap-summary-note" class="table-note">Definitions: SSPz, longitudinal slice sensitivity profile; FWHM, full width at half maximum; FWTM, full width at tenth maximum; σ, standard deviation of the area-normalized SSPz. In the primary 180LI analysis, Gₑff/T is the angularly weighted bracket width of the two branches bracketing the ideal complementary angle, divided by the configured slice thickness. Displayed precision is for recording model output and does not represent measurement accuracy.</p>
       </div>
       <div class="action-row compact">
         <button id="download-csv-button" type="button" class="secondary" disabled>Save state-wise CSV</button>
@@ -308,10 +362,15 @@
         <div>
           <h3>Implemented</h3>
           <ul>
-            <li>Acquired projection-data geometry for a 0-360° full scan (equal angular sampling from 0° to less than 360°)</li>
+            <li>Primary analysis using 180LI acquisition geometry and comparator analysis using a direct-ray 0-360° full scan</li>
+            <li>The 180LI complementary angle for each direct ray through the evaluation point, the immediately preceding and following acquired views, and the angular interpolation fraction</li>
+            <li>The two spans in absolute acquisition order: direct rayₙ→complementary rayₙ and complementary rayₙ→direct rayₙ₊₁</li>
+            <li>Merge all detector-row candidates from the direct and complementary ray families separately at the lower and upper acquired views bracketing the ideal complementary angle, then search for the nearest endpoints bracketing the target plane</li>
+            <li>Longitudinal linear interpolation within each branch and linear angular combination of the two branches based on the ideal complementary angle</li>
             <li>Enumeration of detector-row candidates over multiple rotations</li>
             <li>Search for the two nearest candidates that bracket the target plane and assignment of linear interpolation weights</li>
-            <li>Ratio of nearest-candidate spacing to configured slice thickness, Δz/T</li>
+            <li>Unweighted longitudinal standard deviation of candidate positions from all rows in the direct view and all rows in the acquired views bracketing the ideal complementary angle</li>
+            <li>Comparison of acquisition geometries without candidate selection, interpolation weights, reconstruction weights, or thresholds based on configured slice thickness</li>
             <li>Unit-area rectangular detector-row response</li>
             <li>Downstream explanatory model using a uniformly weighted rectangular window with the configured slice thickness</li>
             <li>Idealized scaling of candidate-row positions and row widths by variation in source-to-point distance</li>
@@ -329,7 +388,7 @@
           </ul>
         </div>
       </div>
-      <p class="caution"><strong>Caution:</strong>SSPz, FWHM, and FWTM are newly computed from acquired views over a 0-360° full scan; values from the former 180° half-scan model are not reused. Views have equal angular weight, and linear weights are normalized between the nearest candidates on the smaller-z and larger-z sides of the target-plane coordinate z₀. The ideal helical trajectory is searched without a fixed rotation limit until candidates are found on both sides; thus, no artificial missing data are introduced by a fixed support width. Configured slice thickness is an input, whereas FWHM, FWTM, and standard deviation are outputs measured from the generated SSPz. Proprietary data selection, redundancy weighting, and backprojection in commercial scanners are not reproduced. Do not use this reference for patient care, scanner quality assurance, or quantitative prediction of commercial reconstruction.</p>
+      <p class="caution"><strong>Caution:</strong> The primary analysis applies the ideal complementary angle for each direct-ray view, the two acquired views bracketing that angle, all-row merging of direct and complementary ray candidates within each branch, longitudinal linear interpolation across the target plane, and linear angular interpolation between the two branches to SSPz. This is an acquisition-geometry-based 180LI explanatory model, not an emulation of commercial 180LI reconstruction. With the comparator selected, SSPz is computed from direct-ray views over 0-360° only, and Section 2C is shown solely as an acquisition-geometry audit. The ideal helical trajectory is searched without a fixed rotation limit until candidates bracketing the target plane are found. Configured slice thickness is an input, whereas FWHM, FWTM, and standard deviation are outputs measured from the generated SSPz. Proprietary detector-channel interpolation, redundancy weighting, cone-beam weighting, backprojection, and scanner-specific z-filter ordering are not reproduced. Do not use this reference for patient care, scanner quality assurance, or quantitative prediction of commercial reconstruction.</p>
     </section>
 
     <section class="method-card reference-card" aria-labelledby="reference-title">
@@ -343,7 +402,7 @@
         </li>
         <li>
           <div class="reference-citation">Wang G, Madsen M, Redford K, Zhao S, Vannier MW. <a href="https://doi.org/10.3233/XST-2003-00064" target="_blank" rel="noopener noreferrer">A study on the section sensitivity profile in multi-row-detector spiral CT.</a> <i>Journal of X-Ray Science and Technology.</i> 2003;11:1–11.</div>
-          <p>Basis for the angular-longitudinal relationship and SSP analysis in multi-row-detector CT. This website does not use extended 180° interpolation or generated opposite-ray data; it computes one acquired projection-data series over 0-360°.</p>
+          <p>This study was consulted for the angular-longitudinal relationship and SSP analysis in multi-row-detector CT. The primary analysis on this website applies 180LI acquisition geometry to an explanatory SSPz model but does not reproduce the complete reconstruction process in that study or in a particular scanner.</p>
         </li>
         <li>
           <div class="reference-citation">Schaller S, Flohr T, Klingenbeck K, Krause J, Fuchs T, Kalender WA. <a href="https://doi.org/10.1109/42.887832" target="_blank" rel="noopener noreferrer">Spiral interpolation algorithm for multislice spiral CT—Part I: Theory.</a> <i>IEEE Transactions on Medical Imaging.</i> 2000;19:822–834.</div>
@@ -353,8 +412,20 @@
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
           <p>Theoretical basis for considering helical cone-beam reconstruction and data utilization with multi-row detectors. The distance scaling on this website is an idealized geometric display and does not implement the exact or approximate reconstruction algorithms in that paper.</p>
         </li>
+        <li>
+          <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
+          <p>This study was consulted as a basis for two-point linear interpolation in multi-slice helical CT and for ordering candidates from the direct and complementary ray families by longitudinal position. This website displays the nearest bracketing geometry but does not implement the complete reconstruction procedure described in the paper.</p>
+        </li>
+        <li>
+          <div class="reference-citation">Hu H. <a href="https://doi.org/10.1118/1.598470" target="_blank" rel="noopener noreferrer">Multi-slice helical CT: Scan and reconstruction.</a> <i>Medical Physics.</i> 1999;26:5–18.</div>
+          <p>This study was consulted for the interlaced helical samples formed by the direct and complementary ray families and for generalized two-point linear interpolation using the two measurements nearest the target plane across all detector rows. This website displays that acquisition-geometry reference but does not reproduce scanner-specific redundancy handling or backprojection.</p>
+        </li>
+        <li>
+          <div class="reference-citation">Zamyatin AA, Taguchi K, Silver MD. <a href="https://doi.org/10.1118/1.2047784" target="_blank" rel="noopener noreferrer">Helical cone beam CT with an asymmetrical detector.</a> <i>Medical Physics.</i> 2005;32:3117–3127.</div>
+          <p>This study was consulted for the geometric relationship between direct and complementary rays and the fan-angle-dependent complementary source angle. In view of the additional limitation that an exactly complementary ray generally does not exist for a three-dimensional cone-beam ray, Section 2C is limited to an idealized acquisition-geometry reference and does not implement the missing-data restoration method described in the paper.</p>
+        </li>
       </ol>
-      <p class="model-note compact-note"><strong>Explanatory model specific to this website:</strong>The model combines an acquired projection-data series over 0-360°, a search for the nearest candidates that bracket the target plane, linear interpolation weights between those candidates, and a rectangular window with the configured slice thickness. It does not reproduce a specific commercial reconstruction method described in the literature.</p>
+      <p class="model-note compact-note"><strong>Explanatory model specific to this website:</strong> In the primary analysis, longitudinal linear interpolation is formed from all-row merged direct and complementary ray candidates at each of the two acquired views bracketing the ideal complementary angle corresponding to a direct-ray view. The two branches are then combined by linear angular interpolation, followed by a rectangular window with the configured slice thickness. This does not reproduce a specific commercial reconstruction method described in the literature.</p>
     </section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -376,8 +447,8 @@
   </main>
 
   <footer>
-    <p>Model: actual-data-only 0–360° full-scan geometry with equal angular sampling, nearest-bracketing longitudinal interpolation, and a configured-thickness mapping; output widths are measured, not fitted.</p>
-    <p id="version">Web reference build 2026-08-21.5</p>
+    <p>Model: 180LI acquisition-geometry explanatory model by default, with a direct-ray 0–360° full-scan comparator and a configured-thickness mapping; scanner-specific weighting and backprojection are not reproduced.</p>
+    <p id="version">Web reference build 2026-08-28.2</p>
   </footer>
 
   <script src="worker-source-en.js"></script>

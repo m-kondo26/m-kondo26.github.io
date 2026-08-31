@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="無料・登録不要でブラウザから利用できる、0～360°フルスキャン実取得データの幾何と仮定した体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
+  <meta name="description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <title>CT展開図・SSPz幾何リファレンス</title>
   <link rel="canonical" href="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="alternate" hreflang="ja" href="https://m-kondo26.github.io/tools/sspz-simulator/">
@@ -11,7 +11,7 @@
   <link rel="alternate" hreflang="x-default" href="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <meta property="og:type" content="website">
   <meta property="og:title" content="CT展開図・SSPz幾何リファレンス">
-  <meta property="og:description" content="無料・登録不要でブラウザから利用できる、0～360°フルスキャン実取得データの幾何と仮定した体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
+  <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1720'/%3E%3Cpath d='M12 45c10-25 30-25 40 0' fill='none' stroke='%2343c2a1' stroke-width='6'/%3E%3Ccircle cx='32' cy='22' r='6' fill='%23f5b85c'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
@@ -32,7 +32,7 @@
         <a class="language-link" href="index-en.html" data-language-target="index-en.html" lang="en">English</a>
       </div>
       <h1>CT展開図・SSPz幾何リファレンス</h1>
-      <p class="lead">0～360°フルスキャンの実取得データについて、候補X線の位置、線形補間重み、体軸方向スライス感度プロファイル（SSPz）の関係を、コーン幾何を反映しない平行ビーム近似と、X線焦点―評価点距離の周期変化を反映する理想化モデルに分けて表示します。</p>
+      <p class="lead">各実データ側ビューと、ファン角に応じた理想対向角を挟む対向データ側の両隣実取得ビューを対応付ける180LI取得幾何を主解析として、候補X線の位置、線形補間重み、体軸方向スライス感度プロファイル（SSPz）の関係を表示します。0～360°の実データ側だけを用いるフルスキャン計算も比較用に選択できます。</p>
     </div>
     <div class="hero-badge" aria-label="利用条件とモデルの位置づけ">
       <strong>無料・登録不要</strong>
@@ -40,8 +40,6 @@
       <span>簡略参照モデル／実機再構成の再現ではありません</span>
     </div>
   </header>
-
-
 
   <main>
     <section class="control-shell" aria-labelledby="conditions-title">
@@ -87,6 +85,13 @@
           <span class="fixed-value">目的断面のz座標を挟む最近接2候補の線形補間</span>
           <small class="field-help">固定支持幅で探索を打ち切らず、z₀より小さいz側と大きいz側の候補が見つかるまで理想ヘリカル軌道を探索します。これは展開図の上下方向を指しません。</small>
         </label>
+        <label>SSPzに適用する取得幾何
+          <select id="reconstructionPath" name="reconstructionPath">
+            <option value="fan-beam-180li" selected>180LI取得幾何（主解析）</option>
+            <option value="direct-full-scan">0～360°実データ側フルスキャン（比較）</option>
+          </select>
+          <small class="field-help">主解析では、理想対向角を挟む両隣の実取得ビューごとに実データ側・対向データ側の全列候補を統合し、目的断面を挟む体軸方向線形補間を行った後、両枝を角度方向に線形合成します。装置固有の検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影は再現しません。</small>
+        </label>
         <label>1回転の相対X線管角度サンプル数
           <select id="viewSamples" name="viewSamples">
             <option value="180">180ビュー（確認用）</option>
@@ -94,7 +99,7 @@
             <option value="720">720ビュー（精密）</option>
             <option value="1200">1200ビュー（高精密）</option>
           </select>
-          <small class="field-help">各SSPzを0°以上360°未満の実取得ビューで計算します。下の「360状態」とは別の数です。</small>
+          <small class="field-help">各SSPzの基準となる実データ側ビューを0°以上360°未満に等角度配置します。180LI主解析では各基準ビューに対応する対向データ側の角度近傍も取得ビュー列から探索します。下の「360状態」とは別の数です。</small>
         </label>
         <label>SSPz基準グリッド点数
           <select id="zSamples" name="zSamples">
@@ -102,6 +107,7 @@
             <option value="800" selected>800（標準）</option>
             <option value="1200">1200（精密）</option>
             <option value="2000">2000（高精密）</option>
+            <option value="4000">4000（原稿用精度）</option>
           </select>
           <small class="field-help">設定値を最小点数とし、全条件で共通の体軸範囲を保つため必要時に自動増加します。</small>
         </label>
@@ -124,7 +130,7 @@
     <section aria-labelledby="geometry-title">
       <div class="section-heading">
         <div><p class="step">2</p><h2 id="geometry-title">展開図と重みを見る</h2></div>
-        <p class="section-note">0～360°の展開図全体と、目的断面近傍における最近接2候補の線形重みを示し、SSPzとの関係をたどります。</p>
+        <p class="section-note">実取得ビューの展開図、180LIの角度対応、目的断面近傍の体軸方向線形重みを示し、選択した取得幾何からSSPzまでの関係をたどります。</p>
       </div>
       <div class="state-inspector" aria-labelledby="state-inspector-title">
         <div>
@@ -139,18 +145,19 @@
         </div>
       </div>
       <div class="flow-strip" aria-label="360度の展開図からSSPzまでの流れ">
-        <span><b>2A</b> 0～360°表示の展開図</span><i aria-hidden="true">→</i>
-        <span><b>2B</b> 最近接2候補と線形重み</span><i aria-hidden="true">→</i>
+        <span><b>2A</b> 全列候補の展開図</span><i aria-hidden="true">→</i>
+        <span><b>2B</b> 選択端点と線形重み</span><i aria-hidden="true">→</i>
+        <span><b>2C</b> 180LIの対応角・絶対ビュー対・二点挟み込み</span><i aria-hidden="true">→</i>
         <span><b>3</b> SSPz重ね合わせ・設定厚反映後SSPz</span>
       </div>
 
       <div class="subsection-heading">
         <div>
-          <strong>2A　0～360°表示の展開図（全表示範囲）</strong>
-          <span id="overview-scope">表示：SSPz候補探索に必要な回転範囲を自動設定</span>
-          <span id="calculation-scope">0～360°の実取得データ1系列と全検出器列を表示</span>
+          <strong>2A　全検出器列を候補とした0～360°展開図</strong>
+          <span id="overview-scope">表示：全列候補軌道（選択端点を含む回転範囲）</span>
+          <span id="calculation-scope">全列候補を保持し、設定厚Tでは除外しない</span>
         </div>
-        <p>横軸は候補列中心と目的断面の距離、縦軸はモデル内の相対X線管角度です。左列は横断面内位置によるX線焦点―評価点距離の変化を無視し、右列はその変化を候補列位置と列幅へ理想化して反映します。回転中心では両者は一致します。</p>
+        <p>横軸は候補列中心と目的断面の距離、縦軸はモデル内の相対X線管角度です。細線は、各表示角度における全<i>N</i>列の候補軌道です。候補探索では各実取得ビューの全<i>N</i>列を母集団として保持し、設定スライス厚<i>T</i>で候補を除外しません。左列は横断面内位置によるX線焦点―評価点距離の変化を無視し、右列はその変化を候補列位置と列幅へ理想化して反映します。したがって、左右で異なるのは候補列位置の幾何であり、候補にする列の数ではありません。回転中心では両者は一致します。</p>
         <p class="geometry-equation-note">
           右列では、固定した評価点までの距離比を
           <span class="equation">q(β) = L(β)/R = √{1 + (r/R)² − 2(r/R)cosβ}</span>
@@ -159,34 +166,64 @@
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム近似</span></div>
-          <canvas id="diagram-overview-off" width="900" height="700" aria-label="評価点までの距離変化を反映しない全候補展開図"></canvas>
+          <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム180°基準・全N列</span></div>
+          <canvas id="diagram-overview-off" width="900" height="700" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を反映しない展開図"></canvas>
           <button class="download-link" data-canvas="diagram-overview-off">投稿用PNG（600 dpi）</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>焦点―評価点距離の周期変化</span></div>
-          <canvas id="diagram-overview-on" width="900" height="700" aria-label="評価点までの距離変化を理想化して反映する全候補展開図"></canvas>
+          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム対向角＋周期的距離変化・全N列</span></div>
+          <canvas id="diagram-overview-on" width="900" height="700" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を理想化して反映する展開図"></canvas>
           <button class="download-link" data-canvas="diagram-overview-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
 
       <div class="subsection-heading">
-        <div><strong>2B　目的断面のz座標を挟む最近接2候補と線形重み</strong><span>目的断面近傍を拡大</span></div>
-        <p>円は0～360°の実取得データのうち、各角度で目的断面のz座標より小さい側・大きい側にある最近接候補です。点の大きさは一定で、同じ列色の中で淡色から濃色になるほど線形補間重みが大きくなります。候補が目的断面と一致する場合は、その候補だけを重み1とします。</p>
+        <div><strong>2B　全列候補から選んだ最近接端点と線形重み</strong><span>目的断面近傍を拡大</span></div>
+        <p>細線は2Aと同じ全<i>N</i>列の候補軌道、円は、その母集団から説明用補間モデルが選んだ目的断面近傍の端点です。設定スライス厚<i>T</i>は端点選択には使用せず、後段でSSPzへ適用します。180LI主解析では、理想対向角を挟む下側・上側の実取得ビューについて、実データ側と対向データ側の全検出器列候補を統合し、それぞれで目的断面を挟む最近接端点を選びます。体軸方向線形重みに角度方向線形重みを乗じた説明用モデルの寄与を、淡色から濃色までの色で示します。同じz座標の重複端点は重みを等分します。これは商用装置が実際に採用する投影データ数を示す図ではありません。</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム近似・最近接候補</span></div>
-          <canvas id="diagram-zoom-off" width="900" height="700" aria-label="評価点までの距離変化を反映しない寄与候補拡大図"></canvas>
+          <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム180°基準・全列から選択した端点</span></div>
+          <canvas id="diagram-zoom-off" width="900" height="700" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を反映しない拡大図"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-off">投稿用PNG（600 dpi）</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>周期的距離変化・最近接候補</span></div>
-          <canvas id="diagram-zoom-on" width="900" height="700" aria-label="評価点までの距離変化を理想化して反映する寄与候補拡大図"></canvas>
+          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・全列から選択した端点</span></div>
+          <canvas id="diagram-zoom-on" width="900" height="700" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を理想化して反映する拡大図"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
-      <p class="diagram-footnote">角度βはモデル内の相対X線管角度で、0°は実測された絶対管球角ではありません。0°以上360°未満の各角度を実取得データとして同じ規則で計算し、180°を境に対向データへ置換する処理は行いません。理想的なヘリカル軌道は無限に続くため、候補探索は固定回転数で打ち切りません。俯瞰図には、全検出器列について目的断面のz座標より小さい側・大きい側にある最近接候補を含む回転と、その前後1回転を表示します。</p>
+      <p class="diagram-footnote">角度βはモデル内の相対X線管角度で、0°は実測された絶対管球角ではありません。コーン幾何なしはγ=0、β<sub>c</sub>=β+180°、q=1の平行ビーム基準、コーン幾何ありはβ<sub>c</sub>=β+180°+2γと距離比qを用いるファンビーム条件です。したがって左右比較は距離比qだけの切替ではありません。2Aの細線は、両条件で全検出器列を保持した候補母集団です。2Bの円は、その全列候補から説明用補間モデルが選んだ端点であり、全候補数や商用再構成で実際に使用されるデータ数ではありません。設定スライス厚Tは候補除外や端点選択には使用せず、後段の設定厚反映後SSPzに適用します。180LI主解析を選ぶと、2Cで求めた理想対向角を挟む両隣の実取得ビューを用い、各枝で実データ側・対向データ側の全検出器列候補を統合した最近接挟み込みを作成してから、角度方向に線形合成します。理想的なヘリカル軌道は無限に続くため、表示範囲だけを、選択端点を含む回転とその前後1回転へ有限化しています。</p>
+
+      <div class="subsection-heading">
+        <div><strong>2C　180LIの対応角・絶対ビュー対・二点挟み込み</strong><span>実データ側と対向データ側を取得順序どおりに対応付ける</span></div>
+      </div>
+      <div class="complementary-intro">
+        <p>各実取得ビューβの実データ側レイについて、X線焦点と評価点を結ぶ直線を焦点軌道円まで延長し、第2交点から対向データ側レイの焦点角β<sub>c</sub>を求めます。表示する符号規約ではβ<sub>c</sub>=β+180°+2γです。第1図は理想対向角と、その角度を挟む直前・直後の実取得ビューを示します。理想角を最近接ビュー1本へ丸めるだけでなく、両隣ビューまでの角度残差と角度補間位置を保持します。</p>
+        <p>第2図は、絶対ビュー順序に沿う二つの対応区間、実データ側<sub>n</sub>→対向データ側<sub>n</sub>と、対向データ側<sub>n</sub>→実データ側<sub>n+1</sub>を別々に示します。矢印は取得順序を表し、z座標の大小を表しません。各区間では全検出器列を対象に、どちらの側が小さいz側になってもよい条件で目的断面を挟む最小区間を探します。これは180°+2γの対応を一方の候補だけで評価せず、連続する両区間の幾何を監査するための表示です。</p>
+        <p>第3図は、実データ側と対向データ側の全検出器列候補を一つの集合に統合し、目的断面のz座標より小さい側と大きい側の最近接2点を選びます。両端は独立に評価せず、目的断面を挟む一組として保持します。小さいz側までの距離をd<sub>−</sub>、大きいz側までの距離をd<sub>＋</sub>とすると、統合後の挟み込み幅はG<sub>merge</sub>=d<sub>−</sub>+d<sub>＋</sub>です。通常の選択対は、実データ側―実データ側、実データ側―対向データ側、対向データ側―実データ側、対向データ側―対向データ側のいずれにもなり得ます。同じz座標の重複候補は端点の総重みを等分し、目的断面との完全一致も保持します。180LI主解析では、この統合と体軸方向線形補間を理想対向角の下側・上側実取得ビューで別々に行い、角度位置に応じて両枝を線形合成します。</p>
+        <p class="model-note compact-note">「対向データ側」は別撮影のデータではなく、同じ実取得投影データを180LIの角度関係で再対応付けした側です。各絶対ビューには入力した列数分の候補があります。図中の端点は全候補数を表すものではありません。180LI取得幾何を選ぶと、この角度対応、両隣取得ビュー、全列候補統合、体軸方向重み、角度方向重みを説明用SSPzへ適用します。0～360°実データ側フルスキャンを選ぶと、2Cは比較のための取得幾何監査として残り、SSPzへは適用しません。装置固有の検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影は再現しません。</p>
+      </div>
+      <div class="chart-grid two">
+        <article class="chart-card">
+          <div class="chart-title"><h3>ファンビームの対向データ角</h3><span>β<sub>c</sub>−β＝180°＋2γ</span></div>
+          <canvas id="complementary-angle-chart" width="900" height="700" aria-label="実データ側のレイと対向データ側のレイの角度対応"></canvas>
+          <button class="download-link" data-canvas="complementary-angle-chart">投稿用PNG（600 dpi）</button>
+        </article>
+        <article class="chart-card">
+          <div class="chart-title"><h3>絶対ビュー順序で結んだ二つの対応区間</h3><span>実データ側ₙ→対向データ側ₙ／対向データ側ₙ→実データ側ₙ₊₁</span></div>
+          <canvas id="complementary-distance-chart" width="900" height="700" aria-label="絶対ビュー順序に沿う実データ側と対向データ側の二つの対応区間"></canvas>
+          <button class="download-link" data-canvas="complementary-distance-chart">投稿用PNG（600 dpi）</button>
+        </article>
+        <article class="chart-card span-two">
+          <div class="chart-title"><h3>全候補統合後の最近接挟み込み</h3><span>一般化二点線形補間の取得幾何参照</span></div>
+          <canvas id="complementary-general-pair-chart" width="1200" height="700" aria-label="実データ側と対向データ側の全検出器列候補を統合した最近接二点挟み込み"></canvas>
+          <button class="download-link" data-canvas="complementary-general-pair-chart">投稿用PNG（600 dpi）</button>
+        </article>
+      </div>
+      <div class="action-row compact">
+        <button id="download-complementary-geometry-button" type="button" class="secondary" disabled>180LI取得幾何CSV</button>
+      </div>
     </section>
 
     <section aria-labelledby="response-title">
@@ -194,7 +231,7 @@
         <div><p class="step">3</p><h2 id="response-title">SSPz全形状と変動を見る</h2></div>
         <p class="section-note">幅だけでなく、裾・非対称性・形状全体を同時に確認します。</p>
       </div>
-      <p id="profile-model-note" class="model-note">まず、設定スライス厚を反映した360状態のモデルSSPzを1本ずつ重ね合わせ、設定厚に対して残る位置と形状の変化を直接示します。設定厚適用前の中間SSPzは表示せず、候補間隔Δz/Tだけを計算経路の幾何学的補助指標として示します。</p>
+      <p id="profile-model-note" class="model-note">まず、設定スライス厚を反映した360状態のモデルSSPzを1本ずつ重ね合わせ、設定厚に対して残る位置と形状の変化を直接示します。設定厚適用前の中間SSPzは表示しません。幾何表示には、実データ側の全列と理想対向角を挟む実取得ビューの全列について、列中心位置の体軸方向標準偏差を無重みで示します。候補点の採用、補間・再構成重み、設定厚による閾値は適用しません。</p>
 
       <div class="subsection-heading">
         <div>
@@ -211,12 +248,12 @@
         </div>
         <div class="chart-grid two">
           <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム近似・設定厚反映後</span></div>
+            <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム180°基準・設定厚反映後</span></div>
              <canvas id="overlay-core-off" width="900" height="650" aria-label="評価点までの距離変化を反映しない設定厚反映後の360状態SSPz中心形状"></canvas>
              <button class="download-link" data-canvas="overlay-core-off">投稿用PNG（600 dpi）</button>
           </article>
           <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映する</h3><span>周期的距離変化・設定厚反映後</span></div>
+            <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・設定厚反映後</span></div>
              <canvas id="overlay-core-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映する設定厚反映後の360状態SSPz中心形状"></canvas>
              <button class="download-link" data-canvas="overlay-core-on">投稿用PNG（600 dpi）</button>
           </article>
@@ -229,30 +266,47 @@
       </div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
-          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>周期的距離変化・低振幅裾</span></div>
+          <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・低振幅裾</span></div>
           <canvas id="overlay-tail-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映する設定厚反映後360状態SSPzの低振幅裾"></canvas>
           <button class="download-link" data-canvas="overlay-tail-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
 
-      <section class="secondary-analysis" aria-labelledby="secondary-analysis-heading">
-        <div class="secondary-analysis-heading">
-          <strong id="secondary-analysis-heading">3C　補助表示：設定厚に対する候補幾何の離散性 Δz/T</strong>
+      <section class="geometry-analysis" aria-labelledby="gap-analysis-heading">
+        <div class="geometry-analysis-heading">
+          <strong id="gap-analysis-heading">3C　候補点の体軸方向の広がり</strong>
+          <span>採用・重みづけ前の全候補点を投影角度ごとに比較</span>
         </div>
+        <figure id="axial-position-explainer" class="axial-position-explainer" aria-labelledby="axial-position-figure-title" aria-describedby="axial-position-figure-caption acquisition-geometry-summary">
+          <div class="axial-position-visual">
+            <h3 id="axial-position-figure-title">多列らせん収集の3D幾何と再構成面に最も近い候補点</h3>
+            <canvas id="acquisition-geometry-3d" width="1200" height="720" role="img" aria-labelledby="axial-position-figure-title" aria-describedby="acquisition-geometry-description acquisition-geometry-summary">
+              多列らせんCTの相対ヘリカル焦点軌道、選択中の再構成面、実データ側と対向データ側の光線、および再構成面に最も近い候補点を示す3次元模式図です。
+            </canvas>
+            <p id="acquisition-geometry-description" class="visually-hidden">被写体固定座標の縮尺なし模式図です。左は相対ヘリカル焦点軌道、選択中の再構成面、実データ側・対向データ側の代表光線を示します。右は全検出器列中心の位置を短い線で示し、再構成面に最も近い候補点を○と△で示します。候補点の採用や重みは示しません。</p>
+          </div>
+          <figcaption id="axial-position-figure-caption" class="axial-position-key">
+            <h3>この図が示す範囲</h3>
+            <p>被写体固定座標・縮尺なしの模式図です。入力条件から、1回転の寝台移動量 <i>F</i>=<i>pNd</i>、選択中の再構成面 <i>z</i><sub>0</sub>=<i>z</i><sub>ref</sub>+<i>sF</i>、実データ側角度 <i>β</i> と理想対向角 <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i> を表示します。</p>
+            <dl class="acquisition-geometry-legend">
+              <div><dt><span class="geometry-swatch direct"></span>実データ側</dt><dd>細線は全列位置、○は再構成面に最も近い候補点</dd></div>
+              <div><dt><span class="geometry-swatch complement"></span>対向データ側</dt><dd>細線は理想対向角を挟む実取得2ビューの全列位置、△は再構成面に最も近い候補点</dd></div>
+              <div><dt><span class="geometry-swatch ideal"></span>理想対向角</dt><dd>角度対応 <i>β</i><sub>c</sub> の位置。実取得ビューとは区別して破線表示</dd></div>
+              <div><dt><span class="geometry-swatch plane"></span>選択中の再構成面 <i>z</i><sub>0</sub></dt><dd>現在の設定で幾何を調べる断面。<i>s</i>=0は基準面、<i>s</i>=1は1回転の寝台移動量 <i>F</i> だけ離れた次の位置</dd></div>
+            </dl>
+            <p id="acquisition-geometry-summary" class="axial-position-map-note">計算後に、現在の入力条件と閲覧状態に対応する幾何を表示します。</p>
+            <p class="axial-position-limit-note"><strong>表示境界：</strong>左の細線は代表9列、右の短い線は全<i>N</i>列を示します。○と△は再構成面に最も近い候補点を位置関係の目印として示すだけで、候補点の採用・重みづけ・設定厚による閾値を表しません。検出器―回転中心距離は入力していないため、物理的な検出器面ではなく、評価点を通る体軸線上の列中心位置を示します。SchallerらのAAI重み関数 <i>h</i>(<i>z</i>) は適用していません。</p>
+          </figcaption>
+        </figure>
         <div class="subsection-heading compact-subheading">
-          <div><span id="gap-scope">横軸：1回転内の相対再構成位置／縦軸：相対X線管角度</span></div>
-          <p>Δzは、各角度で目的断面の体軸座標z₀より小さいz側と大きいz側にある最近接候補間の体軸方向距離です。ここでいう両側はz座標の大小であり、展開図の上下方向ではありません。Δz/Tは取得幾何の潜在的な補間感度を表す補助指標であり、画像再構成の成否や商用装置の最終SSPzを示すものではありません。</p>
+          <div><span id="gap-scope">横軸：相対X線管角度 β（0～360°）／縦軸：候補位置の体軸方向標準偏差 σ<sub>z</sub>（mm）</span></div>
+          <p id="gap-analysis-description">各実データ側ビューについて、そのビューの全<i>N</i>列と、理想対向角 <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i> を挟む実取得ビューの全<i>N</i>列から、体軸位置の無重み標準偏差を求めます。同じ実取得ビューが重なる場合は一度だけ含めます。候補点の採用、補間・再構成重み、設定スライス厚<i>T</i>による閾値は適用しません。この曲線は取得幾何が作る候補位置の広がりを示すもので、最終SSPzそのものではありません。</p>
         </div>
-        <div class="chart-grid two">
-          <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム近似・Δz/T</span></div>
-            <canvas id="gap-map-off" width="900" height="700" aria-label="評価点までの距離変化を反映しない最近接候補間隔比の角度状態マップ"></canvas>
-            <button class="download-link" data-canvas="gap-map-off">投稿用PNG（600 dpi）</button>
-          </article>
-          <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映する</h3><span>周期的距離変化・Δz/T</span></div>
-            <canvas id="gap-map-on" width="900" height="700" aria-label="評価点までの距離変化を理想化して反映する最近接候補間隔比の角度状態マップ"></canvas>
-            <button class="download-link" data-canvas="gap-map-on">投稿用PNG（600 dpi）</button>
+        <div class="chart-grid single-panel">
+          <article class="chart-card span-two">
+            <div class="chart-title"><h3>全候補列中心の体軸方向標準偏差</h3><span>コーン幾何なし／あり</span></div>
+            <canvas id="candidate-axial-spread-chart" width="1200" height="700" aria-label="横軸を相対X線管角度、縦軸を全候補列中心の無重み体軸方向標準偏差とする、コーン幾何なしとありの比較曲線" aria-describedby="gap-analysis-description"></canvas>
+            <button class="download-link" data-canvas="candidate-axial-spread-chart">投稿用PNG（600 dpi）</button>
           </article>
         </div>
       </section>
@@ -270,7 +324,7 @@
         <div><strong>3E　SSPzを幅指標へ要約</strong><span>全形状を確認した後にFWHM・FWTM・標準偏差を表示</span></div>
         <p>入力した設定スライス厚を反映したモデルSSPzだけを幅指標へ要約します。ここで示す変動は、設定スライス厚に対して取得幾何が与え得る影響を比較するためのものです。設定厚適用前の中間SSPz幅は再構成スライス厚と誤解されるため、この主解析には表示しません。FWHMは左右二つの50%交点だけを使うため、裾や重心の変化を保持しません。</p>
       </div>
-      <div class="chart-controls" aria-label="1回転寝台移動量内のモデル状態変動の表示設定">
+      <div class="chart-controls" aria-label="1回転寝台移動量内の再構成面位置による変動の表示設定">
         <label>表示指標
           <select id="widthMetric">
             <option value="fwhm" selected>半値幅（FWHM）</option>
@@ -282,7 +336,7 @@
       <p id="sweep-interpretation" class="model-note compact-note" hidden></p>
       <article class="chart-card">
         <div class="chart-title"><h3>設定厚反映後SSPzの1回転内幅変動</h3><span id="metric-label">FWHM</span></div>
-        <canvas id="sweep-chart" width="1200" height="650" aria-label="設定スライス厚を反映したモデルSSPzについて、1回転寝台移動量内の状態に対する幅の変動"></canvas>
+        <canvas id="sweep-chart" width="1200" height="650" aria-label="設定スライス厚を反映したモデルSSPzについて、1回転寝台移動量内の再構成面位置に対する幅の変動"></canvas>
         <button class="download-link" data-canvas="sweep-chart">投稿用PNG（600 dpi）</button>
       </article>
 
@@ -290,10 +344,10 @@
       <div class="table-wrap">
         <table>
           <caption id="result-caption">閲覧中のモデル状態0/359における結果</caption>
-          <thead><tr><th>条件</th><th>FWHM（mm）</th><th>FWTM（mm）</th><th>σ（mm）</th><th>最大 Δz/T</th></tr></thead>
+          <thead><tr><th>条件</th><th>FWHM（mm）</th><th>FWTM（mm）</th><th>σ（mm）</th><th id="gap-summary-heading">最大 Gₑff/T（監査）</th></tr></thead>
           <tbody id="result-table"></tbody>
         </table>
-        <p class="table-note">注：SSPz＝体軸方向スライス感度プロファイル、FWHM＝半値幅、FWTM＝10%幅、σ＝面積正規化したSSPzの標準偏差、Δz/T＝目的断面を挟む最近接候補間隔を設定スライス厚で除した値。表示桁数はモデル出力の記録用であり、実測精度を意味しません。</p>
+        <p id="gap-summary-note" class="table-note">注：SSPz＝体軸方向スライス感度プロファイル、FWHM＝半値幅、FWTM＝10%幅、σ＝面積正規化したSSPzの標準偏差。180LI主解析のGₑff/Tは、理想対向角を挟む2枝の挟み込み幅を角度方向に加重し、設定スライス厚で除した値です。表示桁数はモデル出力の記録用であり、実測精度を意味しません。</p>
       </div>
       <div class="action-row compact">
         <button id="download-csv-button" type="button" class="secondary" disabled>状態別CSVを保存</button>
@@ -308,10 +362,15 @@
         <div>
           <h3>実装しているもの</h3>
           <ul>
-            <li>0～360°フルスキャンの実取得データ幾何（0°以上360°未満を等角度間隔で積算）</li>
+            <li>180LI取得幾何を用いる主解析と、0～360°実データ側フルスキャンを用いる比較解析</li>
+            <li>評価点を通る実データ側レイの180LI対向角と、その角度を挟む直前・直後の実取得ビューおよび角度補間位置</li>
+            <li>絶対ビュー順序に沿う実データ側ₙ→対向データ側ₙと対向データ側ₙ→実データ側ₙ₊₁の二つの対応区間</li>
+            <li>理想対向角の下側・上側取得ビューごとに実データ側・対向データ側の全検出器列候補を統合し、目的断面を挟む最近接端点を探索</li>
+            <li>各枝の体軸方向線形補間と、理想対向角の位置に基づく2枝の角度方向線形合成</li>
             <li>検出器列と複数回転の候補列挙</li>
             <li>目的断面を挟む最近接2候補の探索と線形補間重み</li>
-            <li>最近接候補間隔と設定スライス厚の比 Δz/T</li>
+            <li>実データ側の全列と理想対向角を挟む実取得ビューの全列から求める、候補位置の無重み体軸方向標準偏差</li>
+            <li>候補点の採用・補間重み・再構成重み・設定厚による閾値を含めない取得幾何の比較</li>
             <li>単位面積の矩形列応答</li>
             <li>設定スライス厚と同幅の等重み矩形窓を用いた後段の説明モデル</li>
             <li>X線焦点―評価点距離の変化を、候補列位置と列幅へ反映する理想化補正</li>
@@ -329,7 +388,7 @@
           </ul>
         </div>
       </div>
-      <p class="caution"><strong>注意：</strong>SSPz、FWHM、FWTMは0～360°フルスキャンの実取得ビューから新たに計算します。旧版の180°ハーフスキャン値を360°表示へ流用していません。各ビューは等角度重みとし、目的断面の体軸座標z₀より小さいz側と大きいz側にある最近接候補間で線形重みを正規化します。理想ヘリカル軌道では探索回転数を固定せず、両側の候補が見つかるまで探索するため、固定支持幅に由来する人工的な欠測は生じません。設定スライス厚は入力条件であり、FWHM・FWTM・標準偏差は生成したSSPzから求める出力です。商用装置の非公開なデータ選択、冗長度重み、逆投影を再現しません。患者診療、装置性能保証、商用再構成の定量予測には使用しないでください。</p>
+      <p class="caution"><strong>注意：</strong> 主解析は、各実データ側ビューの理想対向角、その角度を挟む両隣の実取得ビュー、各枝における実データ側・対向データ側の全列候補統合、目的断面を挟む体軸方向線形補間、および2枝の角度方向線形合成をSSPzへ適用します。これは取得幾何に基づく180LI説明モデルであり、商用180LI再構成の再現ではありません。比較解析を選ぶと、SSPzは0～360°の実データ側ビューだけから計算され、2Cは取得幾何監査としてのみ表示されます。理想ヘリカル軌道では探索回転数を固定せず、目的断面を挟む候補が見つかるまで探索します。設定スライス厚は入力条件であり、FWHM・FWTM・標準偏差は生成したSSPzから求める出力です。商用装置の非公開な検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影、装置固有のzフィルタ処理順序は再現しません。患者診療、装置性能保証、商用再構成の定量予測には使用しないでください。</p>
     </section>
 
     <section class="method-card reference-card" aria-labelledby="reference-title">
@@ -343,7 +402,7 @@
         </li>
         <li>
           <div class="reference-citation">Wang G, Madsen M, Redford K, Zhao S, Vannier MW. <a href="https://doi.org/10.3233/XST-2003-00064" target="_blank" rel="noopener noreferrer">A study on the section sensitivity profile in multi-row-detector spiral CT.</a> <i>Journal of X-Ray Science and Technology.</i> 2003;11:1–11.</div>
-          <p>多列CTにおける角度―体軸位置関係とSSP解析の基礎。本Web版は拡張180°補間および対向データ生成を使用せず、0～360°の実データ系列を計算します。</p>
+          <p>多列CTにおける角度―体軸位置関係とSSP解析の基礎として参照しました。本Web版の主解析は180LI取得幾何を説明用SSPzへ適用しますが、同報または特定装置の再構成処理全体を再現するものではありません。</p>
         </li>
         <li>
           <div class="reference-citation">Schaller S, Flohr T, Klingenbeck K, Krause J, Fuchs T, Kalender WA. <a href="https://doi.org/10.1109/42.887832" target="_blank" rel="noopener noreferrer">Spiral interpolation algorithm for multislice spiral CT—Part I: Theory.</a> <i>IEEE Transactions on Medical Imaging.</i> 2000;19:822–834.</div>
@@ -353,8 +412,20 @@
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
           <p>多列化に伴うヘリカル・コーンビーム再構成とデータ利用範囲を考えるための理論的背景。本Web版の距離倍率は理想化した幾何表示であり、同報の正確・近似再構成法を実装していません。</p>
         </li>
+        <li>
+          <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
+          <p>多列ヘリカルCTにおける二点線形補間と、実データ側・対向データ側の候補を体軸位置順に扱う考え方の基礎として参照しました。本Web版は取得幾何上の最近接挟み込みを表示しますが、同報の再構成処理全体を実装していません。</p>
+        </li>
+        <li>
+          <div class="reference-citation">Hu H. <a href="https://doi.org/10.1118/1.598470" target="_blank" rel="noopener noreferrer">Multi-slice helical CT: Scan and reconstruction.</a> <i>Medical Physics.</i> 1999;26:5–18.</div>
+          <p>実データ側と対向データ側が作る交互のヘリカル標本、および全検出器列候補から目的断面に近い二点を選ぶ一般化二点線形補間の背景として参照しました。本Web版はその取得幾何参照を表示しますが、装置固有の冗長度処理や逆投影を再現しません。</p>
+        </li>
+        <li>
+          <div class="reference-citation">Zamyatin AA, Taguchi K, Silver MD. <a href="https://doi.org/10.1118/1.2047784" target="_blank" rel="noopener noreferrer">Helical cone beam CT with an asymmetrical detector.</a> <i>Medical Physics.</i> 2005;32:3117–3127.</div>
+          <p>実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。三次元コーンビームでは厳密に一致する対向レイが一般に存在しないという境界も踏まえ、本Web版2Cは理想化した取得幾何参照に限定し、同報の欠損データ復元法を実装していません。</p>
+        </li>
       </ol>
-      <p class="model-note compact-note"><strong>本Web版独自の説明モデル：</strong>0～360°実データ系列、目的断面を挟む最近接候補の探索、候補間の線形重み、および設定スライス厚と同幅の矩形窓を組み合わせています。これは文献中の特定の商用再構成法を再現するものではありません。</p>
+      <p class="model-note compact-note"><strong>本Web版独自の説明モデル：</strong> 主解析では、各実データ側ビューに対応する理想対向角を挟む両隣の取得ビューについて、実データ側・対向データ側の全列候補を統合した体軸方向線形補間を作り、その2枝を角度方向に線形合成します。さらに設定スライス厚と同幅の矩形窓を後段に適用します。これは文献中の特定の商用再構成法を再現するものではありません。</p>
     </section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -376,8 +447,8 @@
   </main>
 
   <footer>
-    <p>Model: actual-data-only 0–360° full-scan geometry with equal angular sampling, nearest-bracketing longitudinal interpolation, and a configured-thickness mapping; output widths are measured, not fitted.</p>
-    <p id="version">Web reference build 2026-08-21.5</p>
+    <p>Model: 180LI acquisition-geometry explanatory model by default, with a direct-ray 0–360° full-scan comparator and a configured-thickness mapping; scanner-specific weighting and backprojection are not reproduced.</p>
+    <p id="version">Web reference build 2026-08-28.2</p>
   </footer>
 
   <script src="worker-source.js"></script>

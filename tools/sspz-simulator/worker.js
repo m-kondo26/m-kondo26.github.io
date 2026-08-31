@@ -1,5 +1,7 @@
 import {
+  RECONSTRUCTION_PATHS,
   createProfileAssumptions,
+  computeAllCandidateAxialSpreadSeries,
   computeProfileModel,
   computeUnwrapped,
   summarizeSweep,
@@ -25,6 +27,10 @@ function createOverlayCondition(stateCount, zCount, angleCount) {
     base: new Float32Array(stateCount * zCount),
     final: new Float32Array(stateCount * zCount),
     gapRatio: new Float32Array(stateCount * angleCount),
+    spreadRatio: new Float32Array(stateCount * angleCount),
+    candidateCount: new Uint16Array(stateCount * angleCount),
+    effectiveCandidateCount: new Float32Array(stateCount * angleCount),
+    candidateContributionCount: new Uint16Array(stateCount * angleCount),
   };
 }
 
@@ -71,9 +77,24 @@ function finalizeOverlayCondition(condition, stateCount, zCount) {
 }
 
 function overlayTransferList(overlay) {
-  const arrays = [overlay.z, overlay.states, overlay.geometryAnglesDeg];
+  const arrays = [
+    overlay.z,
+    overlay.states,
+    overlay.geometryAnglesDeg,
+    overlay.allCandidateAxialSpreadOffMm,
+    overlay.allCandidateAxialSpreadOnMm,
+  ];
   for (const condition of [overlay.off, overlay.on]) {
-    arrays.push(condition.coverage, condition.base, condition.final, condition.gapRatio);
+    arrays.push(
+      condition.coverage,
+      condition.base,
+      condition.final,
+      condition.gapRatio,
+      condition.spreadRatio,
+      condition.candidateCount,
+      condition.effectiveCandidateCount,
+      condition.candidateContributionCount,
+    );
     for (const summary of [condition.baseSummary, condition.finalSummary]) {
       arrays.push(summary.maximum);
     }
@@ -119,7 +140,10 @@ self.onmessage = async event => {
     const assumptions = createProfileAssumptions(params);
     if (cancelled) return self.postMessage({ type: "cancelled" });
 
-    self.postMessage({ type: "progress", value: 0.04, label: "0～360°フルスキャンで選択状態のSSPzと展開図を計算中" });
+    const acquisitionLabel = params.reconstructionPath === RECONSTRUCTION_PATHS.DIRECT_FULL_SCAN
+      ? "0～360°実データ側フルスキャン（比較）"
+      : "180LI取得幾何（主解析）";
+    self.postMessage({ type: "progress", value: 0.04, label: `${acquisitionLabel}で選択状態のSSPzと展開図を計算中` });
     const selectedOff = computeProfileModel(params, { state: params.state, coneOn: false, assumptions });
     const selectedOn = computeProfileModel(params, { state: params.state, coneOn: true, assumptions });
     const diagramSamples = Math.min(360, params.viewSamples);
@@ -142,10 +166,18 @@ self.onmessage = async event => {
 
     const sampleIndices = overlaySampleIndices(selectedOff.z.length);
     const zCount = sampleIndices.length;
-    const geometryAngleCount = Math.min(360, params.viewSamples);
-    const geometrySampleIndices = Array.from({ length: geometryAngleCount }, (_, index) => (
-      Math.floor(index * params.viewSamples / geometryAngleCount)
-    ));
+    // Preserve every acquired view in the angle-state map. Decimating (for
+    // example, 1200 acquired views to 360 display columns) changes the sampled
+    // angles and can hide acquisition-grid structure. The map therefore uses
+    // the same view grid as each SSPz calculation.
+    const geometryAngleCount = params.viewSamples;
+    const geometrySampleIndices = Array.from({ length: geometryAngleCount }, (_, index) => index);
+    // This acquisition-side quantity depends only on the entered geometry and
+    // relative tube angle.  It is independent of the reconstruction-plane
+    // position sweep, interpolation weights, and configured slice thickness,
+    // so calculate each geometry condition exactly once per run.
+    const allCandidateAxialSpreadOff = computeAllCandidateAxialSpreadSeries(params, { coneOn: false });
+    const allCandidateAxialSpreadOn = computeAllCandidateAxialSpreadSeries(params, { coneOn: true });
     const overlay = {
       stateCount: OVERLAY_STATE_COUNT,
       zCount,
@@ -154,13 +186,40 @@ self.onmessage = async event => {
       coordinate: "z-minus-z0-native",
       normalization: "each-profile-peak-normalized-to-one",
       stateMeaning: "relative-reconstruction-state-within-one-table-feed-per-rotation",
-      acquisitionModel: "actual-data-only-full-scan-0-to-360-degrees",
+      reconstructionPath: params.reconstructionPath,
+      acquisitionModel: params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
+        ? "fan-beam-180li-acquisition-geometry-explanatory-model"
+        : "actual-data-only-full-scan-0-to-360-degrees",
       fullScanViewSamples: params.viewSamples,
       displayDecimated: zCount < selectedOff.z.length,
       sourceZCount: selectedOff.z.length,
       geometryAngleCount,
       geometryAnglesDeg: Float32Array.from({ length: geometryAngleCount }, (_, index) => 360 * index / geometryAngleCount),
-      geometryIndicator: "nearest-bracketing-gap-over-configured-thickness",
+      geometryAngularSampling: "all-acquired-views-no-decimation",
+      allCandidateAxialSpreadOffMm: allCandidateAxialSpreadOff.populationStdMm,
+      allCandidateAxialSpreadOnMm: allCandidateAxialSpreadOn.populationStdMm,
+      allCandidateAxialSpreadMetadata: {
+        unit: "mm",
+        weighting: "none",
+        sliceThicknessUsed: false,
+        stateInvariant: true,
+        candidateSet: "direct-N-rows-plus-all-rows-of-distinct-acquired-complementary-views-bracketing-beta-c",
+        candidateIdentity: "absoluteViewIndex,row",
+        statistic: "unweighted-population-standard-deviation-of-row-centre-z",
+        rowApertureUsed: false,
+        nearestCandidateSelectionUsed: false,
+      },
+      geometryIndicator: "final-candidate-weighted-rms-with-row-aperture-over-configured-thickness",
+      bracketAuditIndicator: params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
+        ? "angularly-weighted-180li-branch-bracketing-gap-over-configured-thickness"
+        : "nearest-bracketing-gap-over-configured-thickness",
+      spreadIndicator: "final-candidate-weighted-rms-with-row-aperture-over-configured-thickness",
+      candidateCountIndicator: "unique-physical-final-nonzero-candidate-count-after-angular-branch-duplicate-merging",
+      candidateCountWeightThreshold: 1e-12,
+      candidateUniquenessKey: "absoluteViewIndex,row; turn,centerMm,apertureMm-consistency-checked-at-1e-9-mm",
+      candidateBranchDuplicateHandling: "sum-weights-of-identical-physical-candidates-before-count-and-effective-count",
+      effectiveCandidateCountIndicator: "inverse-simpson-effective-count-from-merged-normalized-final-candidate-weights",
+      candidateContributionCountIndicator: "pre-merge-final-nonzero-angular-branch-contribution-count",
       off: createOverlayCondition(OVERLAY_STATE_COUNT, zCount, geometryAngleCount),
       on: createOverlayCondition(OVERLAY_STATE_COUNT, zCount, geometryAngleCount),
     };
@@ -176,6 +235,10 @@ self.onmessage = async event => {
           coneOn,
           assumptions,
           collectGeometrySeries: job.overlayIndex != null,
+          // The selected-state unwrapped calculation already retains the full
+          // Section 2C audit.  Rebuilding that audit for every overlay state is
+          // unnecessary and substantially increases run time.
+          collectComplementaryCandidates: false,
         });
         if (job.sweepIndex != null) {
           sweepRows[job.sweepIndex * 2 + Number(coneOn)] = {
@@ -183,6 +246,10 @@ self.onmessage = async event => {
             state,
             z0: result.z0,
             coneOn,
+            reconstructionPath: result.reconstructionPath,
+            dataKind: result.dataKind,
+            candidateRayFamilyCount: result.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
+            candidateSelectionRule: result.candidateSelectionRule,
             fwhm: result.fwhm,
             fwtm: result.fwtm,
             sigma: result.sigma,
@@ -199,6 +266,15 @@ self.onmessage = async event => {
             bracketGapRatioMean: result.bracketGapRatioMean,
             bracketGapRatioMax: result.bracketGapRatioMax,
             exactCandidateFraction: result.exactCandidateFraction,
+            maximumViewContributionError: result.maximumViewContributionError,
+            maximumAngularInterpolationWeightError: result.maximumAngularInterpolationWeightError,
+            maximumLongitudinalMomentResidualMm: result.maximumLongitudinalMomentResidualMm,
+            preNormalizationArea: result.preNormalizationArea,
+            preNormalizationPeak: result.preNormalizationPeak,
+            meanKernelSecondMomentMm2: result.meanKernelSecondMomentMm2,
+            analyticBaseSigmaMm: result.analyticBaseSigmaMm,
+            analyticConfiguredSigmaMm: result.analyticConfiguredSigmaMm,
+            numericalSigmaResidualMm: result.numericalSigmaResidualMm,
           };
         }
         if (job.overlayIndex != null) {
@@ -207,13 +283,32 @@ self.onmessage = async event => {
           copyOverlayProfile(condition.final, job.overlayIndex, sampleIndices, result.profile);
           copyOverlayProfile(condition.base, job.overlayIndex, sampleIndices, result.baseProfile ?? result.profile);
           copyGeometrySeries(condition.gapRatio, job.overlayIndex, geometrySampleIndices, result.gapRatios);
+          copyGeometrySeries(condition.spreadRatio, job.overlayIndex, geometrySampleIndices, result.viewKernelRmsRatio);
+          copyGeometrySeries(
+            condition.candidateCount,
+            job.overlayIndex,
+            geometrySampleIndices,
+            result.viewCandidateCounts,
+          );
+          copyGeometrySeries(
+            condition.effectiveCandidateCount,
+            job.overlayIndex,
+            geometrySampleIndices,
+            result.viewEffectiveCandidateCounts,
+          );
+          copyGeometrySeries(
+            condition.candidateContributionCount,
+            job.overlayIndex,
+            geometrySampleIndices,
+            result.viewCandidateContributionCounts,
+          );
         }
         completed += 1;
         if (performance.now() - lastYield >= 25 || completed === total) {
           self.postMessage({
             type: "progress",
             value: 0.08 + 0.90 * completed / total,
-            label: `360状態SSPzと幅指標を計算中 ${completed}/${total}`,
+            label: `${acquisitionLabel}：360状態SSPzと幅指標を計算中 ${completed}/${total}`,
           });
           await yieldToMessages();
           lastYield = performance.now();
