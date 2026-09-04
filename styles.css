@@ -1484,9 +1484,10 @@ footer {
 }
 
 .lang-en .research-tool h2 {
-  font-size: clamp(40px, 3.8vw, 52px);
+  font-size: clamp(40px, 3.55vw, 48px);
   line-height: 1.12;
-  text-wrap: balance;
+  letter-spacing: -0.035em;
+  text-wrap: pretty;
 }
 
 .profile-card {
