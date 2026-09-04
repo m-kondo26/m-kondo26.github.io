@@ -422,6 +422,18 @@ nav a:focus-visible {
   color: var(--white);
 }
 
+.approach-intro h2 {
+  text-wrap: balance;
+}
+
+.approach-heading-line {
+  display: block;
+}
+
+.keep-together {
+  white-space: nowrap;
+}
+
 .approach-intro > p:last-child {
   max-width: 500px;
   margin: 32px 0 0;
