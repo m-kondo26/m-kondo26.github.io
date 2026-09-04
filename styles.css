@@ -1432,6 +1432,121 @@ footer {
   }
 }
 
+
+/* Readability refinements: balanced headings, comfortable body text, and resilient profile layout. */
+.section h2,
+.achievement-card h3,
+.podcast-card h3,
+.collaboration h2 {
+  text-wrap: balance;
+}
+
+.section-heading > p,
+.podcast-heading > p,
+.approach-intro > p:last-child,
+.tools-copy > p:not(.eyebrow) {
+  font-size: 16px;
+}
+
+.card-description,
+.principles article > p {
+  font-size: 15px;
+}
+
+.tool-button {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.podcast-card > p,
+.profile-affiliation {
+  font-size: 14px;
+}
+
+.podcast-link,
+.profile-links a {
+  font-size: 13px;
+}
+
+.lang-en .approach {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: clamp(64px, 7vw, 104px);
+}
+
+.lang-en .approach-intro h2 {
+  font-size: clamp(42px, 4vw, 54px);
+  line-height: 1.12;
+}
+
+.lang-en .research-tool {
+  grid-template-columns: minmax(360px, 0.82fr) minmax(520px, 1.18fr);
+  gap: clamp(44px, 6vw, 82px);
+}
+
+.lang-en .research-tool h2 {
+  font-size: clamp(40px, 3.8vw, 52px);
+  line-height: 1.12;
+  text-wrap: balance;
+}
+
+.profile-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.profile-identity {
+  min-width: 0;
+}
+
+.profile-identity h3 {
+  text-wrap: balance;
+}
+
+.profile-links {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 960px) {
+  .lang-en .approach,
+  .lang-en .research-tool {
+    grid-template-columns: 1fr;
+  }
+
+  .lang-en .approach-intro h2,
+  .lang-en .research-tool h2 {
+    max-width: 760px;
+  }
+}
+
+@media (max-width: 680px) {
+  .hero-description {
+    font-size: 15px;
+  }
+
+  .section-heading > p,
+  .podcast-heading > p,
+  .approach-intro > p:last-child,
+  .tools-copy > p:not(.eyebrow) {
+    font-size: 15px;
+    line-height: 1.85;
+  }
+
+  .lang-en .approach-intro h2,
+  .lang-en .research-tool h2 {
+    font-size: clamp(36px, 10.5vw, 48px);
+  }
+
+  .tool-button {
+    width: 100%;
+    gap: 18px;
+  }
+
+  .profile-identity h3 span {
+    display: block;
+    margin: 5px 0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
