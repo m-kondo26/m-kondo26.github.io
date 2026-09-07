@@ -1,2297 +1,9 @@
-(() => {
-"use strict";
-const MODEL_VERSION = "2026-08-28.2";
-
-const PROFILE_MODES = Object.freeze({
-  LAYERED_RECT: "layered-rect",
-  DIRECT_TRIANGULAR: "direct-triangular",
-});
-
-const RECONSTRUCTION_PATHS = Object.freeze({
-  FAN_BEAM_180LI: "fan-beam-180li",
-  DIRECT_FULL_SCAN: "direct-full-scan",
-});
-
-const DEFAULT_PARAMS = Object.freeze({
-  rows: 4,
-  rowWidth: 1.0,
-  beamPitch: 0.875,
-  sourceRadius: 600.0,
-  radius: 100.0,
-  zReference: 0.0,
-  state: 0.0,
-  sliceThicknessMm: 1.0,
-  profileMode: PROFILE_MODES.LAYERED_RECT,
-  reconstructionPath: RECONSTRUCTION_PATHS.FAN_BEAM_180LI,
-  viewSamples: 360,
-  zSamples: 800,
-  stateSamples: 360,
-  phase: 0.0,
-});
-
-const EPS = 1e-12;
-const PI2 = 2 * Math.PI;
-const RAD_TO_DEG = 180 / Math.PI;
-const PHYSICAL_CANDIDATE_IDENTITY_TOLERANCE_MM = 1e-9;
-const MAX_CONFIGURED_SLICE_THICKNESS_MM = 20;
-// Internal longitudinal sampling is allowed to exceed the public selector.
-// The odd cap keeps z=0 at a cell center while bounding memory use for the
-// narrowest supported detector rows and the widest helical gaps.
-const MAX_INTERNAL_Z_CELLS = 65535;
-
-function validateParams(input) {
-  const p = {
-    rows: Math.round(Number(input.rows)),
-    rowWidth: Number(input.rowWidth),
-    beamPitch: Number(input.beamPitch),
-    sourceRadius: Number(input.sourceRadius),
-    radius: Math.abs(Number(input.radius)),
-    // These remain internal model coordinates. The public UI evaluates all
-    // relative states automatically and no longer asks the user to set them.
-    zReference: Number(input.zReference ?? 0),
-    state: Number(input.state ?? 0),
-    // targetFwhm is accepted only as an old saved-input migration path.
-    // It no longer means that the computed FWHM is fitted to this value.
-    sliceThicknessMm: Number(input.sliceThicknessMm ?? input.targetFwhm),
-    // Legacy direct-triangular URLs are migrated to the single transparent
-    // reference model: nearest bracketing interpolation followed by the
-    // declared configured-thickness window.
-    profileMode: PROFILE_MODES.LAYERED_RECT,
-    reconstructionPath: Object.values(RECONSTRUCTION_PATHS).includes(input.reconstructionPath)
-      ? input.reconstructionPath
-      : RECONSTRUCTION_PATHS.FAN_BEAM_180LI,
-    // thetaSamples is accepted only for migration from pre-full-scan URLs and
-    // saved settings.  viewSamples always spans one complete 0-360 degree turn.
-    viewSamples: Math.round(Number(input.viewSamples ?? input.thetaSamples)),
-    zSamples: Math.round(Number(input.zSamples)),
-    stateSamples: Math.round(Number(input.stateSamples)),
-    phase: Number(input.phase ?? 0),
-  };
-  const finite = Object.entries(p).filter(([, value]) => typeof value === "number" && !Number.isFinite(value));
-  if (finite.length) throw new Error(`The following inputs could not be parsed as numbers: ${finite.map(([key]) => key).join(", ")}`);
-  if (p.rows < 1 || p.rows > 320) throw new Error("Set the number of detector rows to a value from 1 to 320.");
-  if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("Set the single-row width to a value greater than 0 and no greater than 10 mm.");
-  if (p.beamPitch <= 0 || p.beamPitch > 3) throw new Error("Set the beam pitch to a value greater than 0 and no greater than 3.");
-  if (p.sourceRadius <= 0) throw new Error("The source-to-isocenter distance must be positive.");
-  if (p.radius > 250) throw new Error("Set the radial distance from isocenter to a value from 0 to 250 mm.");
-  if (p.radius >= p.sourceRadius) throw new Error("The radial distance from isocenter must be smaller than the source-to-isocenter distance.");
-  if (p.sliceThicknessMm <= 0 || p.sliceThicknessMm > 20) throw new Error("Set the configured slice thickness to a value greater than 0 and no greater than 20 mm.");
-  if (p.viewSamples < 90 || p.viewSamples > 2400) throw new Error("Set the number of relative tube-angle samples per rotation to a value from 90 to 2400.");
-  if (p.zSamples < 300 || p.zSamples > 4000) throw new Error("Set the SSPz grid size to a value from 300 to 4000.");
-  if (p.stateSamples < 12 || p.stateSamples > 720) throw new Error("Set the number of model states to a value from 12 to 720.");
-  p.state = ((p.state % 1) + 1) % 1;
-  return p;
-}
-
-function tableFeedMm(p) {
-  return p.beamPitch * p.rows * p.rowWidth;
-}
-
-function linspace(start, stop, count) {
-  const out = new Float64Array(count);
-  const step = (stop - start) / Math.max(1, count - 1);
-  for (let i = 0; i < count; i += 1) out[i] = start + step * i;
-  return out;
-}
-
-function uniformCellCenters(leftEdge, rightEdge, count) {
-  const out = new Float64Array(count);
-  const width = (rightEdge - leftEdge) / count;
-  for (let i = 0; i < count; i += 1) out[i] = leftEdge + (i + 0.5) * width;
-  return out;
-}
-
-function oddCellCountAtLeast(requested, cap = MAX_INTERNAL_Z_CELLS) {
-  let count = Math.max(1, Math.ceil(requested));
-  if (count % 2 === 0) count += 1;
-  if (count > cap) count = cap % 2 === 1 ? cap : cap - 1;
-  return count;
-}
-
-function depositRectangleIntoUniformCellAverages(
-  fullCellDiff,
-  edgeCellContributions,
-  left,
-  right,
-  amplitude,
-  domainLeft,
-  domainRight,
-  dz,
-) {
-  const clippedLeft = Math.max(domainLeft, left);
-  const clippedRight = Math.min(domainRight, right);
-  if (!(clippedRight > clippedLeft) || !(amplitude > 0)) return 0;
-
-  const cellCount = edgeCellContributions.length;
-  const first = Math.max(0, Math.min(
-    cellCount - 1,
-    Math.floor((clippedLeft - domainLeft) / dz),
-  ));
-  const last = Math.max(0, Math.min(
-    cellCount - 1,
-    Math.floor((clippedRight - domainLeft) / dz),
-  ));
-
-  const overlapWithCell = (index) => {
-    const cellLeft = domainLeft + index * dz;
-    const cellRight = cellLeft + dz;
-    return Math.max(0, Math.min(clippedRight, cellRight) - Math.max(clippedLeft, cellLeft));
-  };
-
-  if (first === last) {
-    edgeCellContributions[first] += amplitude * overlapWithCell(first) / dz;
-  } else {
-    edgeCellContributions[first] += amplitude * overlapWithCell(first) / dz;
-    edgeCellContributions[last] += amplitude * overlapWithCell(last) / dz;
-    // Every cell strictly between the two boundary cells is covered in full.
-    if (last > first + 1) {
-      fullCellDiff[first + 1] += amplitude;
-      fullCellDiff[last] -= amplitude;
-    }
-  }
-  return amplitude * (clippedRight - clippedLeft);
-}
-
-function roundHalfEven(value) {
-  const floor = Math.floor(value);
-  const fraction = value - floor;
-  if (Math.abs(fraction - 0.5) < 1e-12) return floor % 2 === 0 ? floor : floor + 1;
-  return Math.round(value);
-}
-
-function wrapAngleRad(angle) {
-  return ((angle % PI2) + PI2) % PI2;
-}
-
-function fanBeamComplementaryGeometryAtAngle(p, beta, coneOn) {
-  const betaNormalized = wrapAngleRad(beta);
-  if (!coneOn || p.radius <= EPS) {
-    return {
-      betaRad: betaNormalized,
-      complementaryAngleRad: wrapAngleRad(betaNormalized + Math.PI),
-      complementaryAngleUnwrappedRad: beta + Math.PI,
-      forwardSeparationRad: Math.PI,
-      fanAngleRad: 0,
-      secondIntersectionParameter: 2,
-      lineCircleResidualMm: 0,
-    };
-  }
-
-  // Transaxial fan-beam geometry.  The source S(beta) and evaluation point P
-  // define one ray.  Extending that ray to the second intersection with the
-  // source orbit gives the complementary source angle without depending on a
-  // fan-angle sign convention.  Its forward angular separation is equivalent
-  // to pi + 2*gamma for the gamma convention returned below.
-  const sourceX = p.sourceRadius * Math.cos(betaNormalized);
-  const sourceY = p.sourceRadius * Math.sin(betaNormalized);
-  const pointX = p.radius * Math.cos(p.phase);
-  const pointY = p.radius * Math.sin(p.phase);
-  const directionX = pointX - sourceX;
-  const directionY = pointY - sourceY;
-  const directionSquared = directionX * directionX + directionY * directionY;
-  const secondIntersectionParameter = -2 * (sourceX * directionX + sourceY * directionY)
-    / Math.max(directionSquared, EPS);
-  const complementaryX = sourceX + secondIntersectionParameter * directionX;
-  const complementaryY = sourceY + secondIntersectionParameter * directionY;
-  const complementaryAngleRad = wrapAngleRad(Math.atan2(complementaryY, complementaryX));
-  let forwardSeparationRad = wrapAngleRad(complementaryAngleRad - betaNormalized);
-  if (forwardSeparationRad <= EPS) forwardSeparationRad = PI2;
-  const complementaryAngleUnwrappedRad = beta + forwardSeparationRad;
-  const fanAngleRad = (forwardSeparationRad - Math.PI) / 2;
-  const lineCircleResidualMm = Math.abs(
-    Math.hypot(complementaryX, complementaryY) - p.sourceRadius,
-  );
-  return {
-    betaRad: betaNormalized,
-    complementaryAngleRad,
-    complementaryAngleUnwrappedRad,
-    forwardSeparationRad,
-    fanAngleRad,
-    secondIntersectionParameter,
-    lineCircleResidualMm,
-  };
-}
-
-function computeFanBeamComplementaryGeometry(rawParams, beta, options = {}) {
-  const p = validateParams(rawParams);
-  return fanBeamComplementaryGeometryAtAngle(p, Number(beta), options.coneOn !== false);
-}
-
-function acquiredViewMapping(p, idealAngleUnwrappedRad) {
-  const stepRad = PI2 / p.viewSamples;
-  const idealAbsoluteView = idealAngleUnwrappedRad / stepRad;
-  const nearestAbsoluteViewIndex = Math.round(idealAbsoluteView);
-  const lowerAbsoluteViewIndex = Math.floor(idealAbsoluteView + 1e-12);
-  const upperAbsoluteViewIndex = Math.ceil(idealAbsoluteView - 1e-12);
-  const wrapViewIndex = index => ((index % p.viewSamples) + p.viewSamples) % p.viewSamples;
-  const nearestAngleUnwrappedRad = nearestAbsoluteViewIndex * stepRad;
-  const lowerAngleUnwrappedRad = lowerAbsoluteViewIndex * stepRad;
-  const upperAngleUnwrappedRad = upperAbsoluteViewIndex * stepRad;
-  const angularBracketWidthRad = upperAngleUnwrappedRad - lowerAngleUnwrappedRad;
-  const angularInterpolationFraction = angularBracketWidthRad <= EPS
-    ? 0
-    : (idealAngleUnwrappedRad - lowerAngleUnwrappedRad) / angularBracketWidthRad;
-  return {
-    stepRad,
-    nearestViewIndex: wrapViewIndex(nearestAbsoluteViewIndex),
-    nearestAbsoluteViewIndex,
-    nearestAngleRad: wrapAngleRad(nearestAngleUnwrappedRad),
-    nearestAngleUnwrappedRad,
-    angularResidualRad: nearestAngleUnwrappedRad - idealAngleUnwrappedRad,
-    lowerViewIndex: wrapViewIndex(lowerAbsoluteViewIndex),
-    lowerAbsoluteViewIndex,
-    lowerAngleUnwrappedRad,
-    upperViewIndex: wrapViewIndex(upperAbsoluteViewIndex),
-    upperAbsoluteViewIndex,
-    upperAngleUnwrappedRad,
-    lowerAngularResidualRad: lowerAngleUnwrappedRad - idealAngleUnwrappedRad,
-    upperAngularResidualRad: upperAngleUnwrappedRad - idealAngleUnwrappedRad,
-    angularInterpolationFraction,
-  };
-}
-
-function allCandidateAxialFamilySummary(p, absoluteViewIndex, coneOn, roles) {
-  const feed = tableFeedMm(p);
-  const angleRad = PI2 * absoluteViewIndex / p.viewSamples;
-  const rho = p.radius / p.sourceRadius;
-  const scale = coneOn
-    ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(angleRad - p.phase)))
-    : 1;
-  const meanAxialPositionMm = feed * absoluteViewIndex / p.viewSamples;
-  const rowHalfSpanMm = scale * p.rowWidth * (p.rows - 1) / 2;
-  // Population variance of N equally spaced detector-row centres about their
-  // own mean.  This is an acquisition-geometry quantity: no reconstruction
-  // weights, slice-thickness window, or nearest-row selection enters here.
-  const withinFamilyVarianceMm2 = scale * scale * p.rowWidth * p.rowWidth
-    * (p.rows * p.rows - 1) / 12;
-  return {
-    roles,
-    absoluteViewIndex,
-    angleRad,
-    angleDeg: angleRad * RAD_TO_DEG,
-    scale,
-    rowCount: p.rows,
-    meanAxialPositionMm,
-    withinFamilyVarianceMm2,
-    minimumAxialPositionMm: meanAxialPositionMm - rowHalfSpanMm,
-    maximumAxialPositionMm: meanAxialPositionMm + rowHalfSpanMm,
-  };
-}
-
-function allCandidateAxialSpreadAtValidatedView(p, directViewIndexInput, options = {}) {
-  const directViewIndexNumber = Number(directViewIndexInput);
-  if (!Number.isInteger(directViewIndexNumber)) {
-    throw new Error("The direct-view index must be an integer.");
-  }
-  const commonTurnShift = Number(options.commonTurnShift ?? 0);
-  if (!Number.isInteger(commonTurnShift)) {
-    throw new Error("The whole-rotation offset common to all candidates must be an integer.");
-  }
-  const coneOn = options.coneOn !== false;
-  const directViewIndex = (
-    (directViewIndexNumber % p.viewSamples) + p.viewSamples
-  ) % p.viewSamples;
-  const beta = PI2 * directViewIndex / p.viewSamples;
-  const complementary = fanBeamComplementaryGeometryAtAngle(p, beta, coneOn);
-  const viewStepRad = PI2 / p.viewSamples;
-  const idealComplementaryAbsoluteView
-    = complementary.complementaryAngleUnwrappedRad / viewStepRad;
-  // Only the two acquired angular neighbours that bracket the ideal
-  // complementary angle are required.  Do not compute or select a nearest
-  // acquired view in this pure all-row population.
-  const lowerComplementaryAbsoluteViewIndex = Math.floor(
-    idealComplementaryAbsoluteView + 1e-12,
-  );
-  const upperComplementaryAbsoluteViewIndex = Math.ceil(
-    idealComplementaryAbsoluteView - 1e-12,
-  );
-  const turnDelta = commonTurnShift * p.viewSamples;
-  const requestedFamilies = [
-    { role: "direct", absoluteViewIndex: directViewIndex + turnDelta },
-    {
-      role: "complementary-lower",
-      absoluteViewIndex: lowerComplementaryAbsoluteViewIndex + turnDelta,
-    },
-    {
-      role: "complementary-upper",
-      absoluteViewIndex: upperComplementaryAbsoluteViewIndex + turnDelta,
-    },
-  ];
-  // One physical acquired detector row is identified by absolute view index
-  // and row.  If the ideal complementary angle is itself acquired, lower and
-  // upper are the same view and must appear only once in the population.
-  const uniqueViews = new Map();
-  for (const requested of requestedFamilies) {
-    const existing = uniqueViews.get(requested.absoluteViewIndex);
-    if (existing) existing.roles.push(requested.role);
-    else uniqueViews.set(requested.absoluteViewIndex, {
-      absoluteViewIndex: requested.absoluteViewIndex,
-      roles: [requested.role],
-    });
-  }
-  const families = [...uniqueViews.values()].map(family => allCandidateAxialFamilySummary(
-    p,
-    family.absoluteViewIndex,
-    coneOn,
-    family.roles,
-  ));
-  const familyCount = families.length;
-  const meanAxialPositionMm = families.reduce(
-    (sum, family) => sum + family.meanAxialPositionMm,
-    0,
-  ) / familyCount;
-  const withinFamilyVarianceMm2 = families.reduce(
-    (sum, family) => sum + family.withinFamilyVarianceMm2,
-    0,
-  ) / familyCount;
-  const betweenFamilyVarianceMm2 = families.reduce(
-    (sum, family) => sum + (family.meanAxialPositionMm - meanAxialPositionMm) ** 2,
-    0,
-  ) / familyCount;
-  const populationVarianceMm2 = withinFamilyVarianceMm2 + betweenFamilyVarianceMm2;
-  const minimumAxialPositionMm = Math.min(
-    ...families.map(family => family.minimumAxialPositionMm),
-  );
-  const maximumAxialPositionMm = Math.max(
-    ...families.map(family => family.maximumAxialPositionMm),
-  );
-  const populationStdDevMm = Math.sqrt(Math.max(0, populationVarianceMm2));
-  return {
-    definition: "all-acquired-detector-row-centres-from-direct-and-angularly-bracketing-complementary-views",
-    candidateIdentity: "absoluteViewIndex,row",
-    weighting: "none-equal-unit-mass-per-physical-acquired-row",
-    reconstructionCandidateSelection: "none",
-    coneOn,
-    directViewIndex,
-    directAbsoluteViewIndex: directViewIndex + turnDelta,
-    directAngleRad: beta,
-    directAngleDeg: beta * RAD_TO_DEG,
-    idealComplementaryAngleUnwrappedRad: complementary.complementaryAngleUnwrappedRad
-      + commonTurnShift * PI2,
-    idealComplementaryAngleUnwrappedDeg: complementary.complementaryAngleUnwrappedRad * RAD_TO_DEG
-      + commonTurnShift * 360,
-    commonTurnShift,
-    uniqueAcquiredViewCount: familyCount,
-    candidateCount: p.rows * familyCount,
-    families,
-    meanAxialPositionMm,
-    withinFamilyVarianceMm2,
-    betweenFamilyVarianceMm2,
-    populationVarianceMm2,
-    populationStdDevMm,
-    // Short alias retained for worker/plot contracts; both names denote the
-    // same unweighted finite-population standard deviation in millimetres.
-    populationStdMm: populationStdDevMm,
-    minimumAxialPositionMm,
-    maximumAxialPositionMm,
-    rangeMm: maximumAxialPositionMm - minimumAxialPositionMm,
-  };
-}
-
-/**
- * Pure acquisition-geometry spread for one direct projection view.
- *
- * The finite population contains every detector-row centre from the direct
- * acquired view and from the distinct acquired lower/upper views that bracket
- * its ideal complementary fan-beam angle.  It deliberately does not use the
- * configured slice thickness, reconstruction weights, or nearest candidates.
- */
-function computeAllCandidateAxialSpreadAtView(rawParams, directViewIndex, options = {}) {
-  const p = validateParams(rawParams);
-  return allCandidateAxialSpreadAtValidatedView(p, directViewIndex, options);
-}
-
-/** Return the pure acquisition-geometry spread for every direct view. */
-function computeAllCandidateAxialSpreadSeries(rawParams, options = {}) {
-  const p = validateParams(rawParams);
-  const count = p.viewSamples;
-  const directAnglesDeg = new Float64Array(count);
-  const idealComplementaryAnglesUnwrappedDeg = new Float64Array(count);
-  const uniqueAcquiredViewCounts = new Uint8Array(count);
-  const candidateCounts = new Uint16Array(count);
-  const meanAxialPositionsMm = new Float64Array(count);
-  const withinFamilyVariancesMm2 = new Float64Array(count);
-  const betweenFamilyVariancesMm2 = new Float64Array(count);
-  const populationVariancesMm2 = new Float64Array(count);
-  const populationStdDevMm = new Float64Array(count);
-  const minimumAxialPositionsMm = new Float64Array(count);
-  const maximumAxialPositionsMm = new Float64Array(count);
-  const rangesMm = new Float64Array(count);
-  for (let directViewIndex = 0; directViewIndex < count; directViewIndex += 1) {
-    const spread = allCandidateAxialSpreadAtValidatedView(p, directViewIndex, options);
-    directAnglesDeg[directViewIndex] = spread.directAngleDeg;
-    idealComplementaryAnglesUnwrappedDeg[directViewIndex]
-      = spread.idealComplementaryAngleUnwrappedDeg;
-    uniqueAcquiredViewCounts[directViewIndex] = spread.uniqueAcquiredViewCount;
-    candidateCounts[directViewIndex] = spread.candidateCount;
-    meanAxialPositionsMm[directViewIndex] = spread.meanAxialPositionMm;
-    withinFamilyVariancesMm2[directViewIndex] = spread.withinFamilyVarianceMm2;
-    betweenFamilyVariancesMm2[directViewIndex] = spread.betweenFamilyVarianceMm2;
-    populationVariancesMm2[directViewIndex] = spread.populationVarianceMm2;
-    populationStdDevMm[directViewIndex] = spread.populationStdDevMm;
-    minimumAxialPositionsMm[directViewIndex] = spread.minimumAxialPositionMm;
-    maximumAxialPositionsMm[directViewIndex] = spread.maximumAxialPositionMm;
-    rangesMm[directViewIndex] = spread.rangeMm;
-  }
-  return {
-    definition: "all-acquired-detector-row-centres-from-direct-and-angularly-bracketing-complementary-views",
-    candidateIdentity: "absoluteViewIndex,row",
-    weighting: "none-equal-unit-mass-per-physical-acquired-row",
-    reconstructionCandidateSelection: "none",
-    coneOn: options.coneOn !== false,
-    viewCount: count,
-    viewStepDeg: 360 / count,
-    commonTurnShift: Number(options.commonTurnShift ?? 0),
-    directAnglesDeg,
-    idealComplementaryAnglesUnwrappedDeg,
-    uniqueAcquiredViewCounts,
-    candidateCounts,
-    meanAxialPositionsMm,
-    withinFamilyVariancesMm2,
-    betweenFamilyVariancesMm2,
-    populationVariancesMm2,
-    populationStdDevMm,
-    populationStdMm: populationStdDevMm,
-    minimumAxialPositionsMm,
-    maximumAxialPositionsMm,
-    rangesMm,
-  };
-}
-
-function profileWidth(profile, z, level) {
-  let peak = 0;
-  for (let i = 1; i < profile.length; i += 1) if (profile[i] > profile[peak]) peak = i;
-  const above = new Uint8Array(profile.length);
-  for (let i = 0; i < profile.length; i += 1) above[i] = profile[i] >= level ? 1 : 0;
-  const components = [];
-  let start = -1;
-  for (let i = 0; i < above.length; i += 1) {
-    if (above[i] && start < 0) start = i;
-    if (start >= 0 && (!above[i] || i === above.length - 1)) {
-      const end = above[i] && i === above.length - 1 ? i : i - 1;
-      components.push([start, end]);
-      start = -1;
-    }
-  }
-  if (!components.length) return { width: 0, components: 0 };
-  let component = components.find(([left, right]) => left <= peak && peak <= right);
-  if (!component) component = components.reduce((best, item) => item[1] - item[0] > best[1] - best[0] ? item : best);
-  const [leftIndex, rightIndex] = component;
-  let left = z[0];
-  if (leftIndex > 0) {
-    const y0 = profile[leftIndex - 1];
-    const y1 = profile[leftIndex];
-    const fraction = Math.abs(y1 - y0) < 1e-15 ? 0 : (level - y0) / (y1 - y0);
-    left = z[leftIndex - 1] + fraction * (z[leftIndex] - z[leftIndex - 1]);
-  }
-  let right = z[z.length - 1];
-  if (rightIndex < profile.length - 1) {
-    const y0 = profile[rightIndex];
-    const y1 = profile[rightIndex + 1];
-    const fraction = Math.abs(y1 - y0) < 1e-15 ? 0 : (level - y0) / (y1 - y0);
-    right = z[rightIndex] + fraction * (z[rightIndex + 1] - z[rightIndex]);
-  }
-  return { width: Math.max(0, right - left), components: components.length };
-}
-
-function profileStats(profile, z, dz) {
-  let peak = 0;
-  for (const value of profile) peak = Math.max(peak, value);
-  if (peak <= 0) return { fwhm: 0, fwtm: 0, sigma: 0, area: 0, centroid: 0, halfComponents: 0 };
-  let area = 0;
-  let first = 0;
-  for (let i = 0; i < profile.length; i += 1) {
-    area += profile[i] * dz;
-    first += z[i] * profile[i] * dz;
-  }
-  const centroid = area > EPS ? first / area : 0;
-  let variance = 0;
-  if (area > EPS) {
-    for (let i = 0; i < profile.length; i += 1) variance += (z[i] - centroid) ** 2 * profile[i] * dz / area;
-  }
-  const half = profileWidth(profile, z, 0.5);
-  const tenth = profileWidth(profile, z, 0.1);
-  return {
-    fwhm: half.width,
-    fwtm: tenth.width,
-    sigma: Math.sqrt(Math.max(0, variance)),
-    area,
-    centroid,
-    halfComponents: half.components,
-  };
-}
-
-function geometryAtFullScanAngle(p, z0, beta, coneOn, metadata = {}) {
-  const feed = tableFeedMm(p);
-  const slope = feed / PI2;
-  const rho = p.radius / p.sourceRadius;
-  const scale = coneOn
-    ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)))
-    : 1;
-  const rowSpacing = p.rowWidth * scale;
-  const firstBaseCenter = slope * beta + (0.5 - p.rows / 2) * rowSpacing;
-  const lastBaseCenter = firstBaseCenter + (p.rows - 1) * rowSpacing;
-  const exact = [];
-  let lowerDelta = -Infinity;
-  let upperDelta = Infinity;
-  let lower = [];
-  let upper = [];
-  // Candidate centers form a regular row/turn lattice.  The closest point on
-  // either side of z0 must lie within one table feed of z0; therefore only the
-  // few turns whose row bands intersect that interval need inspection.  This
-  // is numerically identical to scanning every row and its two nearest turns,
-  // but its cost is independent of the entered detector-row count.
-  const turnMin = Math.floor((z0 - feed - lastBaseCenter) / feed) - 1;
-  const turnMax = Math.ceil((z0 + feed - firstBaseCenter) / feed) + 1;
-  for (let turn = turnMin; turn <= turnMax; turn += 1) {
-    const rowCoordinate = (z0 - firstBaseCenter - turn * feed) / rowSpacing;
-    const rowCandidates = [
-      Math.max(0, Math.min(p.rows - 1, Math.floor(rowCoordinate))),
-      Math.max(0, Math.min(p.rows - 1, Math.ceil(rowCoordinate))),
-    ];
-    for (let rowCandidateIndex = 0; rowCandidateIndex < rowCandidates.length; rowCandidateIndex += 1) {
-      const row = rowCandidates[rowCandidateIndex];
-      if (rowCandidateIndex > 0 && row === rowCandidates[0]) continue;
-      const center = firstBaseCenter + row * rowSpacing + turn * feed;
-      const delta = center - z0;
-      const candidate = {
-        dataKind: metadata.dataKind ?? "actual",
-        family: metadata.family ?? null,
-        row,
-        turn,
-        beta,
-        angleUnwrappedRad: beta + turn * PI2,
-        absoluteViewIndex: metadata.baseAbsoluteViewIndex == null
-          ? null
-          : metadata.baseAbsoluteViewIndex + turn * p.viewSamples,
-        center,
-        delta,
-        aperture: p.rowWidth * scale,
-        rawWeight: 0,
-        weight: 0,
-      };
-      if (Math.abs(delta) <= 1e-10) {
-        exact.push(candidate);
-      } else if (delta < 0) {
-        if (delta > lowerDelta + 1e-10) {
-          lowerDelta = delta;
-          lower = [candidate];
-        } else if (Math.abs(delta - lowerDelta) <= 1e-10) {
-          lower.push(candidate);
-        }
-      } else if (delta < upperDelta - 1e-10) {
-        upperDelta = delta;
-        upper = [candidate];
-      } else if (Math.abs(delta - upperDelta) <= 1e-10) {
-        upper.push(candidate);
-      }
-    }
-  }
-  let candidates = [];
-  let bracketGapMm = NaN;
-  let exactMatch = false;
-  if (exact.length) {
-    exactMatch = true;
-    const weight = 1 / exact.length;
-    candidates = exact.map(candidate => ({ ...candidate, rawWeight: weight, weight }));
-    bracketGapMm = 0;
-  } else if (lower.length && upper.length) {
-    bracketGapMm = upperDelta - lowerDelta;
-    const totalLowerWeight = upperDelta / bracketGapMm;
-    const totalUpperWeight = -lowerDelta / bracketGapMm;
-    candidates = [
-      ...lower.map(candidate => ({ ...candidate, rawWeight: totalLowerWeight / lower.length, weight: totalLowerWeight / lower.length })),
-      ...upper.map(candidate => ({ ...candidate, rawWeight: totalUpperWeight / upper.length, weight: totalUpperWeight / upper.length })),
-    ];
-  }
-  const normalizedWeightSum = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
-  return {
-    beta,
-    scale,
-    candidates,
-    rawWeightSum: normalizedWeightSum,
-    normalizedWeightSum,
-    bracketGapMm,
-    bracketGapRatio: bracketGapMm / p.sliceThicknessMm,
-    exactMatch,
-    exactCandidate: exact[0] ?? null,
-    lowerCandidate: lower[0] ?? null,
-    upperCandidate: upper[0] ?? null,
-    exactCandidateCount: exact.length,
-    lowerCandidateCount: lower.length,
-    upperCandidateCount: upper.length,
-    lowerDistanceMm: Number.isFinite(lowerDelta) ? -lowerDelta : 0,
-    upperDistanceMm: Number.isFinite(upperDelta) ? upperDelta : 0,
-    family: metadata.family ?? null,
-    baseAbsoluteViewIndex: metadata.baseAbsoluteViewIndex ?? null,
-    valid: candidates.length > 0 && Math.abs(normalizedWeightSum - 1) <= 1e-9,
-  };
-}
-
-function nearestCandidateDistanceMm(geometry) {
-  if (geometry.exactMatch) return 0;
-  const distances = [geometry.lowerDistanceMm, geometry.upperDistanceMm]
-    .filter(value => Number.isFinite(value) && value >= 0);
-  return distances.length ? Math.min(...distances) : NaN;
-}
-
-function pairEndpoint(geometry, family, side) {
-  const candidate = geometry.exactMatch
-    ? geometry.exactCandidate
-    : (side === "lower" ? geometry.lowerCandidate : geometry.upperCandidate);
-  if (!candidate) return null;
-  return {
-    family,
-    side: geometry.exactMatch ? "exact" : side,
-    signedDistanceMm: geometry.exactMatch ? 0 : candidate.delta,
-    distanceMm: geometry.exactMatch ? 0 : Math.abs(candidate.delta),
-    row: candidate.row,
-    turn: candidate.turn,
-    pairTurn: candidate.turn,
-    angleUnwrappedRad: candidate.angleUnwrappedRad ?? (candidate.beta + candidate.turn * PI2),
-    absoluteViewIndex: candidate.absoluteViewIndex ?? null,
-  };
-}
-
-function crossFamilyPair(lower, upper) {
-  if (!lower || !upper) return null;
-  const direct = lower.family === "direct" ? lower : upper;
-  const complementary = lower.family === "complementary" ? lower : upper;
-  const gapMm = Math.max(0, upper.signedDistanceMm - lower.signedDistanceMm);
-  const directWeight = gapMm <= EPS ? 0.5 : complementary.distanceMm / gapMm;
-  const complementaryWeight = gapMm <= EPS ? 0.5 : direct.distanceMm / gapMm;
-  return {
-    lower,
-    upper,
-    gapMm,
-    directDistanceMm: direct.distanceMm,
-    complementaryDistanceMm: complementary.distanceMm,
-    directWeight,
-    complementaryWeight,
-    lowerWeight: gapMm <= EPS ? 0.5 : upper.distanceMm / gapMm,
-    upperWeight: gapMm <= EPS ? 0.5 : lower.distanceMm / gapMm,
-    valid: Number.isFinite(gapMm)
-      && lower.signedDistanceMm <= EPS
-      && upper.signedDistanceMm >= -EPS
-      && Math.abs(directWeight + complementaryWeight - 1) <= 1e-9,
-  };
-}
-
-const INTEGRATED_PAIR_TYPES = Object.freeze({
-  DD: 0,
-  DC: 1,
-  DB: 2,
-  CD: 3,
-  CC: 4,
-  CB: 5,
-  BD: 6,
-  BC: 7,
-  BB: 8,
-  D0: 9,
-  C0: 10,
-  B0: 11,
-});
-
-function familyAtBaseAngle(p, baseAngleUnwrappedRad, coneOn, family, baseAbsoluteViewIndex = null) {
-  const feed = tableFeedMm(p);
-  const slope = feed / PI2;
-  const rho = p.radius / p.sourceRadius;
-  const scale = coneOn
-    ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(baseAngleUnwrappedRad - p.phase)))
-    : 1;
-  const centers = new Float64Array(p.rows);
-  for (let row = 0; row < p.rows; row += 1) {
-    const rowOffset = (row + 0.5 - p.rows / 2) * p.rowWidth;
-    centers[row] = slope * baseAngleUnwrappedRad + scale * rowOffset;
-  }
-  return {
-    family,
-    baseAngleUnwrappedRad,
-    baseAbsoluteViewIndex,
-    centers,
-    scale,
-    minimumCenterMm: centers[0],
-    maximumCenterMm: centers[centers.length - 1],
-  };
-}
-
-function firstCenterAtOrAbove(centers, threshold) {
-  let low = 0;
-  let high = centers.length;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    if (centers[middle] < threshold - 1e-10) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-function endpointAtPairTurn(p, z0, familyGeometry, row, pairTurn, familyTurnOffset, side) {
-  const familyTurn = pairTurn + familyTurnOffset;
-  const center = familyGeometry.centers[row] + familyTurn * tableFeedMm(p);
-  const deltaRaw = center - z0;
-  const delta = Math.abs(deltaRaw) <= 1e-10 ? 0 : deltaRaw;
-  return {
-    family: familyGeometry.family,
-    side: delta === 0 ? "exact" : side,
-    signedDistanceMm: delta,
-    distanceMm: Math.abs(delta),
-    row,
-    turn: familyTurn,
-    pairTurn,
-    angleUnwrappedRad: familyGeometry.baseAngleUnwrappedRad + familyTurn * PI2,
-    absoluteViewIndex: familyGeometry.baseAbsoluteViewIndex == null
-      ? null
-      : familyGeometry.baseAbsoluteViewIndex + familyTurn * p.viewSamples,
-  };
-}
-
-function adjacentCrossPair(p, z0, lowerFamily, upperFamily, upperTurnOffset) {
-  const feed = tableFeedMm(p);
-  let best = null;
-  let validPairCount = 0;
-  let tieCount = 0;
-  for (let lowerRow = 0; lowerRow < p.rows; lowerRow += 1) {
-    // For a given lower-side row, only its closest turn at or below z0 can
-    // minimize the pair span.  This avoids any fixed turn-search radius while
-    // preserving the absolute helical ordering of the paired views.
-    const pairTurn = Math.floor((z0 - lowerFamily.centers[lowerRow]) / feed + 1e-10);
-    const lower = endpointAtPairTurn(p, z0, lowerFamily, lowerRow, pairTurn, 0, "lower");
-    if (lower.signedDistanceMm > 1e-9) continue;
-    const upperThresholdAtBase = z0 - (pairTurn + upperTurnOffset) * feed;
-    const upperRow = firstCenterAtOrAbove(upperFamily.centers, upperThresholdAtBase);
-    if (upperRow >= p.rows) continue;
-    const upper = endpointAtPairTurn(p, z0, upperFamily, upperRow, pairTurn, upperTurnOffset, "upper");
-    if (upper.signedDistanceMm < -1e-9) continue;
-    const pair = crossFamilyPair(lower, upper);
-    if (!pair?.valid) continue;
-    validPairCount += 1;
-    pair.pairTurn = pairTurn;
-    const better = !best
-      || pair.gapMm < best.gapMm - 1e-10
-      || (Math.abs(pair.gapMm - best.gapMm) <= 1e-10
-        && (pair.lower.distanceMm < best.lower.distanceMm - 1e-10
-          || (Math.abs(pair.lower.distanceMm - best.lower.distanceMm) <= 1e-10
-            && (pair.lower.row < best.lower.row
-              || (pair.lower.row === best.lower.row && pair.upper.row < best.upper.row)))));
-    if (better) {
-      best = pair;
-      tieCount = 1;
-    } else if (best && Math.abs(pair.gapMm - best.gapMm) <= 1e-10) {
-      tieCount += 1;
-    }
-  }
-  if (best) {
-    best.validPairCount = validPairCount;
-    best.tieCount = tieCount;
-  }
-  return best;
-}
-
-function minimumBracketWithinAbsoluteViewPair(
-  p,
-  z0,
-  firstFamily,
-  secondFamily,
-  secondTurnOffset,
-) {
-  // Acquisition order and longitudinal order are independent.  For example,
-  // D_n is acquired before C_n, but either family may provide the smaller-z
-  // endpoint.  Search both z orientations within the same absolute-view pair.
-  const orientations = [
-    {
-      label: `${firstFamily.family}-lower-${secondFamily.family}-upper`,
-      pair: adjacentCrossPair(p, z0, firstFamily, secondFamily, secondTurnOffset),
-    },
-    {
-      label: `${secondFamily.family}-lower-${firstFamily.family}-upper`,
-      pair: adjacentCrossPair(p, z0, secondFamily, firstFamily, -secondTurnOffset),
-    },
-  ];
-  let best = null;
-  let directionTieCount = 0;
-  for (const orientation of orientations) {
-    const pair = orientation.pair;
-    if (!pair?.valid) continue;
-    const better = !best
-      || pair.gapMm < best.gapMm - 1e-10
-      || (Math.abs(pair.gapMm - best.gapMm) <= 1e-10
-        && (pair.lower.distanceMm < best.lower.distanceMm - 1e-10
-          || (Math.abs(pair.lower.distanceMm - best.lower.distanceMm) <= 1e-10
-            && orientation.label < best.zOrientation)));
-    if (better) {
-      best = pair;
-      best.zOrientation = orientation.label;
-      directionTieCount = 1;
-    } else if (best && Math.abs(pair.gapMm - best.gapMm) <= 1e-10) {
-      directionTieCount += 1;
-    }
-  }
-  if (!best) return null;
-  const firstEndpoint = best.lower.family === firstFamily.family ? best.lower : best.upper;
-  const secondEndpoint = best.lower.family === secondFamily.family ? best.lower : best.upper;
-  best.pairTurn = firstEndpoint.turn;
-  best.directionTieCount = directionTieCount;
-  best.absoluteViewPair = `${firstFamily.family}-n-to-${secondFamily.family}-n-plus-${secondTurnOffset}`;
-  best.acquisitionFirstAbsoluteViewIndex = firstEndpoint.absoluteViewIndex;
-  best.acquisitionSecondAbsoluteViewIndex = secondEndpoint.absoluteViewIndex;
-  return best;
-}
-
-function pairedCrossFamilyGeometry(
-  p,
-  z0,
-  coneOn,
-  directAngleUnwrappedRad,
-  complementaryAngleUnwrappedRad,
-  directAbsoluteViewIndex,
-  complementaryAbsoluteViewIndex,
-) {
-  const direct = familyAtBaseAngle(
-    p,
-    directAngleUnwrappedRad,
-    coneOn,
-    "direct",
-    directAbsoluteViewIndex,
-  );
-  const complementary = familyAtBaseAngle(
-    p,
-    complementaryAngleUnwrappedRad,
-    coneOn,
-    "complementary",
-    complementaryAbsoluteViewIndex,
-  );
-  // Along the forward helical branch the absolute ordering is
-  // D_n -> C_n -> D_(n+1).  The two 180LI cross-family intervals are
-  // therefore D_n/C_n and C_n/D_(n+1), not two independently selected turns.
-  const pairOne = minimumBracketWithinAbsoluteViewPair(p, z0, direct, complementary, 0);
-  const pairTwo = minimumBracketWithinAbsoluteViewPair(p, z0, complementary, direct, 1);
-  const pairOneGap = pairOne?.valid ? pairOne.gapMm : Infinity;
-  const pairTwoGap = pairTwo?.valid ? pairTwo.gapMm : Infinity;
-  const selectedPairIndex = pairOneGap <= pairTwoGap ? 0 : 1;
-  const selected = Number.isFinite(Math.min(pairOneGap, pairTwoGap))
-    ? (selectedPairIndex === 0 ? pairOne : pairTwo)
-    : null;
-  const alternativeCandidate = selectedPairIndex === 0 ? pairTwo : pairOne;
-  const alternative = alternativeCandidate?.valid ? alternativeCandidate : null;
-  return {
-    pairOne,
-    pairTwo,
-    selectedPairIndex,
-    selected,
-    alternative,
-    valid: Boolean(pairOne?.valid || pairTwo?.valid),
-    helicalOrder: "direct-n-to-complementary-n-to-direct-n-plus-one",
-  };
-}
-
-function integratedPair(directGeometry, complementaryGeometry) {
-  const directExact = directGeometry.exactMatch
-    ? pairEndpoint(directGeometry, "direct", "lower")
-    : null;
-  const complementaryExact = complementaryGeometry.exactMatch
-    ? pairEndpoint(complementaryGeometry, "complementary", "lower")
-    : null;
-  if (directExact || complementaryExact) {
-    const endpoint = directExact ?? complementaryExact;
-    const type = directExact && complementaryExact
-      ? "B0"
-      : (directExact ? "D0" : "C0");
-    const directExactMultiplicity = directGeometry.exactCandidateCount ?? 0;
-    const complementaryExactMultiplicity = complementaryGeometry.exactCandidateCount ?? 0;
-    return {
-      lower: endpoint,
-      upper: endpoint,
-      gapMm: 0,
-      lowerWeight: 1,
-      upperWeight: 0,
-      typeCode: INTEGRATED_PAIR_TYPES[type],
-      type,
-      exactMatch: true,
-      directExactMultiplicity,
-      complementaryExactMultiplicity,
-      lowerTieCount: directExactMultiplicity + complementaryExactMultiplicity,
-      upperTieCount: directExactMultiplicity + complementaryExactMultiplicity,
-      lowerFamilyMask: (directExact ? 1 : 0) | (complementaryExact ? 2 : 0),
-      upperFamilyMask: (directExact ? 1 : 0) | (complementaryExact ? 2 : 0),
-      valid: true,
-    };
-  }
-  const directLower = pairEndpoint(directGeometry, "direct", "lower");
-  const complementaryLower = pairEndpoint(complementaryGeometry, "complementary", "lower");
-  const directUpper = pairEndpoint(directGeometry, "direct", "upper");
-  const complementaryUpper = pairEndpoint(complementaryGeometry, "complementary", "upper");
-  const lowerDistance = Math.min(
-    directLower?.distanceMm ?? Infinity,
-    complementaryLower?.distanceMm ?? Infinity,
-  );
-  const upperDistance = Math.min(
-    directUpper?.distanceMm ?? Infinity,
-    complementaryUpper?.distanceMm ?? Infinity,
-  );
-  const directLowerTied = directLower && Math.abs(directLower.distanceMm - lowerDistance) <= 1e-10;
-  const complementaryLowerTied = complementaryLower
-    && Math.abs(complementaryLower.distanceMm - lowerDistance) <= 1e-10;
-  const directUpperTied = directUpper && Math.abs(directUpper.distanceMm - upperDistance) <= 1e-10;
-  const complementaryUpperTied = complementaryUpper
-    && Math.abs(complementaryUpper.distanceMm - upperDistance) <= 1e-10;
-  // A deterministic representative is retained for plotting, while the masks
-  // and multiplicities below preserve coincident endpoints instead of silently
-  // collapsing them to a unique direct/complementary family.
-  const lower = directLowerTied ? directLower : complementaryLower;
-  const upper = directUpperTied ? directUpper : complementaryUpper;
-  if (!lower || !upper) return { valid: false };
-  const gapMm = Math.max(0, upper.signedDistanceMm - lower.signedDistanceMm);
-  const lowerFamilyMask = (directLowerTied ? 1 : 0) | (complementaryLowerTied ? 2 : 0);
-  const upperFamilyMask = (directUpperTied ? 1 : 0) | (complementaryUpperTied ? 2 : 0);
-  const familyLabel = mask => mask === 1 ? "D" : mask === 2 ? "C" : "B";
-  const type = `${familyLabel(lowerFamilyMask)}${familyLabel(upperFamilyMask)}`;
-  return {
-    lower,
-    upper,
-    gapMm,
-    lowerWeight: gapMm <= EPS ? 0.5 : upper.distanceMm / gapMm,
-    upperWeight: gapMm <= EPS ? 0.5 : lower.distanceMm / gapMm,
-    typeCode: INTEGRATED_PAIR_TYPES[type],
-    type,
-    exactMatch: false,
-    directExactMultiplicity: 0,
-    complementaryExactMultiplicity: 0,
-    lowerTieCount: (directLowerTied ? directGeometry.lowerCandidateCount : 0)
-      + (complementaryLowerTied ? complementaryGeometry.lowerCandidateCount : 0),
-    upperTieCount: (directUpperTied ? directGeometry.upperCandidateCount : 0)
-      + (complementaryUpperTied ? complementaryGeometry.upperCandidateCount : 0),
-    lowerFamilyMask,
-    upperFamilyMask,
-    valid: Number.isFinite(gapMm)
-      && lower.signedDistanceMm <= EPS
-      && upper.signedDistanceMm >= -EPS,
-  };
-}
-
-function integratedCandidateGeometry(p, directGeometry, complementaryGeometry) {
-  const union = [
-    ...directGeometry.candidates,
-    ...complementaryGeometry.candidates,
-  ];
-  const exact = union.filter(candidate => Math.abs(candidate.delta) <= 1e-10);
-  let selected = [];
-  let lowerDelta = NaN;
-  let upperDelta = NaN;
-  let bracketGapMm = NaN;
-  let exactMatch = false;
-
-  if (exact.length) {
-    exactMatch = true;
-    bracketGapMm = 0;
-    const sharedWeight = 1 / exact.length;
-    selected = exact.map(candidate => ({
-      ...candidate,
-      rawWeight: sharedWeight,
-      weight: sharedWeight,
-      longitudinalWeight: sharedWeight,
-    }));
-  } else {
-    for (const candidate of union) {
-      if (candidate.delta < -1e-10
-        && (!Number.isFinite(lowerDelta) || candidate.delta > lowerDelta)) {
-        lowerDelta = candidate.delta;
-      }
-      if (candidate.delta > 1e-10
-        && (!Number.isFinite(upperDelta) || candidate.delta < upperDelta)) {
-        upperDelta = candidate.delta;
-      }
-    }
-    if (Number.isFinite(lowerDelta) && Number.isFinite(upperDelta)) {
-      const lower = union.filter(candidate => Math.abs(candidate.delta - lowerDelta) <= 1e-10);
-      const upper = union.filter(candidate => Math.abs(candidate.delta - upperDelta) <= 1e-10);
-      bracketGapMm = upperDelta - lowerDelta;
-      const lowerEndpointWeight = upperDelta / bracketGapMm;
-      const upperEndpointWeight = -lowerDelta / bracketGapMm;
-      selected = [
-        ...lower.map(candidate => ({
-          ...candidate,
-          rawWeight: lowerEndpointWeight / lower.length,
-          weight: lowerEndpointWeight / lower.length,
-          longitudinalWeight: lowerEndpointWeight / lower.length,
-        })),
-        ...upper.map(candidate => ({
-          ...candidate,
-          rawWeight: upperEndpointWeight / upper.length,
-          weight: upperEndpointWeight / upper.length,
-          longitudinalWeight: upperEndpointWeight / upper.length,
-        })),
-      ];
-    }
-  }
-
-  const normalizedWeightSum = selected.reduce((sum, candidate) => sum + candidate.weight, 0);
-  const longitudinalMomentResidualMm = selected.reduce(
-    (sum, candidate) => sum + candidate.weight * candidate.delta,
-    0,
-  );
-  return {
-    candidates: selected,
-    bracketGapMm,
-    bracketGapRatio: bracketGapMm / p.sliceThicknessMm,
-    exactMatch,
-    normalizedWeightSum,
-    longitudinalMomentResidualMm,
-    valid: selected.length > 0
-      && Math.abs(normalizedWeightSum - 1) <= 1e-9
-      && Math.abs(longitudinalMomentResidualMm) <= 1e-8,
-  };
-}
-
-function physicalCandidateKey(candidate) {
-  // A physical acquired sample is identified by its absolute acquired-view
-  // index and detector row.  The same sample can appear in both angular
-  // interpolation branches; turn, center, and aperture are consistency
-  // properties of that identity rather than additional identity fields.
-  const absoluteViewIndex = Number.isFinite(candidate.absoluteViewIndex)
-    ? Math.round(candidate.absoluteViewIndex)
-    : "none";
-  const row = Number.isFinite(candidate.row) ? Math.round(candidate.row) : "none";
-  return `${absoluteViewIndex}|${row}`;
-}
-
-function assertConsistentPhysicalCandidate(previous, candidate, key) {
-  for (const field of ["center", "aperture"]) {
-    const before = Number(previous[field]);
-    const after = Number(candidate[field]);
-    if (Number.isFinite(before) && Number.isFinite(after)
-      && Math.abs(before - after) > PHYSICAL_CANDIDATE_IDENTITY_TOLERANCE_MM) {
-      throw new Error(`Inconsistent ${field} for physical candidate ${key}: ${before} versus ${after}`);
-    }
-  }
-  if (Number.isFinite(previous.turn) && Number.isFinite(candidate.turn)
-    && Math.round(previous.turn) !== Math.round(candidate.turn)) {
-    throw new Error(`Inconsistent turn for physical candidate ${key}: ${previous.turn} versus ${candidate.turn}`);
-  }
-}
-
-function summarizeFinalCandidateContributions(candidatesInput) {
-  const mergedCandidates = new Map();
-  let contributionCount = 0;
-  let totalWeight = 0;
-  for (const candidate of candidatesInput ?? []) {
-    const weight = Number(candidate?.weight);
-    if (!(weight > EPS) || !Number.isFinite(weight)) continue;
-    const key = physicalCandidateKey(candidate);
-    const previous = mergedCandidates.get(key);
-    if (previous) {
-      assertConsistentPhysicalCandidate(previous.candidate, candidate, key);
-      previous.weight += weight;
-    } else {
-      mergedCandidates.set(key, { candidate, weight });
-    }
-    contributionCount += 1;
-    totalWeight += weight;
-  }
-  let mergedSquaredWeightSum = 0;
-  for (const { weight } of mergedCandidates.values()) mergedSquaredWeightSum += weight * weight;
-  const effectiveCandidateCount = totalWeight > EPS && mergedSquaredWeightSum > EPS
-    ? totalWeight * totalWeight / mergedSquaredWeightSum
-    : 0;
-  return {
-    uniqueCandidateCount: mergedCandidates.size,
-    effectiveCandidateCount,
-    contributionCount,
-    duplicateContributionCount: contributionCount - mergedCandidates.size,
-    totalWeight,
-    mergedSquaredWeightSum,
-    uniquenessKey: "absoluteViewIndex,row; turn,centerMm,apertureMm-consistency-checked-at-1e-9-mm",
-  };
-}
-
-function fanBeam180LiGeometryAtView(p, z0, viewIndex, coneOn) {
-  const beta = PI2 * viewIndex / p.viewSamples;
-  const pairing = fanBeamComplementaryGeometryAtAngle(p, beta, coneOn);
-  const acquired = acquiredViewMapping(p, pairing.complementaryAngleUnwrappedRad);
-  const direct = geometryAtFullScanAngle(p, z0, beta, coneOn, {
-    dataKind: "direct-acquired",
-    family: "direct",
-    baseAbsoluteViewIndex: viewIndex,
-  });
-  const complementaryLower = geometryAtFullScanAngle(
-    p,
-    z0,
-    acquired.lowerAngleUnwrappedRad,
-    coneOn,
-    {
-      dataKind: "complementary-acquired-lower-angular-neighbor",
-      family: "complementary",
-      baseAbsoluteViewIndex: acquired.lowerAbsoluteViewIndex,
-    },
-  );
-  const complementaryUpper = acquired.upperAbsoluteViewIndex === acquired.lowerAbsoluteViewIndex
-    ? complementaryLower
-    : geometryAtFullScanAngle(
-      p,
-      z0,
-      acquired.upperAngleUnwrappedRad,
-      coneOn,
-      {
-        dataKind: "complementary-acquired-upper-angular-neighbor",
-        family: "complementary",
-        baseAbsoluteViewIndex: acquired.upperAbsoluteViewIndex,
-      },
-    );
-  const lowerBranch = integratedCandidateGeometry(p, direct, complementaryLower);
-  const upperBranch = integratedCandidateGeometry(p, direct, complementaryUpper);
-  const sameAngularView = acquired.lowerAbsoluteViewIndex === acquired.upperAbsoluteViewIndex;
-  const angularFraction = Math.max(0, Math.min(1, acquired.angularInterpolationFraction));
-  const lowerAngularWeight = sameAngularView ? 1 : 1 - angularFraction;
-  const upperAngularWeight = sameAngularView ? 0 : angularFraction;
-  const candidates = [];
-  for (const [branch, angularWeight, branchLabel] of [
-    [lowerBranch, lowerAngularWeight, "lower-angular-neighbor"],
-    [upperBranch, upperAngularWeight, "upper-angular-neighbor"],
-  ]) {
-    if (angularWeight <= EPS || !branch.valid) continue;
-    for (const candidate of branch.candidates) {
-      candidates.push({
-        ...candidate,
-        branch: branchLabel,
-        angularWeight,
-        longitudinalWeight: candidate.weight,
-        rawWeight: candidate.weight * angularWeight,
-        weight: candidate.weight * angularWeight,
-      });
-    }
-  }
-  const angularInterpolationWeightSum = lowerAngularWeight + upperAngularWeight;
-  const normalizedWeightSum = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
-  const longitudinalMomentResidualMm = candidates.reduce(
-    (sum, candidate) => sum + candidate.weight * candidate.delta,
-    0,
-  );
-  const bracketGapMm = lowerAngularWeight * lowerBranch.bracketGapMm
-    + upperAngularWeight * upperBranch.bracketGapMm;
-  return {
-    beta,
-    pairing,
-    acquired,
-    direct,
-    complementaryLower,
-    complementaryUpper,
-    lowerBranch,
-    upperBranch,
-    candidates,
-    angularFraction,
-    lowerAngularWeight,
-    upperAngularWeight,
-    angularInterpolationWeightSum,
-    normalizedWeightSum,
-    longitudinalMomentResidualMm,
-    bracketGapMm,
-    bracketGapRatio: bracketGapMm / p.sliceThicknessMm,
-    exactMatch: bracketGapMm <= 1e-10,
-    valid: lowerBranch.valid
-      && upperBranch.valid
-      && Math.abs(angularInterpolationWeightSum - 1) <= 1e-9
-      && Math.abs(normalizedWeightSum - 1) <= 1e-9
-      && Math.abs(longitudinalMomentResidualMm) <= 1e-8,
-  };
-}
-
-function createCrossPairSeries(count) {
-  return {
-    pairOneGapMm: new Float32Array(count),
-    pairTwoGapMm: new Float32Array(count),
-    pairOneLowerSignedDistanceMm: new Float32Array(count),
-    pairOneUpperSignedDistanceMm: new Float32Array(count),
-    pairTwoLowerSignedDistanceMm: new Float32Array(count),
-    pairTwoUpperSignedDistanceMm: new Float32Array(count),
-    pairOneLowerWeights: new Float32Array(count),
-    pairOneUpperWeights: new Float32Array(count),
-    pairTwoLowerWeights: new Float32Array(count),
-    pairTwoUpperWeights: new Float32Array(count),
-    pairOneTurns: new Int32Array(count),
-    pairTwoTurns: new Int32Array(count),
-    pairOneLowerRows: new Uint16Array(count),
-    pairOneUpperRows: new Uint16Array(count),
-    pairTwoLowerRows: new Uint16Array(count),
-    pairTwoUpperRows: new Uint16Array(count),
-    pairOneLowerAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    pairOneUpperAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    pairTwoLowerAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    pairTwoUpperAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    selectedPairIndices: new Uint8Array(count),
-    selectedGapMm: new Float32Array(count),
-    alternativeGapMm: new Float32Array(count),
-    selectedDirectDistanceMm: new Float32Array(count),
-    selectedComplementaryDistanceMm: new Float32Array(count),
-    selectedDirectWeights: new Float32Array(count),
-    selectedComplementaryWeights: new Float32Array(count),
-    selectedLowerWeights: new Float32Array(count),
-    selectedUpperWeights: new Float32Array(count),
-    valid: new Uint8Array(count),
-    switchFlags: new Uint8Array(count),
-  };
-}
-
-function writeCrossPairSeries(series, index, pairs) {
-  const one = pairs.pairOne;
-  const two = pairs.pairTwo;
-  const selected = pairs.selected;
-  const alternative = pairs.alternative;
-  series.pairOneGapMm[index] = one?.valid ? one.gapMm : NaN;
-  series.pairTwoGapMm[index] = two?.valid ? two.gapMm : NaN;
-  series.pairOneLowerSignedDistanceMm[index] = one?.valid ? one.lower.signedDistanceMm : NaN;
-  series.pairOneUpperSignedDistanceMm[index] = one?.valid ? one.upper.signedDistanceMm : NaN;
-  series.pairTwoLowerSignedDistanceMm[index] = two?.valid ? two.lower.signedDistanceMm : NaN;
-  series.pairTwoUpperSignedDistanceMm[index] = two?.valid ? two.upper.signedDistanceMm : NaN;
-  series.pairOneLowerWeights[index] = one?.valid ? one.lowerWeight : NaN;
-  series.pairOneUpperWeights[index] = one?.valid ? one.upperWeight : NaN;
-  series.pairTwoLowerWeights[index] = two?.valid ? two.lowerWeight : NaN;
-  series.pairTwoUpperWeights[index] = two?.valid ? two.upperWeight : NaN;
-  series.pairOneTurns[index] = one?.valid ? one.pairTurn : 0;
-  series.pairTwoTurns[index] = two?.valid ? two.pairTurn : 0;
-  series.pairOneLowerRows[index] = one?.valid ? one.lower.row : 0;
-  series.pairOneUpperRows[index] = one?.valid ? one.upper.row : 0;
-  series.pairTwoLowerRows[index] = two?.valid ? two.lower.row : 0;
-  series.pairTwoUpperRows[index] = two?.valid ? two.upper.row : 0;
-  series.pairOneLowerAbsoluteViewIndices[index] = one?.valid && one.lower.absoluteViewIndex != null
-    ? one.lower.absoluteViewIndex : -1;
-  series.pairOneUpperAbsoluteViewIndices[index] = one?.valid && one.upper.absoluteViewIndex != null
-    ? one.upper.absoluteViewIndex : -1;
-  series.pairTwoLowerAbsoluteViewIndices[index] = two?.valid && two.lower.absoluteViewIndex != null
-    ? two.lower.absoluteViewIndex : -1;
-  series.pairTwoUpperAbsoluteViewIndices[index] = two?.valid && two.upper.absoluteViewIndex != null
-    ? two.upper.absoluteViewIndex : -1;
-  series.selectedPairIndices[index] = pairs.selectedPairIndex;
-  series.selectedGapMm[index] = selected?.valid ? selected.gapMm : NaN;
-  series.alternativeGapMm[index] = alternative?.valid ? alternative.gapMm : NaN;
-  series.selectedDirectDistanceMm[index] = selected?.valid ? selected.directDistanceMm : NaN;
-  series.selectedComplementaryDistanceMm[index] = selected?.valid ? selected.complementaryDistanceMm : NaN;
-  series.selectedDirectWeights[index] = selected?.valid ? selected.directWeight : NaN;
-  series.selectedComplementaryWeights[index] = selected?.valid ? selected.complementaryWeight : NaN;
-  series.selectedLowerWeights[index] = selected?.valid ? selected.lowerWeight : NaN;
-  series.selectedUpperWeights[index] = selected?.valid ? selected.upperWeight : NaN;
-  series.valid[index] = pairs.valid ? 1 : 0;
-}
-
-function createIntegratedPairSeries(count) {
-  return {
-    gapMm: new Float32Array(count),
-    lowerSignedDistanceMm: new Float32Array(count),
-    upperSignedDistanceMm: new Float32Array(count),
-    lowerWeights: new Float32Array(count),
-    upperWeights: new Float32Array(count),
-    lowerRows: new Uint16Array(count),
-    upperRows: new Uint16Array(count),
-    lowerTurns: new Int32Array(count),
-    upperTurns: new Int32Array(count),
-    lowerAnglesUnwrappedDeg: new Float32Array(count),
-    upperAnglesUnwrappedDeg: new Float32Array(count),
-    lowerAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    upperAbsoluteViewIndices: new Int32Array(count).fill(-1),
-    lowerFamilyMasks: new Uint8Array(count),
-    upperFamilyMasks: new Uint8Array(count),
-    lowerTieCounts: new Uint16Array(count),
-    upperTieCounts: new Uint16Array(count),
-    directExactMultiplicities: new Uint16Array(count),
-    complementaryExactMultiplicities: new Uint16Array(count),
-    pairTypeCodes: new Uint8Array(count),
-    exactMatchFlags: new Uint8Array(count),
-    valid: new Uint8Array(count),
-    switchFlags: new Uint8Array(count),
-  };
-}
-
-function writeIntegratedPairSeries(series, index, pair) {
-  series.gapMm[index] = pair.valid ? pair.gapMm : NaN;
-  series.lowerSignedDistanceMm[index] = pair.valid ? pair.lower.signedDistanceMm : NaN;
-  series.upperSignedDistanceMm[index] = pair.valid ? pair.upper.signedDistanceMm : NaN;
-  series.lowerWeights[index] = pair.valid ? pair.lowerWeight : NaN;
-  series.upperWeights[index] = pair.valid ? pair.upperWeight : NaN;
-  series.lowerRows[index] = pair.valid ? pair.lower.row : 0;
-  series.upperRows[index] = pair.valid ? pair.upper.row : 0;
-  series.lowerTurns[index] = pair.valid ? pair.lower.turn : 0;
-  series.upperTurns[index] = pair.valid ? pair.upper.turn : 0;
-  series.lowerAnglesUnwrappedDeg[index] = pair.valid ? pair.lower.angleUnwrappedRad * RAD_TO_DEG : NaN;
-  series.upperAnglesUnwrappedDeg[index] = pair.valid ? pair.upper.angleUnwrappedRad * RAD_TO_DEG : NaN;
-  series.lowerAbsoluteViewIndices[index] = pair.valid && pair.lower.absoluteViewIndex != null
-    ? pair.lower.absoluteViewIndex : -1;
-  series.upperAbsoluteViewIndices[index] = pair.valid && pair.upper.absoluteViewIndex != null
-    ? pair.upper.absoluteViewIndex : -1;
-  series.lowerFamilyMasks[index] = pair.valid ? pair.lowerFamilyMask : 0;
-  series.upperFamilyMasks[index] = pair.valid ? pair.upperFamilyMask : 0;
-  series.lowerTieCounts[index] = pair.valid ? pair.lowerTieCount : 0;
-  series.upperTieCounts[index] = pair.valid ? pair.upperTieCount : 0;
-  series.directExactMultiplicities[index] = pair.valid ? pair.directExactMultiplicity : 0;
-  series.complementaryExactMultiplicities[index] = pair.valid ? pair.complementaryExactMultiplicity : 0;
-  series.pairTypeCodes[index] = pair.valid ? pair.typeCode : 0;
-  series.exactMatchFlags[index] = pair.valid && pair.exactMatch ? 1 : 0;
-  series.valid[index] = pair.valid ? 1 : 0;
-}
-
-function finalizeIntegratedPairSeries(series) {
-  let validCount = 0;
-  let switchCount = 0;
-  let firstValid = -1;
-  let lastValid = -1;
-  const typeCounts = new Uint32Array(Object.keys(INTEGRATED_PAIR_TYPES).length);
-  for (let index = 0; index < series.valid.length; index += 1) {
-    if (!series.valid[index]) continue;
-    validCount += 1;
-    typeCounts[series.pairTypeCodes[index]] += 1;
-    if (firstValid < 0) firstValid = index;
-    lastValid = index;
-    let previous = index - 1;
-    while (previous >= 0 && !series.valid[previous]) previous -= 1;
-    if (previous >= 0 && series.pairTypeCodes[index] !== series.pairTypeCodes[previous]) {
-      series.switchFlags[index] = 1;
-      switchCount += 1;
-    }
-  }
-  if (firstValid >= 0 && lastValid > firstValid
-    && series.pairTypeCodes[firstValid] !== series.pairTypeCodes[lastValid]) {
-    series.switchFlags[firstValid] = 1;
-    switchCount += 1;
-  }
-  series.validCount = validCount;
-  series.switchCount = switchCount;
-  series.typeLabels = ["DD", "DC", "DB", "CD", "CC", "CB", "BD", "BC", "BB", "D0", "C0", "B0"];
-  series.typeCounts = typeCounts;
-  series.selectionRule = "general-two-point-li-reference-nearest-smaller-z-and-larger-z-candidates-from-the-union-of-direct-and-complementary-families";
-  return series;
-}
-
-function finalizeCrossPairSeries(series) {
-  let switchCount = 0;
-  let validCount = 0;
-  let firstValid = -1;
-  let lastValid = -1;
-  for (let index = 0; index < series.valid.length; index += 1) {
-    if (!series.valid[index]) continue;
-    validCount += 1;
-    if (firstValid < 0) firstValid = index;
-    lastValid = index;
-    let previous = index - 1;
-    while (previous >= 0 && !series.valid[previous]) previous -= 1;
-    if (previous >= 0 && series.selectedPairIndices[index] !== series.selectedPairIndices[previous]) {
-      series.switchFlags[index] = 1;
-      switchCount += 1;
-    }
-  }
-  if (firstValid >= 0 && lastValid > firstValid
-    && series.selectedPairIndices[firstValid] !== series.selectedPairIndices[lastValid]) {
-    series.switchFlags[firstValid] = 1;
-    switchCount += 1;
-  }
-  series.validCount = validCount;
-  series.switchCount = switchCount;
-  const summarize = values => {
-    let minimum = Infinity;
-    let maximum = -Infinity;
-    let sum = 0;
-    let count = 0;
-    for (let index = 0; index < values.length; index += 1) {
-      if (!series.valid[index] || !Number.isFinite(values[index])) continue;
-      minimum = Math.min(minimum, values[index]);
-      maximum = Math.max(maximum, values[index]);
-      sum += values[index];
-      count += 1;
-    }
-    return {
-      min: count ? minimum : NaN,
-      max: count ? maximum : NaN,
-      mean: count ? sum / count : NaN,
-    };
-  };
-  series.pairOneGapSummaryMm = summarize(series.pairOneGapMm);
-  series.pairTwoGapSummaryMm = summarize(series.pairTwoGapMm);
-  series.selectedGapSummaryMm = summarize(series.selectedGapMm);
-  series.selectionRule = "minimum-longitudinal-bracketing-span-between-two-absolute-view-pairs-with-both-z-orientations-searched-ties-to-pair-one-geometry-reference-only";
-  series.pairOneDefinition = "minimum-bracketing-span-within-direct-n-and-complementary-n-both-z-orientations-searched";
-  series.pairTwoDefinition = "minimum-bracketing-span-within-complementary-n-and-direct-n-plus-one-both-z-orientations-searched";
-  series.helicalOrder = "direct-n-to-complementary-n-to-direct-n-plus-one";
-  return series;
-}
-
-function computeComplementaryCandidateSeries(p, z0, coneOn) {
-  const count = p.viewSamples;
-  const baseAnglesDeg = new Float32Array(count);
-  const idealComplementAnglesDeg = new Float32Array(count);
-  const idealComplementAnglesUnwrappedDeg = new Float32Array(count);
-  const forwardSeparationsDeg = new Float32Array(count);
-  const fanAnglesDeg = new Float32Array(count);
-  const nearestComplementViewIndices = new Int32Array(count);
-  const lowerComplementViewIndices = new Int32Array(count);
-  const upperComplementViewIndices = new Int32Array(count);
-  const nearestComplementAbsoluteViewIndices = new Int32Array(count);
-  const lowerComplementAbsoluteViewIndices = new Int32Array(count);
-  const upperComplementAbsoluteViewIndices = new Int32Array(count);
-  const nearestComplementAnglesDeg = new Float32Array(count);
-  const nearestForwardSeparationsDeg = new Float32Array(count);
-  const angularResidualsDeg = new Float32Array(count);
-  const lowerAngularResidualsDeg = new Float32Array(count);
-  const upperAngularResidualsDeg = new Float32Array(count);
-  const angularInterpolationFractions = new Float32Array(count);
-  const directNearestDistancesMm = new Float32Array(count);
-  const complementaryNearestDistancesMm = new Float32Array(count);
-  const directLowerDistancesMm = new Float32Array(count);
-  const directUpperDistancesMm = new Float32Array(count);
-  const complementaryLowerDistancesMm = new Float32Array(count);
-  const complementaryUpperDistancesMm = new Float32Array(count);
-  const directCandidateCounts = new Uint16Array(count);
-  const complementaryCandidateCounts = new Uint16Array(count);
-  const nearestViewPairs = createCrossPairSeries(count);
-  const idealAnglePairs = createCrossPairSeries(count);
-  const lowerAngularNeighborPairs = createCrossPairSeries(count);
-  const upperAngularNeighborPairs = createCrossPairSeries(count);
-  const nearestIntegratedPairs = createIntegratedPairSeries(count);
-  const idealIntegratedPairs = createIntegratedPairSeries(count);
-  const lowerAngularNeighborIntegratedPairs = createIntegratedPairSeries(count);
-  const upperAngularNeighborIntegratedPairs = createIntegratedPairSeries(count);
-  const stepRad = PI2 / count;
-  let maximumLineCircleResidualMm = 0;
-  let maximumAngularResidualDeg = 0;
-  let directExactViewCount = 0;
-  let complementaryExactViewCount = 0;
-
-  for (let viewIndex = 0; viewIndex < count; viewIndex += 1) {
-    const beta = viewIndex * stepRad;
-    const pairing = fanBeamComplementaryGeometryAtAngle(p, beta, coneOn);
-    const acquired = acquiredViewMapping(p, pairing.complementaryAngleUnwrappedRad);
-    const direct = geometryAtFullScanAngle(p, z0, beta, coneOn, {
-      family: "direct",
-      baseAbsoluteViewIndex: viewIndex,
-    });
-    const complementary = geometryAtFullScanAngle(p, z0, acquired.nearestAngleUnwrappedRad, coneOn, {
-      family: "complementary",
-      baseAbsoluteViewIndex: acquired.nearestAbsoluteViewIndex,
-    });
-    const idealComplementary = geometryAtFullScanAngle(p, z0, pairing.complementaryAngleUnwrappedRad, coneOn, {
-      family: "complementary",
-      baseAbsoluteViewIndex: null,
-    });
-    const lowerAngularComplementary = geometryAtFullScanAngle(p, z0, acquired.lowerAngleUnwrappedRad, coneOn, {
-      family: "complementary",
-      baseAbsoluteViewIndex: acquired.lowerAbsoluteViewIndex,
-    });
-    const upperAngularComplementary = geometryAtFullScanAngle(p, z0, acquired.upperAngleUnwrappedRad, coneOn, {
-      family: "complementary",
-      baseAbsoluteViewIndex: acquired.upperAbsoluteViewIndex,
-    });
-    const nearestForwardSeparationRad = acquired.nearestAngleUnwrappedRad - beta;
-
-    baseAnglesDeg[viewIndex] = beta * RAD_TO_DEG;
-    idealComplementAnglesDeg[viewIndex] = pairing.complementaryAngleRad * RAD_TO_DEG;
-    idealComplementAnglesUnwrappedDeg[viewIndex] = pairing.complementaryAngleUnwrappedRad * RAD_TO_DEG;
-    forwardSeparationsDeg[viewIndex] = pairing.forwardSeparationRad * RAD_TO_DEG;
-    fanAnglesDeg[viewIndex] = pairing.fanAngleRad * RAD_TO_DEG;
-    nearestComplementViewIndices[viewIndex] = acquired.nearestViewIndex;
-    lowerComplementViewIndices[viewIndex] = acquired.lowerViewIndex;
-    upperComplementViewIndices[viewIndex] = acquired.upperViewIndex;
-    nearestComplementAbsoluteViewIndices[viewIndex] = acquired.nearestAbsoluteViewIndex;
-    lowerComplementAbsoluteViewIndices[viewIndex] = acquired.lowerAbsoluteViewIndex;
-    upperComplementAbsoluteViewIndices[viewIndex] = acquired.upperAbsoluteViewIndex;
-    nearestComplementAnglesDeg[viewIndex] = acquired.nearestAngleRad * RAD_TO_DEG;
-    nearestForwardSeparationsDeg[viewIndex] = nearestForwardSeparationRad * RAD_TO_DEG;
-    angularResidualsDeg[viewIndex] = acquired.angularResidualRad * RAD_TO_DEG;
-    lowerAngularResidualsDeg[viewIndex] = acquired.lowerAngularResidualRad * RAD_TO_DEG;
-    upperAngularResidualsDeg[viewIndex] = acquired.upperAngularResidualRad * RAD_TO_DEG;
-    angularInterpolationFractions[viewIndex] = acquired.angularInterpolationFraction;
-    directNearestDistancesMm[viewIndex] = nearestCandidateDistanceMm(direct);
-    complementaryNearestDistancesMm[viewIndex] = nearestCandidateDistanceMm(complementary);
-    directLowerDistancesMm[viewIndex] = direct.lowerDistanceMm;
-    directUpperDistancesMm[viewIndex] = direct.upperDistanceMm;
-    complementaryLowerDistancesMm[viewIndex] = complementary.lowerDistanceMm;
-    complementaryUpperDistancesMm[viewIndex] = complementary.upperDistanceMm;
-    directCandidateCounts[viewIndex] = direct.candidates.length;
-    complementaryCandidateCounts[viewIndex] = complementary.candidates.length;
-    writeCrossPairSeries(nearestViewPairs, viewIndex, pairedCrossFamilyGeometry(
-      p,
-      z0,
-      coneOn,
-      beta,
-      acquired.nearestAngleUnwrappedRad,
-      viewIndex,
-      acquired.nearestAbsoluteViewIndex,
-    ));
-    writeCrossPairSeries(idealAnglePairs, viewIndex, pairedCrossFamilyGeometry(
-      p,
-      z0,
-      coneOn,
-      beta,
-      pairing.complementaryAngleUnwrappedRad,
-      viewIndex,
-      null,
-    ));
-    writeCrossPairSeries(lowerAngularNeighborPairs, viewIndex, pairedCrossFamilyGeometry(
-      p,
-      z0,
-      coneOn,
-      beta,
-      acquired.lowerAngleUnwrappedRad,
-      viewIndex,
-      acquired.lowerAbsoluteViewIndex,
-    ));
-    writeCrossPairSeries(upperAngularNeighborPairs, viewIndex, pairedCrossFamilyGeometry(
-      p,
-      z0,
-      coneOn,
-      beta,
-      acquired.upperAngleUnwrappedRad,
-      viewIndex,
-      acquired.upperAbsoluteViewIndex,
-    ));
-    writeIntegratedPairSeries(nearestIntegratedPairs, viewIndex, integratedPair(direct, complementary));
-    writeIntegratedPairSeries(idealIntegratedPairs, viewIndex, integratedPair(direct, idealComplementary));
-    writeIntegratedPairSeries(lowerAngularNeighborIntegratedPairs, viewIndex, integratedPair(direct, lowerAngularComplementary));
-    writeIntegratedPairSeries(upperAngularNeighborIntegratedPairs, viewIndex, integratedPair(direct, upperAngularComplementary));
-    if (direct.exactMatch) directExactViewCount += 1;
-    if (complementary.exactMatch) complementaryExactViewCount += 1;
-    maximumLineCircleResidualMm = Math.max(maximumLineCircleResidualMm, pairing.lineCircleResidualMm);
-    maximumAngularResidualDeg = Math.max(maximumAngularResidualDeg, Math.abs(angularResidualsDeg[viewIndex]));
-  }
-
-  const finiteExtrema = array => {
-    let minimum = Infinity;
-    let maximum = -Infinity;
-    for (const value of array) {
-      if (!Number.isFinite(value)) continue;
-      minimum = Math.min(minimum, value);
-      maximum = Math.max(maximum, value);
-    }
-    return {
-      min: Number.isFinite(minimum) ? minimum : NaN,
-      max: Number.isFinite(maximum) ? maximum : NaN,
-    };
-  };
-
-  finalizeCrossPairSeries(nearestViewPairs);
-  finalizeCrossPairSeries(idealAnglePairs);
-  finalizeCrossPairSeries(lowerAngularNeighborPairs);
-  finalizeCrossPairSeries(upperAngularNeighborPairs);
-  finalizeIntegratedPairSeries(nearestIntegratedPairs);
-  finalizeIntegratedPairSeries(idealIntegratedPairs);
-  finalizeIntegratedPairSeries(lowerAngularNeighborIntegratedPairs);
-  finalizeIntegratedPairSeries(upperAngularNeighborIntegratedPairs);
-
-  return {
-    model: coneOn ? "fan-beam-180li-complementary-ray" : "parallel-beam-180-degree-reference",
-    viewCount: count,
-    viewStepDeg: 360 / count,
-    baseAnglesDeg,
-    idealComplementAnglesDeg,
-    idealComplementAnglesUnwrappedDeg,
-    forwardSeparationsDeg,
-    fanAnglesDeg,
-    nearestComplementViewIndices,
-    lowerComplementViewIndices,
-    upperComplementViewIndices,
-    nearestComplementAbsoluteViewIndices,
-    lowerComplementAbsoluteViewIndices,
-    upperComplementAbsoluteViewIndices,
-    nearestComplementAnglesDeg,
-    nearestForwardSeparationsDeg,
-    angularResidualsDeg,
-    lowerAngularResidualsDeg,
-    upperAngularResidualsDeg,
-    angularInterpolationFractions,
-    directNearestDistancesMm,
-    complementaryNearestDistancesMm,
-    directLowerDistancesMm,
-    directUpperDistancesMm,
-    complementaryLowerDistancesMm,
-    complementaryUpperDistancesMm,
-    directCandidateCounts,
-    complementaryCandidateCounts,
-    directSelectedEndpointCounts: directCandidateCounts,
-    complementarySelectedEndpointCounts: complementaryCandidateCounts,
-    availableDetectorRowsPerAbsoluteView: p.rows,
-    rowCandidatesPerDirectComplementPair: 2 * p.rows,
-    rowCandidatesAcrossDirectAndAngularBracketViews: 3 * p.rows,
-    candidateCountMeaning: "selected-nearest-bracketing-endpoint-multiplicity-not-the-number-of-available-detector-row-samples",
-    nearestViewPairs,
-    idealAnglePairs,
-    lowerAngularNeighborPairs,
-    upperAngularNeighborPairs,
-    nearestIntegratedPairs,
-    idealIntegratedPairs,
-    lowerAngularNeighborIntegratedPairs,
-    upperAngularNeighborIntegratedPairs,
-    forwardSeparationRangeDeg: finiteExtrema(forwardSeparationsDeg),
-    fanAngleRangeDeg: finiteExtrema(fanAnglesDeg),
-    directNearestDistanceRangeMm: finiteExtrema(directNearestDistancesMm),
-    complementaryNearestDistanceRangeMm: finiteExtrema(complementaryNearestDistancesMm),
-    maximumAngularResidualDeg,
-    maximumLineCircleResidualMm,
-    directExactViewCount,
-    complementaryExactViewCount,
-    actualViewRule: "nearest-acquired-view-to-ideal-complementary-angle-for-geometry-display",
-    angularBracketRule: "both-neighboring-acquired-view-indices-and-the-ideal-angle-position-fraction-are-retained-without-commercial-reconstruction-weights",
-    candidateRule: "absolute-view-coupled-cross-pairs-follow-direct-n-to-complementary-n-to-direct-n-plus-one-and-bracket-the-target-plane",
-    helicalPairOrder: "direct-n-to-complementary-n-to-direct-n-plus-one",
-    pairSelectionRule: nearestViewPairs.selectionRule,
-    integratedPairSelectionRule: nearestIntegratedPairs.selectionRule,
-  };
-}
-
-function computeSsp(rawParams, options = {}) {
-  const p = validateParams(rawParams);
-  const requestedState = Number(options.state ?? p.state);
-  const state = ((requestedState % 1) + 1) % 1;
-  const coneOn = Boolean(options.coneOn);
-  const collectGeometrySeries = Boolean(options.collectGeometrySeries);
-  const collectComplementaryCandidates = collectGeometrySeries
-    && options.collectComplementaryCandidates !== false;
-  const reconstructionPath = options.reconstructionPath ?? p.reconstructionPath;
-  if (!Object.values(RECONSTRUCTION_PATHS).includes(reconstructionPath)) {
-    throw new Error(`Unsupported acquisition-geometry model: ${reconstructionPath}`);
-  }
-  const feed = tableFeedMm(p);
-  const z0 = p.zReference + feed * state;
-  const rho = p.radius / p.sourceRadius;
-  const geometries = new Array(p.viewSamples);
-  const gapRatios = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const viewContributionSums = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const angularInterpolationWeightSums = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const longitudinalMomentResiduals = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const branchGapMmLower = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const branchGapMmUpper = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const viewKernelRmsMm = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const viewKernelRmsRatio = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const viewCandidateCounts = collectGeometrySeries ? new Uint16Array(p.viewSamples) : null;
-  const viewEffectiveCandidateCounts = collectGeometrySeries ? new Float32Array(p.viewSamples) : null;
-  const viewCandidateContributionCounts = collectGeometrySeries ? new Uint16Array(p.viewSamples) : null;
-  let maximumCandidateExtent = 0;
-  let gapSum = 0;
-  let gapMin = Infinity;
-  let gapMax = 0;
-  let exactMatchCount = 0;
-  let validCount = 0;
-  let maximumViewContributionError = 0;
-  let maximumAngularInterpolationWeightError = 0;
-  let maximumLongitudinalMomentResidualMm = 0;
-  let kernelSecondMomentSumMm2 = 0;
-  for (let viewIndex = 0; viewIndex < p.viewSamples; viewIndex += 1) {
-    const beta = PI2 * viewIndex / p.viewSamples;
-    const geometry = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? fanBeam180LiGeometryAtView(p, z0, viewIndex, coneOn)
-      : geometryAtFullScanAngle(p, z0, beta, coneOn, {
-        dataKind: "actual-full-scan",
-        family: "direct",
-        baseAbsoluteViewIndex: viewIndex,
-      });
-    geometries[viewIndex] = geometry;
-    if (!geometry.valid) {
-      if (gapRatios) gapRatios[viewIndex] = NaN;
-      if (viewContributionSums) viewContributionSums[viewIndex] = geometry.normalizedWeightSum ?? NaN;
-      if (angularInterpolationWeightSums) angularInterpolationWeightSums[viewIndex] = NaN;
-      if (longitudinalMomentResiduals) longitudinalMomentResiduals[viewIndex] = NaN;
-      if (branchGapMmLower) branchGapMmLower[viewIndex] = NaN;
-      if (branchGapMmUpper) branchGapMmUpper[viewIndex] = NaN;
-      if (viewKernelRmsMm) viewKernelRmsMm[viewIndex] = NaN;
-      if (viewKernelRmsRatio) viewKernelRmsRatio[viewIndex] = NaN;
-      if (viewEffectiveCandidateCounts) viewEffectiveCandidateCounts[viewIndex] = NaN;
-      continue;
-    }
-    validCount += 1;
-    gapSum += geometry.bracketGapMm;
-    gapMin = Math.min(gapMin, geometry.bracketGapMm);
-    gapMax = Math.max(gapMax, geometry.bracketGapMm);
-    if (geometry.exactMatch) exactMatchCount += 1;
-    if (gapRatios) gapRatios[viewIndex] = geometry.bracketGapRatio;
-    const contributionSum = geometry.normalizedWeightSum;
-    const angularWeightSum = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? geometry.angularInterpolationWeightSum
-      : 1;
-    const momentResidual = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? geometry.longitudinalMomentResidualMm
-      : geometry.candidates.reduce((sum, candidate) => sum + candidate.weight * candidate.delta, 0);
-    maximumViewContributionError = Math.max(maximumViewContributionError, Math.abs(1 - contributionSum));
-    maximumAngularInterpolationWeightError = Math.max(
-      maximumAngularInterpolationWeightError,
-      Math.abs(1 - angularWeightSum),
-    );
-    maximumLongitudinalMomentResidualMm = Math.max(
-      maximumLongitudinalMomentResidualMm,
-      Math.abs(momentResidual),
-    );
-    const normalizedContributionSum = Math.max(contributionSum, EPS);
-    const viewMeanMm = geometry.candidates.reduce(
-      (sum, candidate) => sum + candidate.weight * candidate.delta,
-      0,
-    ) / normalizedContributionSum;
-    const viewSecondMomentMm2 = geometry.candidates.reduce(
-      (sum, candidate) => sum + candidate.weight * (
-        (candidate.delta - viewMeanMm) ** 2 + candidate.aperture ** 2 / 12
-      ),
-      0,
-    ) / normalizedContributionSum;
-    const viewRmsMm = Math.sqrt(Math.max(0, viewSecondMomentMm2));
-    const candidateSummary = summarizeFinalCandidateContributions(geometry.candidates);
-    kernelSecondMomentSumMm2 += viewSecondMomentMm2;
-    if (viewContributionSums) viewContributionSums[viewIndex] = contributionSum;
-    if (angularInterpolationWeightSums) angularInterpolationWeightSums[viewIndex] = angularWeightSum;
-    if (longitudinalMomentResiduals) longitudinalMomentResiduals[viewIndex] = momentResidual;
-    if (viewKernelRmsMm) viewKernelRmsMm[viewIndex] = viewRmsMm;
-    if (viewKernelRmsRatio) viewKernelRmsRatio[viewIndex] = viewRmsMm / p.sliceThicknessMm;
-    if (viewCandidateCounts) {
-      viewCandidateCounts[viewIndex] = candidateSummary.uniqueCandidateCount;
-    }
-    if (viewEffectiveCandidateCounts) {
-      viewEffectiveCandidateCounts[viewIndex] = candidateSummary.effectiveCandidateCount;
-    }
-    if (viewCandidateContributionCounts) {
-      viewCandidateContributionCounts[viewIndex] = candidateSummary.contributionCount;
-    }
-    if (branchGapMmLower) {
-      branchGapMmLower[viewIndex] = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-        ? geometry.lowerBranch.bracketGapMm
-        : geometry.bracketGapMm;
-    }
-    if (branchGapMmUpper) {
-      branchGapMmUpper[viewIndex] = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-        ? geometry.upperBranch.bracketGapMm
-        : geometry.bracketGapMm;
-    }
-    for (const candidate of geometry.candidates) {
-      maximumCandidateExtent = Math.max(maximumCandidateExtent, Math.abs(candidate.delta) + candidate.aperture / 2);
-    }
-  }
-  // Use one state-, cone-, and configured-thickness-independent longitudinal
-  // domain.  This prevents changes of the numerical search window from being
-  // mistaken for geometry-driven SSPz variation.  The grid count is treated
-  // as a minimum and is expanded when many narrow rows require finer sampling.
-  const maximumAperture = p.rowWidth * (1 + rho);
-  const maxDz = Math.max(
-    p.rowWidth * 2,
-    feed + maximumAperture / 2 + MAX_CONFIGURED_SLICE_THICKNESS_MM / 2 + p.rowWidth,
-    maximumCandidateExtent + MAX_CONFIGURED_SLICE_THICKNESS_MM / 2 + p.rowWidth,
-  );
-  // Resolve both a detector-row aperture and the configured-thickness window.
-  // Exact fractional deposition below remains area conserving even for a
-  // sub-cell aperture; this adaptive target limits shape error while the hard
-  // cap keeps extreme pitch/row-width combinations bounded.
-  const targetDz = Math.max(
-    Math.min(p.rowWidth / 16, p.sliceThicknessMm / 64),
-    0.00025,
-  );
-  const resolutionDrivenCount = Math.ceil(2 * maxDz / targetDz);
-  const requestedInternalZCells = Math.max(p.zSamples, resolutionDrivenCount);
-  const zCount = oddCellCountAtLeast(requestedInternalZCells);
-  const domainLeft = -maxDz;
-  const domainRight = maxDz;
-  const dz = (domainRight - domainLeft) / zCount;
-  const z = uniformCellCenters(domainLeft, domainRight, zCount);
-  const fullCellDiff = new Float64Array(zCount + 1);
-  const edgeCellContributions = new Float64Array(zCount);
-  let depositedArea = 0;
-  for (let viewIndex = 0; viewIndex < p.viewSamples; viewIndex += 1) {
-    const geometry = geometries[viewIndex];
-    if (!geometry.valid) continue;
-    for (const candidate of geometry.candidates) {
-      if (candidate.weight <= EPS) continue;
-      const half = candidate.aperture / 2;
-      const amplitude = candidate.weight / Math.max(candidate.aperture, EPS) / p.viewSamples;
-      depositedArea += depositRectangleIntoUniformCellAverages(
-        fullCellDiff,
-        edgeCellContributions,
-        candidate.delta - half,
-        candidate.delta + half,
-        amplitude,
-        domainLeft,
-        domainRight,
-        dz,
-      );
-    }
-  }
-  const profile = new Float64Array(zCount);
-  let running = 0;
-  let peak = 0;
-  let preNormalizationArea = 0;
-  for (let i = 0; i < zCount; i += 1) {
-    running += fullCellDiff[i];
-    profile[i] = Math.max(0, running + edgeCellContributions[i]);
-    peak = Math.max(peak, profile[i]);
-    preNormalizationArea += profile[i] * dz;
-  }
-  const preNormalizationPeak = peak;
-  if (peak > 0) for (let i = 0; i < profile.length; i += 1) profile[i] /= peak;
-  const stats = profileStats(profile, z, dz);
-  const complementaryCandidates = collectComplementaryCandidates
-    && reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-    ? computeComplementaryCandidateSeries(p, z0, coneOn)
-    : null;
-  return {
-    state,
-    z0,
-    coneOn,
-    reconstructionPath,
-    candidateSelectionRule: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? "fan-beam-180li-angular-neighbor-interpolation-after-direct-complementary-union-z-bracketing"
-      : "direct-full-scan-nearest-bracketing-linear",
-    candidateWeightHalfSupportMm: null,
-    kernelWidth: null,
-    z: Array.from(z),
-    profile: Array.from(profile),
-    coverage: validCount / p.viewSamples,
-    angularRangeDeg: 360,
-    viewSamples: p.viewSamples,
-    requestedZSamples: p.zSamples,
-    actualZSamples: zCount,
-    requestedInternalZCells,
-    internalZCountCapped: requestedInternalZCells > MAX_INTERNAL_Z_CELLS,
-    internalZCellCap: MAX_INTERNAL_Z_CELLS,
-    targetLongitudinalCellWidthMm: targetDz,
-    longitudinalCellWidthMm: dz,
-    longitudinalGridInterpretation: "uniform-cell-average-values-reported-at-cell-centers",
-    longitudinalDomainHalfWidthMm: maxDz,
-    dataKind: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? "fan-beam-180li-acquisition-geometry-explanatory-model"
-      : "actual-full-scan",
-    bracketGapMeanMm: validCount ? gapSum / validCount : NaN,
-    bracketGapMinMm: validCount ? gapMin : NaN,
-    bracketGapMaxMm: validCount ? gapMax : NaN,
-    bracketGapRatioMean: validCount ? gapSum / validCount / p.sliceThicknessMm : NaN,
-    bracketGapRatioMax: validCount ? gapMax / p.sliceThicknessMm : NaN,
-    exactCandidateFraction: validCount ? exactMatchCount / validCount : NaN,
-    gapRatios,
-    viewContributionSums,
-    angularInterpolationWeightSums,
-    longitudinalMomentResiduals,
-    branchGapMmLower,
-    branchGapMmUpper,
-    viewKernelRmsMm,
-    viewKernelRmsRatio,
-    viewCandidateCounts,
-    viewEffectiveCandidateCounts,
-    viewCandidateContributionCounts,
-    candidateCountIndicator: "unique-physical-final-nonzero-candidate-count-after-angular-branch-duplicate-merging",
-    candidateCountWeightThreshold: EPS,
-    candidateUniquenessKey: "absoluteViewIndex,row; turn,centerMm,apertureMm-consistency-checked-at-1e-9-mm",
-    effectiveCandidateCountIndicator: "inverse-simpson-effective-count-from-merged-normalized-final-candidate-weights",
-    candidateContributionCountIndicator: "pre-merge-final-nonzero-angular-branch-contribution-count",
-    complementaryCandidates,
-    maximumViewContributionError,
-    maximumAngularInterpolationWeightError,
-    maximumLongitudinalMomentResidualMm,
-    meanKernelSecondMomentMm2: validCount ? kernelSecondMomentSumMm2 / validCount : NaN,
-    analyticBaseSigmaMm: validCount ? Math.sqrt(kernelSecondMomentSumMm2 / validCount) : NaN,
-    depositedArea,
-    depositionAreaResidual: preNormalizationArea - depositedArea,
-    domainClippingAreaResidual: depositedArea - validCount / p.viewSamples,
-    preNormalizationArea,
-    preNormalizationPeak,
-    ...stats,
-  };
-}
-
-function cumulativeCellIntegral(profile, dz) {
-  const cumulative = new Float64Array(profile.length + 1);
-  for (let i = 0; i < profile.length; i += 1) {
-    cumulative[i + 1] = cumulative[i] + profile[i] * dz;
-  }
-  return cumulative;
-}
-
-function cellIntegralAt(profile, z, cumulative, value) {
-  const dz = z.length > 1 ? z[1] - z[0] : 1;
-  const leftEdge = z[0] - dz / 2;
-  const rightEdge = z[z.length - 1] + dz / 2;
-  if (value <= leftEdge) return 0;
-  if (value >= rightEdge) return cumulative[profile.length];
-  const scaled = (value - leftEdge) / dz;
-  const index = Math.max(0, Math.min(profile.length - 1, Math.floor(scaled)));
-  const cellLeft = leftEdge + index * dz;
-  return cumulative[index] + profile[index] * (value - cellLeft);
-}
-
-function rectangularAverageProfile(profileInput, zInput, width) {
-  const profile = Float64Array.from(profileInput);
-  const z = Float64Array.from(zInput);
-  if (!(width > EPS)) return Array.from(profile);
-  const dz = z.length > 1 ? z[1] - z[0] : width;
-  const cumulative = cumulativeCellIntegral(profile, dz);
-  const out = new Float64Array(profile.length);
-  const half = width / 2;
-  let peak = 0;
-  for (let i = 0; i < profile.length; i += 1) {
-    const area = cellIntegralAt(profile, z, cumulative, z[i] + half)
-      - cellIntegralAt(profile, z, cumulative, z[i] - half);
-    out[i] = Math.max(0, area / width);
-    peak = Math.max(peak, out[i]);
-  }
-  if (peak > 0) for (let i = 0; i < out.length; i += 1) out[i] /= peak;
-  return Array.from(out);
-}
-
-function computeLayeredSsp(rawParams, options = {}) {
-  const p = validateParams(rawParams);
-  const sliceKernelWidthMm = Math.max(0, Number(options.sliceKernelWidthMm ?? options.sliceKernelWidth ?? 0));
-  const base = computeSsp(p, {
-    state: options.state ?? p.state,
-    coneOn: Boolean(options.coneOn),
-    collectGeometrySeries: Boolean(options.collectGeometrySeries),
-    collectComplementaryCandidates: options.collectComplementaryCandidates,
-    reconstructionPath: options.reconstructionPath ?? p.reconstructionPath,
-  });
-  const finalProfile = rectangularAverageProfile(base.profile, base.z, sliceKernelWidthMm);
-  const dz = base.z[1] - base.z[0];
-  const finalStats = profileStats(finalProfile, base.z, dz);
-  const analyticConfiguredSigmaMm = Math.sqrt(Math.max(
-    0,
-    base.meanKernelSecondMomentMm2 + sliceKernelWidthMm ** 2 / 12,
-  ));
-  return {
-    ...base,
-    profileMode: PROFILE_MODES.LAYERED_RECT,
-    candidateWeightHalfSupportMm: null,
-    sliceKernelWidthMm,
-    baseKernelWidth: null,
-    sliceKernelWidth: sliceKernelWidthMm,
-    baseProfile: base.profile,
-    baseFwhm: base.fwhm,
-    baseFwtm: base.fwtm,
-    baseSigma: base.sigma,
-    baseCentroid: base.centroid,
-    analyticConfiguredSigmaMm,
-    numericalSigmaResidualMm: finalStats.sigma - analyticConfiguredSigmaMm,
-    profile: finalProfile,
-    ...finalStats,
-  };
-}
-
-function createProfileAssumptions(rawParams) {
-  const p = validateParams(rawParams);
-  return {
-    profileMode: PROFILE_MODES.LAYERED_RECT,
-    candidateSelectionRule: "nearest-bracketing",
-    candidateWeightShape: "linear-between-nearest-smaller-z-and-larger-z-candidates",
-    candidateWeightHalfSupportMm: null,
-    candidateWeightFwhmMm: null,
-    sliceKernelShape: "rectangular",
-    sliceKernelWidthMm: p.sliceThicknessMm,
-    mapping: "configured-thickness-to-rectangular-kernel",
-    geometryIndicator: "final-candidate-weighted-rms-with-row-aperture-over-configured-thickness",
-    bracketAuditIndicator: p.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? "angularly-weighted-180li-branch-bracketing-gap-over-configured-thickness"
-      : "nearest-bracketing-gap-over-configured-thickness",
-    reconstructionPath: p.reconstructionPath,
-  };
-}
-
-function computeProfileModel(rawParams, options = {}) {
-  const p = validateParams(rawParams);
-  const assumptions = options.assumptions ?? createProfileAssumptions(p);
-  return computeLayeredSsp(p, {
-    state: options.state ?? p.state,
-    coneOn: Boolean(options.coneOn),
-    sliceKernelWidthMm: assumptions.sliceKernelWidthMm,
-    collectGeometrySeries: Boolean(options.collectGeometrySeries),
-    collectComplementaryCandidates: options.collectComplementaryCandidates,
-    reconstructionPath: options.reconstructionPath
-      ?? assumptions.reconstructionPath
-      ?? p.reconstructionPath,
-  });
-}
-
-function computeUnwrapped(rawParams, options = {}) {
-  const p = validateParams(rawParams);
-  const requestedState = Number(options.state ?? p.state);
-  const state = ((requestedState % 1) + 1) % 1;
-  const coneOn = Boolean(options.coneOn);
-  const reconstructionPath = options.reconstructionPath ?? p.reconstructionPath;
-  const samples = Math.max(90, Math.min(2400, Math.round(options.samples ?? Math.min(360, p.viewSamples))));
-  const feed = tableFeedMm(p);
-  const z0 = p.zReference + feed * state;
-  // Traces include the 360-degree endpoint for a closed visual period.  SSPz
-  // integration and marker weights use the non-duplicated samples 0 <= beta < 2pi.
-  const traceSamples = samples + 1;
-  const angleValues = new Float32Array(traceSamples);
-  const axialValues = new Float64Array(traceSamples);
-  const scaleValues = new Float32Array(traceSamples);
-  const rho = p.radius / p.sourceRadius;
-  for (let i = 0; i < traceSamples; i += 1) {
-    const beta = PI2 * i / samples;
-    angleValues[i] = 360 * i / samples;
-    axialValues[i] = feed * beta / PI2;
-    scaleValues[i] = coneOn
-      ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)))
-      : 1;
-  }
-  // Every displayed family uses the direct acquired-view angle as its common
-  // reference coordinate.  A complementary family is reindexed onto that
-  // coordinate, but keeps the source z and row scale of its OWN acquired view.
-  // Use the complete acquired grid, independently of marker/display sampling,
-  // so each selected endpoint has an exact corresponding trajectory sample.
-  const traceFamilyDefinitions = [
-    { id: "direct", family: "direct" },
-    ...(reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? [
-      { id: "complementary-lower", family: "complementary" },
-      { id: "complementary-upper", family: "complementary" },
-    ] : []),
-  ];
-  const acquiredTraceSamples = p.viewSamples + 1;
-  const traceFamilies = traceFamilyDefinitions.map(definition => ({
-    ...definition,
-    angleCoordinate: "direct-reference-view-angle",
-    acquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
-    angles: new Float64Array(acquiredTraceSamples),
-    axial: new Float64Array(acquiredTraceSamples),
-    scales: new Float64Array(acquiredTraceSamples),
-    acquiredAngles: new Float64Array(acquiredTraceSamples),
-    absoluteViewIndices: new Int32Array(acquiredTraceSamples),
-  }));
-  const traceFamilyById = new Map(traceFamilies.map(family => [family.id, family]));
-  const acquiredViewStepRad = PI2 / p.viewSamples;
-  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
-    const beta = acquiredViewStepRad * viewIndex;
-    const complementaryAcquired = traceFamilies.length > 1
-      ? acquiredViewMapping(p, fanBeamComplementaryGeometryAtAngle(p, beta, coneOn)
-        .complementaryAngleUnwrappedRad)
-      : null;
-    for (const family of traceFamilies) {
-      const absoluteViewIndex = family.id === "direct"
-        ? viewIndex
-        : family.id === "complementary-lower"
-          ? complementaryAcquired.lowerAbsoluteViewIndex
-          : complementaryAcquired.upperAbsoluteViewIndex;
-      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
-      family.angles[viewIndex] = 360 * viewIndex / p.viewSamples;
-      family.absoluteViewIndices[viewIndex] = absoluteViewIndex;
-      family.acquiredAngles[viewIndex] = 360 * absoluteViewIndex / p.viewSamples;
-      family.axial[viewIndex] = feed * acquiredAngle / PI2;
-      family.scales[viewIndex] = coneOn
-        ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)))
-        : 1;
-    }
-  }
-  const displayRows = Array.from({ length: p.rows }, (_, row) => row);
-  const rowOffsets = Float64Array.from(displayRows, row => (row + 0.5 - p.rows / 2) * p.rowWidth);
-  const centerTurn = roundHalfEven(z0 / feed);
-  // The ideal helix is infinite.  The reproducible finite display contract is
-  // every turn containing a row-wise nearest smaller-z or larger-z candidate in
-  // ANY displayed family over the full reference-angle period, plus one
-  // neighboring turn on either side.  Complementary base angles can enter the
-  // next acquisition turn; their base turn must not be silently wrapped away.
-  let turnMin = Infinity;
-  let turnMax = -Infinity;
-  const endpointOffsets = rowOffsets.length > 1
-    ? [rowOffsets[0], rowOffsets[rowOffsets.length - 1]]
-    : [rowOffsets[0]];
-  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
-    const rangeViewIndices = new Set([viewIndex]);
-    if (reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI) {
-      // The two displayed conditions share one turn window.  Their fan-angle
-      // mapping changes as well as their row scale, so bounds must include
-      // BOTH complementary mappings and BOTH scale choices.  This union is
-      // display-only: it adds no reconstruction candidates or weights.
-      for (const rangeConeOn of [false, true]) {
-        const beta = acquiredViewStepRad * viewIndex;
-        const acquired = acquiredViewMapping(p,
-          fanBeamComplementaryGeometryAtAngle(p, beta, rangeConeOn)
-            .complementaryAngleUnwrappedRad);
-        rangeViewIndices.add(acquired.lowerAbsoluteViewIndex);
-        rangeViewIndices.add(acquired.upperAbsoluteViewIndex);
-      }
-    }
-    for (const absoluteViewIndex of rangeViewIndices) {
-      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
-      const sourceZ = feed * acquiredAngle / PI2;
-      const distanceScale = Math.sqrt(Math.max(EPS,
-        1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)));
-      for (const scale of [1, distanceScale]) {
-        for (const rowOffset of endpointOffsets) {
-          const base = sourceZ + scale * rowOffset;
-          const quotient = (z0 - base) / feed;
-          turnMin = Math.min(turnMin, Math.floor(quotient) - 1);
-          turnMax = Math.max(turnMax, Math.ceil(quotient) + 1);
-        }
-      }
-    }
-  }
-  if (!Number.isFinite(turnMin) || !Number.isFinite(turnMax)) {
-    turnMin = centerTurn - 2;
-    turnMax = centerTurn + 2;
-  }
-  const turns = Int32Array.from({ length: turnMax - turnMin + 1 }, (_, index) => turnMin + index);
-  const turnOffsetMin = turnMin - centerTurn;
-  const turnOffsetMax = turnMax - centerTurn;
-  const baseZoomXLimit = Math.max(1.65, p.rowWidth * 1.5);
-  const weightedPoints = [];
-  const viewWeightSums = new Float32Array(samples);
-  let maximumWeightedDistance = 0;
-  const markerStride = Math.max(
-    1,
-    Math.ceil(samples / 72),
-    Math.ceil(samples * 2 / 12000),
-  );
-  let validViewCount = 0;
-  let normalizationErrorMax = 0;
-  for (let i = 0; i < samples; i += 1) {
-    const mappedViewIndex = Math.min(
-      p.viewSamples - 1,
-      Math.floor(i * p.viewSamples / samples),
-    );
-    const beta = PI2 * mappedViewIndex / p.viewSamples;
-    const geometry = reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? fanBeam180LiGeometryAtView(p, z0, mappedViewIndex, coneOn)
-      : geometryAtFullScanAngle(p, z0, beta, coneOn, {
-        dataKind: "actual-full-scan",
-        family: "direct",
-        baseAbsoluteViewIndex: mappedViewIndex,
-      });
-    viewWeightSums[i] = geometry.normalizedWeightSum;
-    if (geometry.valid) {
-      validViewCount += 1;
-      normalizationErrorMax = Math.max(normalizationErrorMax, Math.abs(1 - geometry.normalizedWeightSum));
-    }
-    if (i % markerStride !== 0) continue;
-    for (const candidate of geometry.candidates) {
-      if (candidate.weight <= EPS) continue;
-      const traceFamilyId = candidate.dataKind === "complementary-acquired-lower-angular-neighbor"
-        ? "complementary-lower"
-        : candidate.dataKind === "complementary-acquired-upper-angular-neighbor"
-          ? "complementary-upper"
-          : "direct";
-      const traceFamily = traceFamilyById.get(traceFamilyId);
-      const baseAbsoluteViewIndex = traceFamily.absoluteViewIndices[mappedViewIndex];
-      weightedPoints.push({
-        x: candidate.delta,
-        y: 360 * mappedViewIndex / p.viewSamples,
-        weight: candidate.weight,
-        dataKind: candidate.dataKind,
-        row: candidate.row,
-        turn: candidate.turn,
-        turnOffset: candidate.turn - centerTurn,
-        sampleIndex: i,
-        traceFamilyId,
-        referenceViewIndex: mappedViewIndex,
-        baseAbsoluteViewIndex,
-        absoluteViewIndex: baseAbsoluteViewIndex + candidate.turn * p.viewSamples,
-        baseAcquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex],
-        // Unlike y, this is the physical acquired angle, not a reference
-        // angle.  It remains unwrapped and includes the candidate turn.
-        acquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex] + candidate.turn * 360,
-      });
-      maximumWeightedDistance = Math.max(maximumWeightedDistance, Math.abs(candidate.delta));
-    }
-  }
-  let maximumCandidateDistance = Math.max(baseZoomXLimit, maximumWeightedDistance);
-  for (const family of traceFamilies) {
-    for (let i = 0; i < acquiredTraceSamples; i += 1) {
-      for (const turn of [turnMin, turnMax]) {
-        for (const rowOffset of endpointOffsets) {
-          const delta = family.axial[i] + turn * feed + family.scales[i] * rowOffset - z0;
-          maximumCandidateDistance = Math.max(maximumCandidateDistance, Math.abs(delta));
-        }
-      }
-    }
-  }
-  const overviewXLimit = maximumCandidateDistance + Math.max(0.35, p.rowWidth * 0.35);
-  const zoomXLimit = Math.max(baseZoomXLimit, maximumWeightedDistance + Math.max(0.15, p.rowWidth * 0.15));
-  const usedTurns = [...new Set(weightedPoints.map(point => point.turnOffset))].sort((a, b) => a - b);
-  const usedTurnsOutsideOverview = usedTurns.filter(turn => turn < turnOffsetMin || turn > turnOffsetMax);
-  const complementaryCandidates = computeComplementaryCandidateSeries(p, z0, coneOn);
-  return {
-    coneOn,
-    reconstructionPath,
-    state,
-    z0,
-    angleCoordinate: "direct-reference-view-angle",
-    acquiredAngleCoordinate: "absolute-acquisition-angle-including-turn",
-    traceFamilyAcquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
-    configuredSliceThicknessMm: p.sliceThicknessMm,
-    // Public diagram contract: acquisition-side candidates are every detector-
-    // row centre in each displayed acquired view.  Configured slice thickness
-    // is applied later to the explanatory SSPz and never filters this pool.
-    candidatePopulation: "all-detector-row-centers",
-    candidatePoolDefinition: "all-detector-row-centers-in-displayed-acquired-views",
-    candidatePoolUsesConfiguredSliceThickness: false,
-    sliceThicknessThresholdUsed: false,
-    rowTraceWeighting: "none",
-    rowsPerAcquiredView: p.rows,
-    selectedEndpointStage: "nearest-bracketing-after-all-row-pool",
-    doesNotRestrictCandidatePopulation: true,
-    candidateSelectionRule: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-      ? "fan-beam-180li-angular-neighbor-interpolation-after-direct-complementary-union-z-bracketing"
-      : "direct-full-scan-nearest-bracketing-linear",
-    candidateWeightHalfSupportMm: null,
-    kernelWidth: null,
-    interpolationBandHalfWidth: maximumWeightedDistance,
-    xLimit: zoomXLimit,
-    zoomXLimit,
-    overviewXLimit,
-    traceFamilies,
-    traceFamilyCount: traceFamilies.length,
-    acquiredTraceSamples,
-    referenceViewSamples: p.viewSamples,
-    traceGeometry: {
-      angles: angleValues,
-      axial: axialValues,
-      scales: scaleValues,
-      rowOffsets,
-      turns,
-      feed,
-    },
-    weightedPoints,
-    displayedRows: displayRows.length,
-    displayRows,
-    totalRows: p.rows,
-    centerTurn,
-    turnMin,
-    turnMax,
-    turnCount: turns.length,
-    turnOffsetMin,
-    turnOffsetMax,
-    candidateLineCount: p.rows * turns.length,
-    // Mapped traces are display representations, not unique acquired rows:
-    // angular neighbors may coincide, and one acquired view may be reused.
-    mappedCandidateLineCount: p.rows * turns.length * traceFamilies.length,
-    actualDataFamilyCount: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
-    angularRangeDeg: 360,
-    complementaryCandidates,
-    viewWeightSums,
-    validViewCount,
-    normalizationErrorMax,
-    automaticTurnRange: true,
-    searchTurnRadius: null,
-    usedTurns,
-    usedTurnsOutsideOverview,
-    markerStride,
-    renderedAngleSamples: Math.ceil(samples / markerStride),
-    samples,
-  };
-}
-
-function summarizeSweep(rows, coneOn) {
-  const complete = rows.filter(row => row.coneOn === coneOn && row.coverage >= 1 - 1e-12);
-  const range = key => {
-    if (!complete.length) return { min: NaN, max: NaN, range: NaN };
-    const values = complete.map(row => row[key]);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    return { min, max, range: max - min };
-  };
-  return {
-    coneOn,
-    complete: complete.length,
-    total: rows.filter(row => row.coneOn === coneOn).length,
-    fwhm: range("fwhm"),
-    fwtm: range("fwtm"),
-    sigma: range("sigma"),
-    centroid: range("centroid"),
-    baseFwhm: range("baseFwhm"),
-    baseFwtm: range("baseFwtm"),
-    baseSigma: range("baseSigma"),
-    baseCentroid: range("baseCentroid"),
-    bracketGapMeanMm: range("bracketGapMeanMm"),
-    bracketGapMaxMm: range("bracketGapMaxMm"),
-    bracketGapRatioMean: range("bracketGapRatioMean"),
-    bracketGapRatioMax: range("bracketGapRatioMax"),
-    exactCandidateFraction: range("exactCandidateFraction"),
-    analyticBaseSigmaMm: range("analyticBaseSigmaMm"),
-    analyticConfiguredSigmaMm: range("analyticConfiguredSigmaMm"),
-    numericalSigmaResidualMm: range("numericalSigmaResidualMm"),
-  };
-}
+import {
+  DEFAULT_PARAMS,
+  MODEL_VERSION,
+  PROFILE_MODES,
+  RECONSTRUCTION_PATHS,
+} from "./sim-core.js";
 
 // Figure palette and typography follow the journal-facing conventions used by
 // Medical Physics: black sans-serif text, gray gridlines, restrained color,
@@ -2389,8 +101,8 @@ function fmt(value, digits = 4) {
 
 function reconstructionPathLabel(path) {
   return path === RECONSTRUCTION_PATHS.DIRECT_FULL_SCAN
-    ? "Direct-ray 0-360° full scan (comparator)"
-    : "180LI acquisition geometry (primary analysis)";
+    ? "0～360°実データ側フルスキャン（比較）"
+    : "180LI取得幾何（主解析）";
 }
 
 function reconstructionPathUrlValue(path) {
@@ -2441,8 +153,8 @@ function updateInputDecorations() {
     button.classList.toggle("active", Number(button.dataset.radius) === radius);
   });
   if (inspectState) inspectState.value = String(selectedStateIndex);
-  if (inspectStateLabel) inspectStateLabel.textContent = `State ${selectedStateIndex}/359 (s = ${(selectedStateIndex / 360).toFixed(3)})`;
-  if (inspectState) inspectState.setAttribute("aria-valuetext", `State ${selectedStateIndex}, relative position ${(selectedStateIndex / 360).toFixed(3)}`);
+  if (inspectStateLabel) inspectStateLabel.textContent = `状態 ${selectedStateIndex}/359（s = ${(selectedStateIndex / 360).toFixed(3)}）`;
+  if (inspectState) inspectState.setAttribute("aria-valuetext", `状態${selectedStateIndex}、相対位置${(selectedStateIndex / 360).toFixed(3)}`);
 }
 
 function paramsToUrl(params) {
@@ -2584,11 +296,11 @@ function setResultPlaceholder(state, title, detail) {
   }
 }
 
-function showCalculatingState(detail = "Generating figures for the current conditions", force = false) {
+function showCalculatingState(detail = "新しい条件で図を作成しています", force = false) {
   const now = performance.now();
   if (!force && now - lastPlaceholderPaint < 500) return;
   lastPlaceholderPaint = now;
-  setResultPlaceholder("loading", "Calculating…", detail);
+  setResultPlaceholder("loading", "ただ今計算中…", detail);
 }
 
 function markResultCanvasesReady() {
@@ -2636,7 +348,7 @@ function runSimulation() {
   lastPlaceholderPaint = 0;
   showCalculatingState(undefined, true);
   progress.value = 0;
-  status.textContent = "Starting computation";
+  status.textContent = "計算を開始しています";
   startedAt = performance.now();
   const url = paramsToUrl(params);
   try { history.replaceState(null, "", url); } catch { /* file:// may restrict history mutation */ }
@@ -2657,7 +369,7 @@ function runSimulation() {
       markResultCanvasesReady();
       progress.value = 1;
       const axialSpreadMaximum = allCandidateAxialSpreadMaximum(lastResult);
-      status.textContent = `Completed in ${elapsed.toFixed(1)} s / ${reconstructionPathLabel(lastResult.params.reconstructionPath)} / configured thickness=${fmt(lastResult.params.sliceThicknessMm, 3)} mm / maximum longitudinal standard deviation of candidate positions=${fmt(axialSpreadMaximum, 3)} mm`;
+      status.textContent = `完了 ${elapsed.toFixed(1)}秒 / ${reconstructionPathLabel(lastResult.params.reconstructionPath)} / 設定厚=${fmt(lastResult.params.sliceThicknessMm, 3)} mm / 候補位置の体軸方向標準偏差の最大=${fmt(axialSpreadMaximum, 3)} mm`;
       setBusy(false);
       inspectState.disabled = false;
       inspectPrev.disabled = false;
@@ -2675,27 +387,27 @@ function runSimulation() {
       const url = paramsToUrl(readParams());
       try { history.replaceState(null, "", url); } catch { /* file:// may restrict history mutation */ }
       syncLanguageLinks(url.search);
-      status.textContent = `Detailed view updated to state ${selectedStateIndex}/359 (s=${(selectedStateIndex / 360).toFixed(3)})`;
+      status.textContent = `詳細表示を状態${selectedStateIndex}/359（s=${(selectedStateIndex / 360).toFixed(3)}）へ更新しました`;
       inspectState.disabled = false;
       inspectPrev.disabled = false;
       inspectNext.disabled = false;
     } else if (message.type === "cancelled") {
-      status.textContent = "Computation cancelled";
-      setResultPlaceholder("cancelled", "Computation cancelled", "Review the conditions, then select Compute again.");
+      status.textContent = "計算を中止しました";
+      setResultPlaceholder("cancelled", "計算を中止しました", "条件を確認し、もう一度「計算する」を押してください。");
       setBusy(false);
       releaseWorker();
     } else if (message.type === "error") {
       showError(message.message);
-      status.textContent = "Computation error";
-      setResultPlaceholder("error", "The figures could not be generated", "Review the error message above.");
+      status.textContent = "計算エラー";
+      setResultPlaceholder("error", "図を作成できませんでした", "上のエラー内容を確認してください。");
       setBusy(false);
       releaseWorker();
     }
   };
   worker.onerror = event => {
-    showError(event.message || "A Web Worker error occurred.");
-    status.textContent = "Computation error";
-    setResultPlaceholder("error", "The figures could not be generated", "Review the error message above.");
+    showError(event.message || "Web Workerでエラーが発生しました。");
+    status.textContent = "計算エラー";
+    setResultPlaceholder("error", "図を作成できませんでした", "上のエラー内容を確認してください。");
     setBusy(false);
   };
   worker.postMessage({ type: "run", params });
@@ -2710,7 +422,7 @@ function requestStateInspection(index, immediate = false) {
     inspectState.disabled = true;
     inspectPrev.disabled = true;
     inspectNext.disabled = true;
-    status.textContent = `Computing details for state ${selectedStateIndex}/359`;
+    status.textContent = `状態${selectedStateIndex}/359の詳細を計算中`;
     worker.postMessage({ type: "inspect-state", stateIndex: selectedStateIndex });
   };
   if (immediate) send();
@@ -2931,11 +643,11 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
   const items = [{
-    label: localizedText("Direct data: solid line / circle", "Direct data: solid line / circle"),
+    label: localizedText("実データ側：実線・○", "Direct data: solid line / circle"),
     dashed: false,
   }];
   if (paired) items.push({
-    label: localizedText("Complementary data: dashed line / triangle", "Complementary data: dashed line / triangle"),
+    label: localizedText("対向データ側：破線・△", "Complementary data: dashed line / triangle"),
     dashed: true,
   });
   ctx.save();
@@ -2964,7 +676,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   ctx.font = `20px ${FIGURE_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  const weightLabel = "Linear-interpolation weight w of selected endpoints";
+  const weightLabel = "選択端点の線形補間重み w";
   const markerStart = left + Math.max(300, width * 0.48);
   setFittedFigureFont(ctx, weightLabel, 20, 15, markerStart - left - 18);
   ctx.fillText(weightLabel, left, y0 + 18);
@@ -2981,7 +693,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   drawDiagramFamilyLegend(ctx, diagram, left, y0 + 76, width);
   ctx.textAlign = "left";
   const acquisitionLabel = localizedText(
-    "Lines: all rows; markers: selected endpoints; red line: target plane",
+    "線：全列候補　○・△：選択端点　赤線：目的断面",
     "Lines: all rows; markers: selected endpoints; red line: target plane",
   );
   ctx.fillStyle = INK;
@@ -3044,7 +756,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  const rowLabel = "Detector row";
+  const rowLabel = "検出器列";
   ctx.fillText(rowLabel, left, top + 21);
   const rowLabelWidth = ctx.measureText(rowLabel).width;
   ctx.font = `18px ${FIGURE_FONT}`;
@@ -3069,8 +781,8 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   });
   drawDiagramFamilyLegend(ctx, diagram, left, top + 54, width);
   ctx.font = `18px ${FIGURE_FONT}`;
-  const acquiredLabel = "All-row candidate trajectories (not filtered by T)";
-  const targetLabel = "Target plane z₀";
+  const acquiredLabel = "全列候補軌道（Tで除外しない）";
+  const targetLabel = "目的断面 z₀";
   const secondRowY = top + 84;
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.2;
@@ -3094,7 +806,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.lineWidth = 2.4;
   ctx.beginPath(); ctx.moveTo(targetMarkerX, targetY - 12); ctx.lineTo(targetMarkerX, targetY + 12); ctx.stroke();
   ctx.fillStyle = INK; ctx.fillText(targetLabel, targetTextX, targetY);
-  const bandLabel = "Pale band: enlarged range in 2B (not configured thickness T)";
+  const bandLabel = "淡色帯：2Bの拡大範囲（Tとは別）";
   ctx.fillStyle = MUTED;
   setFittedFigureFont(ctx, bandLabel, 17, 13, width);
   ctx.fillText(bandLabel, left, targetY + 30);
@@ -3113,8 +825,8 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   const xAxis = symmetricNiceAxis(requiredXLimit, 3);
   const xLimit = xAxis.xMax;
   const plot = axisContext(canvas, { xMin: xAxis.xMin, xMax: xAxis.xMax, yMin: 0, yMax: 360 }, {
-    x: "Longitudinal candidate position  zᵢ - z₀  (mm)",
-    y: localizedText("Direct-ray angle  β  (°)", "Direct-data reference angle  β  (°)"),
+    x: "候補列中心  zᵢ − z₀  (mm)",
+    y: localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
     topMargin: publicationMode ? 148 : 206,
@@ -3160,13 +872,13 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
   if (mode === "overview") {
     const countText = localizedText(
-      `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
+      `全${diagram.totalRows}列・全${diagram.referenceViewSamples}取得角度／共通の実データ側角度βで表示／Tで除外しない`,
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
     );
     drawOverviewLegend(ctx, diagram, margin.left, 8, innerWidth, publicationMode ? "" : countText);
   } else {
     const countText = localizedText(
-      `Markers: ${diagram.renderedAngleSamples} reference angles / trajectories: all acquired angles / no T-based exclusion`,
+      `点は${diagram.renderedAngleSamples}角度を抜粋／軌道は全取得角度／Tで除外しない`,
       `Markers: ${diagram.renderedAngleSamples} reference angles / trajectories: all acquired angles / no T-based exclusion`,
     );
     drawWeightLegend(
@@ -3306,8 +1018,8 @@ function drawComplementaryAngleChart(canvas, result) {
     ...upperAcquired,
   ], { targetIntervals: 5, padFraction: 0.05, minimumSpan: Math.max(4, 4 * series.viewStepDeg) });
   const plot = axisContext(canvas, { xMin: 0, xMax: 360, yMin: yScale.min, yMax: yScale.max }, {
-    x: "Direct-ray angle  β  (°)",
-    y: "Angular separation to the complementary ray  Δβc  (°)",
+    x: "実データ側の角度  β  (°)",
+    y: "対向データ側のレイまでの角度差  Δβc  (°)",
     xFormatter: value => Number(value).toFixed(0),
     yFormatter: fixedFormatterForTicks(yScale.ticks),
     topMargin: 112,
@@ -3330,9 +1042,9 @@ function drawComplementaryAngleChart(canvas, result) {
   drawSeriesMarkers(plot.ctx, actualPoints, plot.x, plot.y, INK, "circle", markerStride);
   drawAxes(plot, [0, 60, 120, 180, 240, 300, 360], yScale.ticks);
   drawLegend(plot.ctx, [
-    { label: "Ideal complementary-ray angular separation 180°+2γ", color: ORANGE },
-    { label: "Nearest acquired view", color: INK, dash: [5, 4] },
-    { label: "Two acquired views bracketing the ideal angle", color: LIGHT, dash: [8, 6] },
+    { label: "理想対向角差 180°+2γ", color: ORANGE },
+    { label: "最近接実取得ビュー", color: INK, dash: [5, 4] },
+    { label: "理想角を挟む実取得2ビュー", color: LIGHT, dash: [8, 6] },
   ], plot.margin.left, 20, 18);
   canvas.dataset.viewCount = String(series.viewCount);
   canvas.dataset.maximumAngularResidualDeg = String(series.maximumAngularResidualDeg);
@@ -3359,8 +1071,8 @@ function drawComplementaryDistanceChart(canvas, result) {
   yScale.min = 0;
   yScale.ticks = niceProfileTicks(yScale.min, yScale.max, 6);
   const plot = axisContext(canvas, { xMin: 0, xMax: 360, yMin: yScale.min, yMax: yScale.max }, {
-    x: "Direct-ray angle  β  (°)",
-    y: "Longitudinal span  G  bracketing the target plane (mm)",
+    x: "実データ側の角度  β  (°)",
+    y: "目的断面を挟む対応区間幅  G  (mm)",
     xFormatter: value => Number(value).toFixed(0),
     yFormatter: fixedFormatterForTicks(yScale.ticks),
     topMargin: 144,
@@ -3390,10 +1102,10 @@ function drawComplementaryDistanceChart(canvas, result) {
   drawPolyline(plot.ctx, selectedMinimum, plot.x, plot.y, INK, 3.6);
   drawAxes(plot, [0, 60, 120, 180, 240, 300, 360], yScale.ticks);
   drawLegend(plot.ctx, [
-    { label: "Ideal angle: direct rayₙ → complementary rayₙ", color: BLUE },
-    { label: "Ideal angle: complementary rayₙ → direct rayₙ₊₁", color: ORANGE, dash: [7, 5] },
+    { label: "理想角：実データₙ → 対向データₙ", color: BLUE },
+    { label: "理想角：対向データₙ → 実データₙ₊₁", color: ORANGE, dash: [7, 5] },
     { label: "Gmin = min(G₁, G₂)", color: INK },
-    { label: "Pale bands: two acquired views bracketing the ideal angle", color: LIGHT },
+    { label: "淡色帯：理想角を挟む実取得2ビュー", color: LIGHT },
   ], plot.margin.left, 20, 18);
   canvas.dataset.helicalPairOrder = ideal.helicalOrder;
   canvas.dataset.pairOneDefinition = ideal.pairOneDefinition;
@@ -3419,8 +1131,8 @@ function drawGeneralTwoPointCandidateChart(canvas, result) {
   );
   const yAxis = symmetricNiceAxis(maximumMagnitude * 1.06, 3);
   const plot = axisContext(canvas, { xMin: 0, xMax: 360, yMin: yAxis.xMin, yMax: yAxis.xMax }, {
-    x: "Direct-ray angle  β  (°)",
-    y: "Candidate position relative to the target plane  z - z₀  (mm)",
+    x: "実データ側の角度  β  (°)",
+    y: "目的断面に対する候補位置  z − z₀  (mm)",
     xFormatter: value => Number(value).toFixed(0),
     yFormatter: yAxis.formatter,
     topMargin: 146,
@@ -3479,9 +1191,9 @@ function drawGeneralTwoPointCandidateChart(canvas, result) {
   );
   drawAxes(plot, [0, 60, 120, 180, 240, 300, 360], yAxis.ticks);
   drawLegend(plot.ctx, [
-    { label: "Nearest bracket after merging all candidates, Gmerge", color: LIGHT },
-    { label: "Smaller-z side (markers: nearest acquired view)", color: BLUE },
-    { label: "Larger-z side (markers: nearest acquired view)", color: ORANGE, dash: [7, 5] },
+    { label: "全候補統合後の最近接挟み込み Gmerge", color: LIGHT },
+    { label: "小さいz側（点＝最近接実取得ビュー）", color: BLUE },
+    { label: "大きいz側（点＝最近接実取得ビュー）", color: ORANGE, dash: [7, 5] },
   ], plot.margin.left, 20, 18);
   drawPairTypeBand(plot, ideal, ideal.typeLabels);
   canvas.dataset.selectionRule = ideal.selectionRule;
@@ -3510,7 +1222,7 @@ function drawCandidateAxialSpreadChart(canvas, result) {
   const onValues = overlay?.allCandidateAxialSpreadOnMm;
   const betaValues = overlay?.geometryAnglesDeg;
   if (!offValues || !onValues) {
-    drawCanvasStatus(canvas, "Computing candidate-point spread", "Waiting for the unweighted-standard-deviation calculation");
+    drawCanvasStatus(canvas, "候補点の広がりを計算中", "無重み標準偏差の計算結果を待っています");
     return;
   }
   const angleCount = Math.min(
@@ -3520,7 +1232,7 @@ function drawCandidateAxialSpreadChart(canvas, result) {
     betaValues?.length ?? Infinity,
   );
   if (!(angleCount > 0)) {
-    drawCanvasStatus(canvas, "Candidate-point spread unavailable", "No results are available by projection angle", "error");
+    drawCanvasStatus(canvas, "候補点の広がりを表示できません", "投影角度ごとの計算結果がありません", "error");
     return;
   }
   const offPoints = [];
@@ -3551,8 +1263,8 @@ function drawCandidateAxialSpreadChart(canvas, result) {
   }
   const publicationMode = canvas.dataset.publicationMode === "true";
   const plot = axisContext(canvas, { xMin: 0, xMax: 360, yMin: 0, yMax: yMaximum }, {
-    x: "Relative tube angle  β  (°)",
-    y: "Longitudinal standard deviation of candidate positions  σz  (mm)",
+    x: "相対X線管角度  β  (°)",
+    y: "候補位置の体軸方向標準偏差  σz  (mm)",
     xFormatter: value => Number(value).toFixed(0),
     yFormatter: fixedFormatterForTicks(yTicks, 4),
     topMargin: publicationMode ? 126 : 146,
@@ -3574,16 +1286,16 @@ function drawCandidateAxialSpreadChart(canvas, result) {
   plot.ctx.fillStyle = INK;
   plot.ctx.textAlign = "left";
   plot.ctx.textBaseline = "top";
-  const title = "Axial spread of candidate points";
+  const title = "候補点の体軸方向の広がり";
   setFittedFigureFont(plot.ctx, title, 25, 18, plot.innerWidth, "700");
   plot.ctx.fillText(title, plot.margin.left, 8);
-  const subtitle = "Direct-side N rows plus all rows in acquired views bracketing the ideal complementary angle (unweighted)";
+  const subtitle = "実データ側N列＋理想対向角を挟む実取得ビューの全列（無重み）";
   plot.ctx.fillStyle = MUTED;
   setFittedFigureFont(plot.ctx, subtitle, 18, 13, plot.innerWidth);
   plot.ctx.fillText(subtitle, plot.margin.left, 43);
   drawLegend(plot.ctx, [
-    { label: "Without cone-geometry scaling", color: BLUE },
-    { label: "With cone-geometry scaling", color: ORANGE, dash: [9, 5] },
+    { label: "コーン幾何を反映しない", color: BLUE },
+    { label: "コーン幾何を反映する", color: ORANGE, dash: [9, 5] },
   ], plot.margin.left, 82, 18);
 
   canvas.dataset.xAxisMeaning = "relative-tube-angle-beta-degrees-0-to-360";
@@ -3796,8 +1508,8 @@ function drawProfileEncodingLegend(ctx, left, top) {
     ctx.fillStyle = INK;
     ctx.fillText(label, x + 62, y);
   };
-  drawKey(left, top + 20, BLUE, [], "Without cone-geometry scaling");
-  drawKey(left + 410, top + 20, ORANGE, [], "With cone-geometry scaling (idealized)");
+  drawKey(left, top + 20, BLUE, [], "コーン幾何を反映しない");
+  drawKey(left + 410, top + 20, ORANGE, [], "コーン幾何を反映する（理想化）");
   ctx.restore();
 }
 
@@ -3806,8 +1518,8 @@ function drawProfiles(canvas, result) {
   const axis = selectedProfileAxis(result);
   const { xMin, xMax } = axis;
   const plot = axisContext(canvas, { xMin, xMax, yMin: 0, yMax: 1.04 }, {
-    x: "Position relative to reconstruction plane  z - z₀  (mm)",
-    y: "Normalized SSPz",
+    x: "再構成面からの位置  z − z₀  (mm)",
+    y: "正規化SSPz",
     xFormatter: value => Number(value).toFixed(decimalPlacesForStep(axis.tickStep)),
     yFormatter: value => value.toFixed(1),
     topMargin: publicationMode ? 96 : 126,
@@ -3831,8 +1543,8 @@ function drawProfiles(canvas, result) {
   plot.ctx.font = `18px ${FIGURE_FONT}`;
   plot.ctx.textAlign = "right";
   plot.ctx.textBaseline = "bottom";
-  plot.ctx.fillText("50% (FWHM)", plot.margin.left + plot.innerWidth - 8, plot.y(0.5) - 5);
-  plot.ctx.fillText("10% (FWTM)", plot.margin.left + plot.innerWidth - 8, plot.y(0.1) - 5);
+  plot.ctx.fillText("50%（FWHM）", plot.margin.left + plot.innerWidth - 8, plot.y(0.5) - 5);
+  plot.ctx.fillText("10%（FWTM）", plot.margin.left + plot.innerWidth - 8, plot.y(0.1) - 5);
   plot.ctx.restore();
   canvas.dataset.xMin = String(axis.xMin);
   canvas.dataset.xMax = String(axis.xMax);
@@ -3840,9 +1552,9 @@ function drawProfiles(canvas, result) {
   canvas.dataset.configuredThicknessMm = String(result.params.sliceThicknessMm);
   canvas.dataset.axisRule = "configured-output-at-or-above-ten-percent";
   canvas.dataset.legendOrder = "configured-output-only";
-  canvas.setAttribute("aria-label", `Selected-state SSPz comparison after applying T=${fmt(result.params.sliceThicknessMm, 1)} mm. The horizontal range is determined from the central profile at or above 10%.`);
+  canvas.setAttribute("aria-label", `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の選択状態SSPz比較。横軸は10%水準以上の中心形状から決定`);
   if (profileAxisNote) {
-    profileAxisNote.textContent = `Configured thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm / horizontal range ${fmt(axis.xMin, decimalPlacesForStep(axis.tickStep))} to +${fmt(axis.xMax, decimalPlacesForStep(axis.tickStep))} mm (automatically determined from the post-thickness SSPz at or above 10%)`;
+    profileAxisNote.textContent = `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm／横軸 ${fmt(axis.xMin, decimalPlacesForStep(axis.tickStep))}～+${fmt(axis.xMax, decimalPlacesForStep(axis.tickStep))} mm（設定厚反映後SSPzの10%水準以上から自動調整）`;
   }
 }
 
@@ -3860,7 +1572,7 @@ function drawOverlayLegend(ctx, x, y, color) {
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.fillStyle = INK;
-  ctx.fillText("360 states", x + 45, y);
+  ctx.fillText("360状態", x + 45, y);
   ctx.restore();
 }
 
@@ -3906,18 +1618,18 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   const layered = result.params.profileMode === PROFILE_MODES.LAYERED_RECT;
   const tailView = viewMode === "tail";
   const stageLabel = tailView
-    ? `Low-amplitude tails after applying T=${fmt(result.params.sliceThicknessMm, 1)} mm (log scale)`
+    ? `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の低振幅裾（対数表示）`
     : layered
-      ? `Primary display: central profiles after applying T=${fmt(result.params.sliceThicknessMm, 1)} mm`
-      : `Model SSPz, T=${fmt(result.params.sliceThicknessMm, 1)} mm`;
+      ? `主要表示：設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の中心形状`
+      : `モデルSSPz T=${fmt(result.params.sliceThicknessMm, 1)} mm`;
   const plot = axisContext(canvas, {
     xMin,
     xMax,
     yMin: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMin : 0,
     yMax: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMax : 1.04,
   }, {
-    x: "Position relative to reconstruction plane  z - z₀  (mm)",
-    y: tailView ? "Normalized SSPz (log scale)" : "Normalized SSPz",
+    x: "再構成面からの位置  z − z₀  (mm)",
+    y: tailView ? "正規化SSPz（対数）" : "正規化SSPz",
     xFormatter: xAxis.formatter,
     yFormatter: tailView
       ? value => ({ "-3": "0.1%", "-2": "1%", "-1": "10%", "0": "100%" }[String(value)] ?? "")
@@ -3977,14 +1689,14 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   plot.ctx.font = `700 23px ${FIGURE_FONT}`;
   plot.ctx.textAlign = "left";
   plot.ctx.textBaseline = "top";
-  const conditionLabel = coneOn ? "With cone-geometry scaling (periodic source-to-point distance)" : "Without cone-geometry scaling (parallel-beam approximation)";
+  const conditionLabel = coneOn ? "コーン幾何を反映する（周期的距離変化）" : "コーン幾何を反映しない（平行ビーム近似）";
   if (publicationMode) {
-    const conciseCondition = coneOn ? "Cone-geometry scaling" : "Parallel-beam approximation";
+    const conciseCondition = coneOn ? "コーン幾何あり" : "コーン幾何なし";
     const conciseStage = tailView
-      ? `Post-thickness low-amplitude tails (T=${fmt(result.params.sliceThicknessMm, 1)} mm)`
+      ? `設定厚反映後・低振幅裾（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
       : layered
-        ? `Post-thickness central profiles (T=${fmt(result.params.sliceThicknessMm, 1)} mm)`
-        : `Model SSPz (T=${fmt(result.params.sliceThicknessMm, 1)} mm)`;
+        ? `設定厚反映後・中心形状（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
+        : `モデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`;
     // Keep the scientific stage and geometry condition on separate lines.
     // A single English line exceeds the fixed 80-mm journal figure width.
     plot.ctx.fillText(conciseStage, plot.margin.left, 8);
@@ -3993,7 +1705,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   } else {
     plot.ctx.fillText(stageLabel, plot.margin.left, 10);
     plot.ctx.fillStyle = MUTED;
-    const statusLabel = `${conditionLabel} / complete states ${summary.completeCount}/${overlay.stateCount}`;
+    const statusLabel = `${conditionLabel}／完全状態 ${summary.completeCount}/${overlay.stateCount}`;
     setFittedFigureFont(plot.ctx, statusLabel, 20, 15, plot.innerWidth);
     plot.ctx.fillText(statusLabel, plot.margin.left, 44);
   }
@@ -4028,8 +1740,8 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     ? "configured-output-tail-cone-on"
     : "configured-output-core-off-on";
   canvas.setAttribute("aria-label", tailView
-    ? `Log-scale display of post-thickness SSPz tails at or above 0.1% for 360 states: ${conditionLabel}`
-    : `Linear display of post-thickness SSPz central profiles at or above 10% for 360 states: ${conditionLabel}`);
+    ? `${conditionLabel}における設定厚反映後360状態SSPzの0.1%以上の低振幅裾を対数表示`
+    : `${conditionLabel}における設定厚反映後360状態SSPzの10%以上の中心形状を線形表示`);
 }
 
 function selectedMetric(result) {
@@ -4037,8 +1749,8 @@ function selectedMetric(result) {
   const labels = { fwhm: "FWHM", fwtm: "FWTM", sigma: "σ" };
   const layered = result?.params.profileMode === PROFILE_MODES.LAYERED_RECT;
   const stageLabel = layered
-    ? `Post-thickness model SSPz (T=${fmt(result.params.sliceThicknessMm, 1)} mm)`
-    : `Model SSPz (T=${fmt(result.params.sliceThicknessMm, 1)} mm)`;
+    ? `設定厚反映後のモデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
+    : `モデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`;
   metricLabel.textContent = `${stageLabel} / ${labels[key]}`;
   return { key, rawKey: key, label: labels[key], stageLabel, layered };
 }
@@ -4049,8 +1761,8 @@ function drawConditionLegend(ctx, left, y) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const items = [
-    { x: left, color: BLUE, label: "Without cone-geometry scaling" },
-    { x: left + 430, color: ORANGE, label: "With cone-geometry scaling (idealized)" },
+    { x: left, color: BLUE, label: "コーン幾何を反映しない" },
+    { x: left + 430, color: ORANGE, label: "コーン幾何を反映する（理想化）" },
   ];
   for (const item of items) {
     ctx.strokeStyle = item.color;
@@ -4071,7 +1783,7 @@ function drawSweep(canvas, result) {
   const values = result.sweep.map(ratioValue);
   const yScale = niceScale(values, { targetIntervals: 5, padFraction: 0.08, minimumSpan: 0.01 });
   const plot = axisContext(canvas, { xMin: 0, xMax: 1, yMin: yScale.min, yMax: yScale.max }, {
-    x: "Reconstruction-plane position within one table feed  s",
+    x: "1回転寝台移動量内の再構成面位置  s",
     y: `${metric.label} / T`,
     xFormatter: value => Number(value).toFixed(1),
     yFormatter: yScale.formatter,
@@ -4131,8 +1843,8 @@ function drawSweep(canvas, result) {
     plot.ctx.fillStyle = MUTED;
     plot.ctx.font = `20px ${FIGURE_FONT}`;
     const subtitle = metric.layered
-      ? `${metric.label} computed after applying the configured slice thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm`
-      : `Model SSPz for configured slice thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm`;
+      ? `設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを適用後に計算した${metric.label}`
+      : `設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmのモデルSSPz`;
     plot.ctx.fillText(subtitle, plot.margin.left, 45);
     plot.ctx.restore();
   }
@@ -4150,8 +1862,8 @@ function drawSweep(canvas, result) {
       && metric.rawKey === "fwhm";
     sweepInterpretation.hidden = false;
     sweepInterpretation.textContent = structurallyConstrained
-      ? "Because the explanatory model uses a rectangular window with the configured thickness, post-thickness FWHM/T is structurally constrained near 1. This plot does not show the intermediate width before thickness application. A flat curve does not prove that geometric effects are absent; inspect the complete post-thickness SSPz, FWTM/T, σ/T, and the angular-longitudinal diagram together."
-      : `This plot shows ${metric.label}/T for ${metric.stageLabel}. It is not the intermediate width before thickness application. Interpret FWTM, σ, and the complete post-thickness SSPz together with FWHM.`;
+      ? "設定厚と同幅の矩形窓により、設定厚反映後のFWHM/Tは1付近へ構造的に拘束されます。この図は設定厚適用前の中間幅を示しません。曲線が平坦でも幾何学的影響が消えたとは限らないため、設定厚反映後SSPzの全形状、FWTM/T、σ/T、および展開図を併せて確認してください。"
+      : `${metric.stageLabel}の${metric.label}/Tを表示しています。設定厚適用前の中間幅ではありません。FWHMだけでなく、FWTM・σ・設定厚反映後SSPzの全形状を併せて解釈してください。`;
   }
 }
 
@@ -4161,8 +1873,8 @@ function renderSummary(result) {
   const uses180Li = result.params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI;
   const gapRatioLabel = uses180Li ? "Gₑff/T" : "Δz/T";
   for (const [key, label, css, spreadKey] of [
-    ["off", "Without cone-geometry scaling", "", "allCandidateAxialSpreadOffMm"],
-    ["on", "With cone-geometry scaling", "on", "allCandidateAxialSpreadOnMm"],
+    ["off", "コーン幾何を反映しない", "", "allCandidateAxialSpreadOffMm"],
+    ["on", "コーン幾何を反映する", "on", "allCandidateAxialSpreadOnMm"],
   ]) {
     const summary = result.summaries[key];
     const spreadValues = Array.from(result.overlay?.[spreadKey] ?? []).filter(Number.isFinite);
@@ -4170,13 +1882,13 @@ function renderSummary(result) {
     const spreadMaximum = spreadValues.length ? Math.max(...spreadValues) : NaN;
     primaryCards.push(`
       <div class="summary-card ${css}">
-        <span>${label} / maximum longitudinal standard deviation of candidate positions (mm)</span>
+        <span>${label} / 候補位置の体軸方向標準偏差の最大（mm）</span>
         <strong>${fmt(spreadMaximum, 3)}</strong>
-        <small>Projection-angle range ${fmt(spreadMinimum, 3)}–${fmt(spreadMaximum, 3)} mm / unweighted</small>
+        <small>投影角度別範囲 ${fmt(spreadMinimum, 3)}–${fmt(spreadMaximum, 3)} mm／無重み</small>
       </div>`);
     secondaryCards.push(`
       <div class="summary-card ${css}">
-        <span>${label} / range of post-thickness SSPz FWHM/T</span>
+        <span>${label} / 設定厚反映後SSPzのFWHM/T変動幅</span>
         <strong>${fmt(summary.fwhm.range / result.params.sliceThicknessMm, 4)}</strong>
         <small>${fmt(summary.fwhm.min / result.params.sliceThicknessMm, 3)}–${fmt(summary.fwhm.max / result.params.sliceThicknessMm, 3)}</small>
       </div>`);
@@ -4185,28 +1897,28 @@ function renderSummary(result) {
   // spread of all row-center candidates for each direct-view angle.
   summaryCards.innerHTML = [...secondaryCards, ...primaryCards].join("");
   resultTable.innerHTML = [
-    ["Without cone-geometry scaling (parallel-beam approximation)", result.selectedOff],
-    ["With cone-geometry scaling (periodic source-to-point distance)", result.selectedOn],
+    ["コーン幾何を反映しない（平行ビーム近似）", result.selectedOff],
+    ["コーン幾何を反映する（周期的距離変化）", result.selectedOn],
   ].map(([label, row]) => `<tr><td>${label}</td><td>${fmt(row.fwhm, 3)}</td><td>${fmt(row.fwtm, 3)}</td><td>${fmt(row.sigma, 3)}</td><td>${fmt(row.bracketGapRatioMax, 3)}</td></tr>`).join("");
   const gapHeading = document.querySelector("#gap-summary-heading");
-  if (gapHeading) gapHeading.textContent = `Maximum ${gapRatioLabel} (audit)`;
+  if (gapHeading) gapHeading.textContent = `最大 ${gapRatioLabel}（監査）`;
   const gapNote = document.querySelector("#gap-summary-note");
   if (gapNote) gapNote.textContent = uses180Li
-    ? "Definitions: SSPz, longitudinal slice sensitivity profile; FWHM, full width at half maximum; FWTM, full width at tenth maximum; σ, standard deviation of the area-normalized SSPz. Gₑff/T is the angularly weighted bracket width of the two branches bracketing the ideal complementary angle, divided by the configured slice thickness. Displayed precision is for recording model output and does not represent measurement accuracy."
-    : "Definitions: SSPz, longitudinal slice sensitivity profile; FWHM, full width at half maximum; FWTM, full width at tenth maximum; σ, standard deviation of the area-normalized SSPz. Δz/T is the spacing between the nearest direct-ray candidates bracketing the target plane, divided by the configured slice thickness. Displayed precision is for recording model output and does not represent measurement accuracy.";
+    ? "注：SSPz＝体軸方向スライス感度プロファイル、FWHM＝半値幅、FWTM＝10%幅、σ＝面積正規化したSSPzの標準偏差。Gₑff/Tは、理想対向角を挟む2枝の挟み込み幅を角度方向に加重し、設定スライス厚で除した値です。表示桁数はモデル出力の記録用であり、実測精度を意味しません。"
+    : "注：SSPz＝体軸方向スライス感度プロファイル、FWHM＝半値幅、FWTM＝10%幅、σ＝面積正規化したSSPzの標準偏差。Δz/Tは、実データ側で目的断面を挟む最近接候補間隔を設定スライス厚で除した値です。表示桁数はモデル出力の記録用であり、実測精度を意味しません。";
   const caption = document.querySelector("#result-caption");
-  if (caption) caption.textContent = `Results for inspected model state ${selectedStateIndex}/359 (s=${(selectedStateIndex / 360).toFixed(3)})`;
+  if (caption) caption.textContent = `閲覧中のモデル状態${selectedStateIndex}/359（s=${(selectedStateIndex / 360).toFixed(3)}）における結果`;
 }
 
 function updateProfileModelNote(result) {
   const multiComponent = Math.max(result.selectedOff.halfComponents, result.selectedOn.halfComponents) > 1;
   const pathText = result.params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-    ? "In the primary analysis, all detector-row candidates from the direct and complementary ray families are merged separately at the two acquired views bracketing the ideal complementary angle of each direct-ray view. Nearest longitudinal brackets are formed in both branches and then combined by linear angular interpolation."
-    : "In the comparator, the complementary-ray family is not used for SSPz; nearest longitudinal brackets are formed from direct-ray views over 0-360° only.";
-  const candidateSpreadText = "The geometry display reports the unweighted longitudinal standard deviation of row-center positions for all direct-side rows and all rows in the acquired views bracketing the ideal complementary angle. Candidate selection, interpolation or reconstruction weighting, and thresholds based on configured thickness are not applied.";
-  const modelText = `${reconstructionPathLabel(result.params.reconstructionPath)} / ${pathText} All primary displays and width metrics are derived from the 360 model SSPz curves within one table feed after application of the configured slice thickness T=${fmt(result.params.sliceThicknessMm, 1)} mm. The central shape at or above the 10% level is shown on a linear scale, while only the low-amplitude tail at or above 0.1% for the condition with cone-geometry scaling is shown separately on a logarithmic scale. Intermediate SSPz curves and widths before thickness application are excluded from the public figures and width analysis.${candidateSpreadText} FWHM is not fitted; it is calculated from the curves after thickness application. Scanner-specific detector-channel interpolation, redundancy weighting, cone-beam weighting, and backprojection are not reproduced.`;
+    ? "主解析では、各実データ側ビューの理想対向角を挟む両隣の実取得ビューについて、実データ側・対向データ側の全列候補を統合して体軸方向の最近接挟み込みを作り、その2枝を角度方向に線形合成します。"
+    : "比較表示では、対向データ側をSSPzへ用いず、0～360°の実データ側ビューだけで体軸方向の最近接挟み込みを作ります。";
+  const candidateSpreadText = "幾何表示では、実データ側の全列と、理想対向角を挟む実取得ビューの全列について、列中心位置の体軸方向標準偏差を無重みで示します。候補点の採用、補間・再構成重み、設定厚による閾値は適用しません。";
+  const modelText = `${reconstructionPathLabel(result.params.reconstructionPath)} / ${pathText} 主要表示と幅指標はすべて、1回転寝台移動量内の360状態について、設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを反映したモデルSSPzから作成します。中心形状は10%水準以上を線形表示し、コーン幾何を反映した条件の0.1%以上の低振幅裾だけを別の対数表示で示します。設定厚適用前の中間SSPzとその幅は公開図・幅解析から除外しました。${candidateSpreadText} FWHMは合わせ込まず、設定厚反映後の曲線から計算しています。 装置固有の検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影は再現していません。`;
   const topologyText = multiComponent
-    ? " Caution: the 50% level is split into multiple components; do not represent the profile by FWHM alone."
+    ? " 注意：50%水準が複数成分に分かれています。FWHMだけで形状を代表させないでください。"
     : "";
   profileModelNote.textContent = modelText + topologyText;
 }
@@ -4571,7 +2283,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   if (!canvas) return;
   const scene = acquisitionGeometryScene(result);
   if (!scene) {
-    drawCanvasStatus(canvas, localizedText("Geometry unavailable", "Geometry unavailable"), "", "error");
+    drawCanvasStatus(canvas, localizedText("幾何を表示できません", "Geometry unavailable"), "", "error");
     return;
   }
   const cssWidth = Math.max(300, Math.round(canvas.getBoundingClientRect().width || 900));
@@ -4613,8 +2325,8 @@ function drawAcquisitionGeometry3D(canvas, result) {
   ctx.font = `700 ${headingSize}px ${FIGURE_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(localizedText("A  Acquisition geometry (object-fixed; not to scale)", "A  Acquisition geometry (object-fixed; not to scale)"), panelA.x + 12, panelA.y + 10, panelA.width - 24);
-  ctx.fillText(localizedText("B  All row positions and candidates nearest the reconstruction plane", "B  All row positions and candidates nearest to the reconstruction plane"), panelB.x + 12, panelB.y + 10, panelB.width - 24);
+  ctx.fillText(localizedText("A　取得幾何（被写体固定座標・縮尺なし）", "A  Acquisition geometry (object-fixed; not to scale)"), panelA.x + 12, panelA.y + 10, panelA.width - 24);
+  ctx.fillText(localizedText("B　全列位置と、再構成面に最も近い候補点", "B  All row positions and candidates nearest to the reconstruction plane"), panelB.x + 12, panelB.y + 10, panelB.width - 24);
 
   const allZ = [
     scene.zReference,
@@ -4788,7 +2500,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   if (sameAsReference) {
     ctx.fillStyle = RED;
     ctx.fillText(
-      localizedText(`s=0 (current)  z₀=zref`, `s=0 (current)  z₀=zref`),
+      localizedText(`s=0（現在）  z₀=zref`, `s=0 (current)  z₀=zref`),
       labelX,
       targetPoint.y,
     );
@@ -4799,7 +2511,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   if (sameAsPeriodEnd) {
     ctx.fillStyle = RED;
     ctx.fillText(
-      localizedText(`current s=${shortState}  z₀`, `current s=${shortState}  z₀`),
+      localizedText(`現在 s=${shortState}  z₀`, `current s=${shortState}  z₀`),
       labelX,
       targetPoint.y,
     );
@@ -4810,7 +2522,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   if (!sameAsReference && !sameAsPeriodEnd) {
     ctx.fillStyle = RED;
     ctx.fillText(
-      localizedText(`current s=${shortState}  z₀`, `current s=${shortState}  z₀`),
+      localizedText(`現在 s=${shortState}  z₀`, `current s=${shortState}  z₀`),
       labelX,
       targetPoint.y,
     );
@@ -4837,11 +2549,11 @@ function drawAcquisitionGeometry3D(canvas, result) {
   const idealSource = project(scene.idealSource);
   ctx.font = `700 ${labelSize}px ${FIGURE_FONT}`;
   ctx.fillStyle = BLUE;
-  ctx.fillText(localizedText("Direct side β", "Direct side β"), directSource.x + 7, directSource.y - 17);
+  ctx.fillText(localizedText("実データ側 β", "Direct side β"), directSource.x + 7, directSource.y - 17);
   ctx.fillStyle = ORANGE;
-  ctx.fillText(localizedText("Acquired complementary views", "Acquired complementary views"), complementSource.x + 7, complementSource.y + 7, panelA.width * 0.38);
+  ctx.fillText(localizedText("対向データ側の実取得ビュー", "Acquired complementary views"), complementSource.x + 7, complementSource.y + 7, panelA.width * 0.38);
   ctx.fillStyle = "#4f5b63";
-  ctx.fillText(localizedText("Ideal βc", "Ideal βc"), idealSource.x + 7, idealSource.y - 18);
+  ctx.fillText(localizedText("理想 βc", "Ideal βc"), idealSource.x + 7, idealSource.y - 18);
   ctx.fillStyle = RED;
   ctx.save();
   ctx.strokeStyle = RED;
@@ -4851,7 +2563,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   ctx.lineTo(panelA.x + 34, panelA.y + 38);
   ctx.stroke();
   ctx.fillText(
-    localizedText("Selected reconstruction plane z₀", "Selected reconstruction plane z₀"),
+    localizedText("選択中の再構成面 z₀", "Selected reconstruction plane z₀"),
     panelA.x + 40,
     panelA.y + 30,
     panelA.width * 0.47,
@@ -4863,7 +2575,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   const formula = `βc−β=${scene.forwardSeparationDeg.toFixed(2)}° = 180°+2γ  (γ=${scene.fanAngleDeg.toFixed(2)}°)`;
   ctx.fillText(formula, panelA.x + 12, panelA.y + panelA.height - 37, panelA.width - 24);
   ctx.fillText(
-    localizedText(`Thin rays show ${representativeRows.length} representative rows; circles and triangles mark candidates nearest the reconstruction plane (candidate selection and weighting are not shown)`, `Thin rays show ${representativeRows.length} representative rows; circles and triangles mark candidates nearest to the reconstruction plane (no adoption or weight is shown)`),
+    localizedText(`細線は代表${representativeRows.length}列、○・△は再構成面に最も近い候補点（採用・重みは示さない）`, `Thin rays show ${representativeRows.length} representative rows; circles and triangles mark candidates nearest to the reconstruction plane (no adoption or weight is shown)`),
     panelA.x + 12,
     panelA.y + panelA.height - 21,
     panelA.width - 24,
@@ -4873,9 +2585,9 @@ function drawAcquisitionGeometry3D(canvas, result) {
   // neighbors bracketing the ideal complementary angle.  Row centers are
   // short ticks; only selected reconstruction candidates receive markers.
   const columns = [
-    { key: "direct", family: scene.direct, xFraction: 0.22, color: BLUE, label: localizedText("Direct side β", "Direct β") },
-    { key: "complementary-lower", family: scene.complementaryLower, xFraction: 0.54, color: ORANGE, label: localizedText("Complement lower view", "Complement lower view") },
-    { key: "complementary-upper", family: scene.complementaryUpper, xFraction: 0.82, color: ORANGE, label: localizedText("Complement upper view", "Complement upper view") },
+    { key: "direct", family: scene.direct, xFraction: 0.22, color: BLUE, label: localizedText("実データ側 β", "Direct β") },
+    { key: "complementary-lower", family: scene.complementaryLower, xFraction: 0.54, color: ORANGE, label: localizedText("対向側 下側ビュー", "Complement lower view") },
+    { key: "complementary-upper", family: scene.complementaryUpper, xFraction: 0.82, color: ORANGE, label: localizedText("対向側 上側ビュー", "Complement upper view") },
   ];
   const candidateDeltas = columns.flatMap(column => column.family.candidates.map(candidate => candidate.z - scene.z0));
   let deltaMin = Math.min(0, ...candidateDeltas);
@@ -4999,7 +2711,7 @@ function drawAcquisitionGeometry3D(canvas, result) {
   canvas.dataset.radialPositionMm = String(scene.radialPosition);
   const summary = document.querySelector("#acquisition-geometry-summary");
   if (summary) summary.textContent = localizedText(
-    `Current conditions: N=${scene.rows} rows, d=${scene.rowWidth.toFixed(3)} mm, p=${scene.beamPitch.toFixed(3)}, and table feed per rotation F=${scene.feed.toFixed(3)} mm. The selected reconstruction plane z₀=${scene.z0.toFixed(3)} mm lies ${(scene.state * scene.feed).toFixed(3)} mm from the reference plane zref, corresponding to s=${scene.state.toFixed(3)}. Circles and triangles mark the direct- and complementary-side candidates nearest the reconstruction plane as positional guides. Candidate selection and weighting are not shown.`,
+    `現在の条件：N=${scene.rows}列、d=${scene.rowWidth.toFixed(3)} mm、p=${scene.beamPitch.toFixed(3)}、1回転の寝台移動量F=${scene.feed.toFixed(3)} mm。選択中の再構成面z₀=${scene.z0.toFixed(3)} mmは、基準面zrefから${(scene.state * scene.feed).toFixed(3)} mm、すなわちs=${scene.state.toFixed(3)}の位置です。○は実データ側、△は対向データ側で再構成面に最も近い候補点を位置関係の目印として示します。候補点の採用や重みは示しません。`,
     `Current conditions: N=${scene.rows} rows, d=${scene.rowWidth.toFixed(3)} mm, p=${scene.beamPitch.toFixed(3)}, and table feed per rotation F=${scene.feed.toFixed(3)} mm. The selected reconstruction plane z₀=${scene.z0.toFixed(3)} mm lies ${(scene.state * scene.feed).toFixed(3)} mm from the reference plane zref, corresponding to s=${scene.state.toFixed(3)}. Circles and triangles mark the direct- and complementary-side candidates nearest to the reconstruction plane as positional guides. Candidate adoption and weights are not shown.`,
   );
 }
@@ -5009,12 +2721,12 @@ function renderInspectionDetails(result) {
   const zoomLimit = Math.max(result.diagramOff.zoomXLimit, result.diagramOn.zoomXLimit);
   const overviewScope = document.querySelector("#overview-scope");
   const calculationScope = document.querySelector("#calculation-scope");
-  overviewScope.textContent = `Automatic display range: among the all-row candidate trajectories, rotations containing selected endpoints plus one neighboring rotation on each side (offsets from the reference rotation ${result.diagramOff.turnOffsetMin} to ${result.diagramOff.turnOffsetMax}; ${result.diagramOff.turnCount} rotations total)`;
+  overviewScope.textContent = `自動表示範囲：全列候補軌道のうち、選択端点を含む回転と前後1回転（基準回転との差 ${result.diagramOff.turnOffsetMin}〜${result.diagramOff.turnOffsetMax}、合計${result.diagramOff.turnCount}回転）`;
   const complementary = result.diagramOn.complementaryCandidates;
   const applicationText = result.params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
-    ? "SSPz uses linear angular interpolation between the brackets from the two neighboring acquired views"
-    : "Section 2C is a geometry audit only (SSPz uses the direct-ray full scan)";
-  calculationScope.textContent = `${reconstructionPathLabel(result.params.reconstructionPath)} / all ${result.params.rows} rows in every acquired view retained as the candidate population (no T-based exclusion) / the same all-row rule is used for acquired views bracketing the ideal complementary angle / ${applicationText} / maximum angular quantization difference ${fmt(complementary.maximumAngularResidualDeg, 4)}°`;
+    ? "両隣の取得ビューから得た挟み込みをSSPzへ角度線形合成"
+    : "2Cは幾何監査のみ（SSPzは実データ側フルスキャン）";
+  calculationScope.textContent = `${reconstructionPathLabel(result.params.reconstructionPath)}／各実取得ビューの全${result.params.rows}列を候補母集団として保持（Tによる候補除外なし）／理想対向角を挟む取得ビューも同じ全列規則／${applicationText}／最大角度量子化差 ${fmt(complementary.maximumAngularResidualDeg, 4)}°`;
   drawAcquisitionGeometry3D(document.querySelector("#acquisition-geometry-3d"), result);
   drawDiagram(document.querySelector("#diagram-overview-off"), result.diagramOff, "overview", overviewLimit, zoomLimit);
   drawDiagram(document.querySelector("#diagram-overview-on"), result.diagramOn, "overview", overviewLimit, zoomLimit);
@@ -5035,11 +2747,11 @@ function renderAll(result) {
   const finalHeading = document.querySelector("#overlay-core-heading");
   const finalDescription = document.querySelector("#overlay-core-description");
   if (finalHeading) finalHeading.textContent = layered
-    ? `Primary display: central profiles after applying T=${fmt(result.params.sliceThicknessMm, 1)} mm`
-    : "Model SSPz";
+    ? `主要表示：設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の中心形状`
+    : "モデルSSPz";
   if (finalDescription) finalDescription.textContent = layered
-    ? "Linear display at or above 10% for comparison of geometric variation remaining after application of the configured thickness"
-    : "Explanatory model SSPz";
+    ? "10%水準以上を線形表示し、設定厚に対して残る幾何学的変動を比較"
+    : "説明用モデルSSPz";
   // Core and tail panels have distinct semantic jobs. Each pair shares one
   // symmetric domain between cone-off and cone-on, but a low-amplitude tail is
   // never allowed to compress the linear central-shape view.
@@ -5050,7 +2762,7 @@ function renderAll(result) {
   drawProfileOverlay(document.querySelector("#overlay-tail-on"), result, true, "tail", overlayAxes.tail);
   const overlayScope = document.querySelector("#overlay-scope");
   if (overlayScope && result.overlay) {
-    overlayScope.textContent = `${reconstructionPathLabel(result.params.reconstructionPath)} / one table feed divided into ${result.overlay.stateCount} model states (equivalent to 1° increments) / ${result.params.viewSamples} reference views per state`;
+    overlayScope.textContent = `${reconstructionPathLabel(result.params.reconstructionPath)}／1回転寝台移動量を${result.overlay.stateCount}等分（1°相当）／各状態の基準ビュー数 ${result.params.viewSamples}`;
   }
   drawSweep(document.querySelector("#sweep-chart"), result);
 }
@@ -5299,7 +3011,7 @@ function renderCanvasById(canvasId, canvas, result) {
     drawSweep(canvas, result);
     return;
   }
-  throw new Error(`Unsupported figure ID: ${canvasId}`);
+  throw new Error(`未対応の図IDです: ${canvasId}`);
 }
 
 function writeUint32BigEndian(bytes, offset, value) {
@@ -5382,11 +3094,11 @@ async function downloadCanvas(canvasId) {
   target.dataset.publicationMode = "true";
   renderCanvasById(canvasId, target, lastResult);
   const rawBlob = await new Promise((resolve, reject) => {
-    target.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG generation failed.")), "image/png");
+    target.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNGの生成に失敗しました。")), "image/png");
   });
   const publicationBlob = await pngWithResolution(rawBlob, PUBLICATION_DPI);
   downloadBlob(publicationFilename(canvasId), publicationBlob, "image/png");
-  status.textContent = `Saved a publication PNG at ${publicationWidthMm(canvasId)} mm width and ${PUBLICATION_DPI} dpi (${target.width} x ${target.height} px)`;
+  status.textContent = `${publicationWidthMm(canvasId)} mm幅・${PUBLICATION_DPI} dpiの投稿用PNGを保存しました（${target.width}×${target.height} px）`;
 }
 
 runButton.addEventListener("click", runSimulation);
@@ -5401,12 +3113,12 @@ resetButton.addEventListener("click", () => {
 });
 copyLinkButton.addEventListener("click", async () => {
   const url = paramsToUrl(readParams()).toString();
-  try { await navigator.clipboard.writeText(url); status.textContent = "Condition URL copied"; }
-  catch { window.prompt("Copy this URL", url); }
+  try { await navigator.clipboard.writeText(url); status.textContent = "条件URLをコピーしました"; }
+  catch { window.prompt("このURLをコピーしてください", url); }
 });
 form.addEventListener("input", () => {
   updateInputDecorations();
-  if (!runButton.disabled) status.textContent = "Conditions changed. Select Compute to update the results.";
+  if (!runButton.disabled) status.textContent = "条件が変更されました。計算するを押してください。";
 });
 inspectState?.addEventListener("input", () => requestStateInspection(Number(inspectState.value)));
 inspectPrev?.addEventListener("click", () => requestStateInspection(selectedStateIndex - 1, true));
@@ -5421,7 +3133,7 @@ metricSelect.addEventListener("change", updateSweepDisplay);
 document.querySelectorAll("[data-radius]").forEach(button => button.addEventListener("click", () => {
   form.elements.namedItem("radius").value = button.dataset.radius;
   updateInputDecorations();
-  status.textContent = "The transaxial position changed. Select Compute to update the results.";
+  status.textContent = "横断面内位置を変更しました。計算するを押してください。";
 }));
 document.querySelectorAll("[data-canvas]").forEach(button => button.addEventListener("click", () => downloadCanvas(button.dataset.canvas)));
 downloadCsvButton.addEventListener("click", downloadSweepCsv);
@@ -5454,8 +3166,6 @@ const initial = paramsFromUrl() ?? (() => {
 writeParams({ ...DEFAULT_PARAMS, ...initial });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = "The legacy URL or saved settings were migrated to the current model. Previous calculated values are not reused; SSPz is recomputed using the default 180LI acquisition geometry and therefore may differ from the legacy result. For comparison, select the direct-ray 0-360° full scan under acquisition geometry.";
+  if (legacyInputMigrated) legacyUrlNote.textContent = "旧URL・保存条件を新方式へ移行しました。旧版の計算値は流用せず、既定の180LI取得幾何でSSPzを再計算するため、旧版と同じ結果にはなりません。比較が必要な場合は、取得幾何から0～360°実データ側フルスキャンを選択してください。";
 }
 runSimulation();
-
-})();

@@ -2015,26 +2015,94 @@ function computeUnwrapped(rawParams, options = {}) {
       ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)))
       : 1;
   }
+  // Every displayed family uses the direct acquired-view angle as its common
+  // reference coordinate.  A complementary family is reindexed onto that
+  // coordinate, but keeps the source z and row scale of its OWN acquired view.
+  // Use the complete acquired grid, independently of marker/display sampling,
+  // so each selected endpoint has an exact corresponding trajectory sample.
+  const traceFamilyDefinitions = [
+    { id: "direct", family: "direct" },
+    ...(reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? [
+      { id: "complementary-lower", family: "complementary" },
+      { id: "complementary-upper", family: "complementary" },
+    ] : []),
+  ];
+  const acquiredTraceSamples = p.viewSamples + 1;
+  const traceFamilies = traceFamilyDefinitions.map(definition => ({
+    ...definition,
+    angleCoordinate: "direct-reference-view-angle",
+    acquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
+    angles: new Float64Array(acquiredTraceSamples),
+    axial: new Float64Array(acquiredTraceSamples),
+    scales: new Float64Array(acquiredTraceSamples),
+    acquiredAngles: new Float64Array(acquiredTraceSamples),
+    absoluteViewIndices: new Int32Array(acquiredTraceSamples),
+  }));
+  const traceFamilyById = new Map(traceFamilies.map(family => [family.id, family]));
+  const acquiredViewStepRad = PI2 / p.viewSamples;
+  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+    const beta = acquiredViewStepRad * viewIndex;
+    const complementaryAcquired = traceFamilies.length > 1
+      ? acquiredViewMapping(p, fanBeamComplementaryGeometryAtAngle(p, beta, coneOn)
+        .complementaryAngleUnwrappedRad)
+      : null;
+    for (const family of traceFamilies) {
+      const absoluteViewIndex = family.id === "direct"
+        ? viewIndex
+        : family.id === "complementary-lower"
+          ? complementaryAcquired.lowerAbsoluteViewIndex
+          : complementaryAcquired.upperAbsoluteViewIndex;
+      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
+      family.angles[viewIndex] = 360 * viewIndex / p.viewSamples;
+      family.absoluteViewIndices[viewIndex] = absoluteViewIndex;
+      family.acquiredAngles[viewIndex] = 360 * absoluteViewIndex / p.viewSamples;
+      family.axial[viewIndex] = feed * acquiredAngle / PI2;
+      family.scales[viewIndex] = coneOn
+        ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)))
+        : 1;
+    }
+  }
   const displayRows = Array.from({ length: p.rows }, (_, row) => row);
   const rowOffsets = Float64Array.from(displayRows, row => (row + 0.5 - p.rows / 2) * p.rowWidth);
   const centerTurn = roundHalfEven(z0 / feed);
   // The ideal helix is infinite.  The reproducible finite display contract is
-  // every turn containing a row-wise nearest smaller-z or larger-z candidate over the
-  // full 0-360 degree period, plus one neighboring turn on either side.
+  // every turn containing a row-wise nearest smaller-z or larger-z candidate in
+  // ANY displayed family over the full reference-angle period, plus one
+  // neighboring turn on either side.  Complementary base angles can enter the
+  // next acquisition turn; their base turn must not be silently wrapped away.
   let turnMin = Infinity;
   let turnMax = -Infinity;
   const endpointOffsets = rowOffsets.length > 1
     ? [rowOffsets[0], rowOffsets[rowOffsets.length - 1]]
     : [rowOffsets[0]];
-  for (let i = 0; i < traceSamples; i += 1) {
-    const beta = PI2 * i / samples;
-    const distanceScale = Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)));
-    for (const scale of [1, distanceScale]) {
-      for (const rowOffset of endpointOffsets) {
-        const base = feed * beta / PI2 + scale * rowOffset;
-        const quotient = (z0 - base) / feed;
-        turnMin = Math.min(turnMin, Math.floor(quotient) - 1);
-        turnMax = Math.max(turnMax, Math.ceil(quotient) + 1);
+  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+    const rangeViewIndices = new Set([viewIndex]);
+    if (reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI) {
+      // The two displayed conditions share one turn window.  Their fan-angle
+      // mapping changes as well as their row scale, so bounds must include
+      // BOTH complementary mappings and BOTH scale choices.  This union is
+      // display-only: it adds no reconstruction candidates or weights.
+      for (const rangeConeOn of [false, true]) {
+        const beta = acquiredViewStepRad * viewIndex;
+        const acquired = acquiredViewMapping(p,
+          fanBeamComplementaryGeometryAtAngle(p, beta, rangeConeOn)
+            .complementaryAngleUnwrappedRad);
+        rangeViewIndices.add(acquired.lowerAbsoluteViewIndex);
+        rangeViewIndices.add(acquired.upperAbsoluteViewIndex);
+      }
+    }
+    for (const absoluteViewIndex of rangeViewIndices) {
+      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
+      const sourceZ = feed * acquiredAngle / PI2;
+      const distanceScale = Math.sqrt(Math.max(EPS,
+        1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)));
+      for (const scale of [1, distanceScale]) {
+        for (const rowOffset of endpointOffsets) {
+          const base = sourceZ + scale * rowOffset;
+          const quotient = (z0 - base) / feed;
+          turnMin = Math.min(turnMin, Math.floor(quotient) - 1);
+          turnMax = Math.max(turnMax, Math.ceil(quotient) + 1);
+        }
       }
     }
   }
@@ -2077,6 +2145,13 @@ function computeUnwrapped(rawParams, options = {}) {
     if (i % markerStride !== 0) continue;
     for (const candidate of geometry.candidates) {
       if (candidate.weight <= EPS) continue;
+      const traceFamilyId = candidate.dataKind === "complementary-acquired-lower-angular-neighbor"
+        ? "complementary-lower"
+        : candidate.dataKind === "complementary-acquired-upper-angular-neighbor"
+          ? "complementary-upper"
+          : "direct";
+      const traceFamily = traceFamilyById.get(traceFamilyId);
+      const baseAbsoluteViewIndex = traceFamily.absoluteViewIndices[mappedViewIndex];
       weightedPoints.push({
         x: candidate.delta,
         y: 360 * mappedViewIndex / p.viewSamples,
@@ -2086,16 +2161,26 @@ function computeUnwrapped(rawParams, options = {}) {
         turn: candidate.turn,
         turnOffset: candidate.turn - centerTurn,
         sampleIndex: i,
+        traceFamilyId,
+        referenceViewIndex: mappedViewIndex,
+        baseAbsoluteViewIndex,
+        absoluteViewIndex: baseAbsoluteViewIndex + candidate.turn * p.viewSamples,
+        baseAcquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex],
+        // Unlike y, this is the physical acquired angle, not a reference
+        // angle.  It remains unwrapped and includes the candidate turn.
+        acquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex] + candidate.turn * 360,
       });
       maximumWeightedDistance = Math.max(maximumWeightedDistance, Math.abs(candidate.delta));
     }
   }
-  let maximumCandidateDistance = baseZoomXLimit;
-  for (let i = 0; i < traceSamples; i += 1) {
-    for (const turn of [turnMin, turnMax]) {
-      for (const rowOffset of endpointOffsets) {
-        const delta = axialValues[i] + turn * feed + scaleValues[i] * rowOffset - z0;
-        maximumCandidateDistance = Math.max(maximumCandidateDistance, Math.abs(delta));
+  let maximumCandidateDistance = Math.max(baseZoomXLimit, maximumWeightedDistance);
+  for (const family of traceFamilies) {
+    for (let i = 0; i < acquiredTraceSamples; i += 1) {
+      for (const turn of [turnMin, turnMax]) {
+        for (const rowOffset of endpointOffsets) {
+          const delta = family.axial[i] + turn * feed + family.scales[i] * rowOffset - z0;
+          maximumCandidateDistance = Math.max(maximumCandidateDistance, Math.abs(delta));
+        }
       }
     }
   }
@@ -2109,6 +2194,9 @@ function computeUnwrapped(rawParams, options = {}) {
     reconstructionPath,
     state,
     z0,
+    angleCoordinate: "direct-reference-view-angle",
+    acquiredAngleCoordinate: "absolute-acquisition-angle-including-turn",
+    traceFamilyAcquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
     configuredSliceThicknessMm: p.sliceThicknessMm,
     // Public diagram contract: acquisition-side candidates are every detector-
     // row centre in each displayed acquired view.  Configured slice thickness
@@ -2130,6 +2218,10 @@ function computeUnwrapped(rawParams, options = {}) {
     xLimit: zoomXLimit,
     zoomXLimit,
     overviewXLimit,
+    traceFamilies,
+    traceFamilyCount: traceFamilies.length,
+    acquiredTraceSamples,
+    referenceViewSamples: p.viewSamples,
     traceGeometry: {
       angles: angleValues,
       axial: axialValues,
@@ -2149,6 +2241,9 @@ function computeUnwrapped(rawParams, options = {}) {
     turnOffsetMin,
     turnOffsetMax,
     candidateLineCount: p.rows * turns.length,
+    // Mapped traces are display representations, not unique acquired rows:
+    // angular neighbors may coincide, and one acquired view may be reused.
+    mappedCandidateLineCount: p.rows * turns.length * traceFamilies.length,
     actualDataFamilyCount: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
     angularRangeDeg: 360,
     complementaryCandidates,
@@ -2531,3 +2626,4 @@ self.onmessage = async event => {
     self.postMessage({ type: "error", message: error?.message ?? String(error), stack: error?.stack ?? "" });
   }
 };
+

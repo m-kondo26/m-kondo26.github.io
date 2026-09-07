@@ -2016,26 +2016,94 @@ function computeUnwrapped(rawParams, options = {}) {
       ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)))
       : 1;
   }
+  // Every displayed family uses the direct acquired-view angle as its common
+  // reference coordinate.  A complementary family is reindexed onto that
+  // coordinate, but keeps the source z and row scale of its OWN acquired view.
+  // Use the complete acquired grid, independently of marker/display sampling,
+  // so each selected endpoint has an exact corresponding trajectory sample.
+  const traceFamilyDefinitions = [
+    { id: "direct", family: "direct" },
+    ...(reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? [
+      { id: "complementary-lower", family: "complementary" },
+      { id: "complementary-upper", family: "complementary" },
+    ] : []),
+  ];
+  const acquiredTraceSamples = p.viewSamples + 1;
+  const traceFamilies = traceFamilyDefinitions.map(definition => ({
+    ...definition,
+    angleCoordinate: "direct-reference-view-angle",
+    acquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
+    angles: new Float64Array(acquiredTraceSamples),
+    axial: new Float64Array(acquiredTraceSamples),
+    scales: new Float64Array(acquiredTraceSamples),
+    acquiredAngles: new Float64Array(acquiredTraceSamples),
+    absoluteViewIndices: new Int32Array(acquiredTraceSamples),
+  }));
+  const traceFamilyById = new Map(traceFamilies.map(family => [family.id, family]));
+  const acquiredViewStepRad = PI2 / p.viewSamples;
+  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+    const beta = acquiredViewStepRad * viewIndex;
+    const complementaryAcquired = traceFamilies.length > 1
+      ? acquiredViewMapping(p, fanBeamComplementaryGeometryAtAngle(p, beta, coneOn)
+        .complementaryAngleUnwrappedRad)
+      : null;
+    for (const family of traceFamilies) {
+      const absoluteViewIndex = family.id === "direct"
+        ? viewIndex
+        : family.id === "complementary-lower"
+          ? complementaryAcquired.lowerAbsoluteViewIndex
+          : complementaryAcquired.upperAbsoluteViewIndex;
+      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
+      family.angles[viewIndex] = 360 * viewIndex / p.viewSamples;
+      family.absoluteViewIndices[viewIndex] = absoluteViewIndex;
+      family.acquiredAngles[viewIndex] = 360 * absoluteViewIndex / p.viewSamples;
+      family.axial[viewIndex] = feed * acquiredAngle / PI2;
+      family.scales[viewIndex] = coneOn
+        ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)))
+        : 1;
+    }
+  }
   const displayRows = Array.from({ length: p.rows }, (_, row) => row);
   const rowOffsets = Float64Array.from(displayRows, row => (row + 0.5 - p.rows / 2) * p.rowWidth);
   const centerTurn = roundHalfEven(z0 / feed);
   // The ideal helix is infinite.  The reproducible finite display contract is
-  // every turn containing a row-wise nearest smaller-z or larger-z candidate over the
-  // full 0-360 degree period, plus one neighboring turn on either side.
+  // every turn containing a row-wise nearest smaller-z or larger-z candidate in
+  // ANY displayed family over the full reference-angle period, plus one
+  // neighboring turn on either side.  Complementary base angles can enter the
+  // next acquisition turn; their base turn must not be silently wrapped away.
   let turnMin = Infinity;
   let turnMax = -Infinity;
   const endpointOffsets = rowOffsets.length > 1
     ? [rowOffsets[0], rowOffsets[rowOffsets.length - 1]]
     : [rowOffsets[0]];
-  for (let i = 0; i < traceSamples; i += 1) {
-    const beta = PI2 * i / samples;
-    const distanceScale = Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(beta - p.phase)));
-    for (const scale of [1, distanceScale]) {
-      for (const rowOffset of endpointOffsets) {
-        const base = feed * beta / PI2 + scale * rowOffset;
-        const quotient = (z0 - base) / feed;
-        turnMin = Math.min(turnMin, Math.floor(quotient) - 1);
-        turnMax = Math.max(turnMax, Math.ceil(quotient) + 1);
+  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+    const rangeViewIndices = new Set([viewIndex]);
+    if (reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI) {
+      // The two displayed conditions share one turn window.  Their fan-angle
+      // mapping changes as well as their row scale, so bounds must include
+      // BOTH complementary mappings and BOTH scale choices.  This union is
+      // display-only: it adds no reconstruction candidates or weights.
+      for (const rangeConeOn of [false, true]) {
+        const beta = acquiredViewStepRad * viewIndex;
+        const acquired = acquiredViewMapping(p,
+          fanBeamComplementaryGeometryAtAngle(p, beta, rangeConeOn)
+            .complementaryAngleUnwrappedRad);
+        rangeViewIndices.add(acquired.lowerAbsoluteViewIndex);
+        rangeViewIndices.add(acquired.upperAbsoluteViewIndex);
+      }
+    }
+    for (const absoluteViewIndex of rangeViewIndices) {
+      const acquiredAngle = acquiredViewStepRad * absoluteViewIndex;
+      const sourceZ = feed * acquiredAngle / PI2;
+      const distanceScale = Math.sqrt(Math.max(EPS,
+        1 + rho * rho - 2 * rho * Math.cos(acquiredAngle - p.phase)));
+      for (const scale of [1, distanceScale]) {
+        for (const rowOffset of endpointOffsets) {
+          const base = sourceZ + scale * rowOffset;
+          const quotient = (z0 - base) / feed;
+          turnMin = Math.min(turnMin, Math.floor(quotient) - 1);
+          turnMax = Math.max(turnMax, Math.ceil(quotient) + 1);
+        }
       }
     }
   }
@@ -2078,6 +2146,13 @@ function computeUnwrapped(rawParams, options = {}) {
     if (i % markerStride !== 0) continue;
     for (const candidate of geometry.candidates) {
       if (candidate.weight <= EPS) continue;
+      const traceFamilyId = candidate.dataKind === "complementary-acquired-lower-angular-neighbor"
+        ? "complementary-lower"
+        : candidate.dataKind === "complementary-acquired-upper-angular-neighbor"
+          ? "complementary-upper"
+          : "direct";
+      const traceFamily = traceFamilyById.get(traceFamilyId);
+      const baseAbsoluteViewIndex = traceFamily.absoluteViewIndices[mappedViewIndex];
       weightedPoints.push({
         x: candidate.delta,
         y: 360 * mappedViewIndex / p.viewSamples,
@@ -2087,16 +2162,26 @@ function computeUnwrapped(rawParams, options = {}) {
         turn: candidate.turn,
         turnOffset: candidate.turn - centerTurn,
         sampleIndex: i,
+        traceFamilyId,
+        referenceViewIndex: mappedViewIndex,
+        baseAbsoluteViewIndex,
+        absoluteViewIndex: baseAbsoluteViewIndex + candidate.turn * p.viewSamples,
+        baseAcquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex],
+        // Unlike y, this is the physical acquired angle, not a reference
+        // angle.  It remains unwrapped and includes the candidate turn.
+        acquiredAngleDeg: traceFamily.acquiredAngles[mappedViewIndex] + candidate.turn * 360,
       });
       maximumWeightedDistance = Math.max(maximumWeightedDistance, Math.abs(candidate.delta));
     }
   }
-  let maximumCandidateDistance = baseZoomXLimit;
-  for (let i = 0; i < traceSamples; i += 1) {
-    for (const turn of [turnMin, turnMax]) {
-      for (const rowOffset of endpointOffsets) {
-        const delta = axialValues[i] + turn * feed + scaleValues[i] * rowOffset - z0;
-        maximumCandidateDistance = Math.max(maximumCandidateDistance, Math.abs(delta));
+  let maximumCandidateDistance = Math.max(baseZoomXLimit, maximumWeightedDistance);
+  for (const family of traceFamilies) {
+    for (let i = 0; i < acquiredTraceSamples; i += 1) {
+      for (const turn of [turnMin, turnMax]) {
+        for (const rowOffset of endpointOffsets) {
+          const delta = family.axial[i] + turn * feed + family.scales[i] * rowOffset - z0;
+          maximumCandidateDistance = Math.max(maximumCandidateDistance, Math.abs(delta));
+        }
       }
     }
   }
@@ -2110,6 +2195,9 @@ function computeUnwrapped(rawParams, options = {}) {
     reconstructionPath,
     state,
     z0,
+    angleCoordinate: "direct-reference-view-angle",
+    acquiredAngleCoordinate: "absolute-acquisition-angle-including-turn",
+    traceFamilyAcquiredAngleCoordinate: "base-absolute-acquisition-angle-before-turn",
     configuredSliceThicknessMm: p.sliceThicknessMm,
     // Public diagram contract: acquisition-side candidates are every detector-
     // row centre in each displayed acquired view.  Configured slice thickness
@@ -2131,6 +2219,10 @@ function computeUnwrapped(rawParams, options = {}) {
     xLimit: zoomXLimit,
     zoomXLimit,
     overviewXLimit,
+    traceFamilies,
+    traceFamilyCount: traceFamilies.length,
+    acquiredTraceSamples,
+    referenceViewSamples: p.viewSamples,
     traceGeometry: {
       angles: angleValues,
       axial: axialValues,
@@ -2150,6 +2242,9 @@ function computeUnwrapped(rawParams, options = {}) {
     turnOffsetMin,
     turnOffsetMax,
     candidateLineCount: p.rows * turns.length,
+    // Mapped traces are display representations, not unique acquired rows:
+    // angular neighbors may coincide, and one acquired view may be reused.
+    mappedCandidateLineCount: p.rows * turns.length * traceFamilies.length,
     actualDataFamilyCount: reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
     angularRangeDeg: 360,
     complementaryCandidates,
@@ -2269,7 +2364,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION}`;
+versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-07.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -2800,13 +2895,18 @@ function opaqueWeightColor(row, totalRows, weight) {
   return `rgb(${channels.join(", ")})`;
 }
 
-function drawWeightedMarker(ctx, row, totalRows, x, y, radius, weight) {
+function drawWeightedMarker(ctx, row, totalRows, x, y, radius, weight, shape = "circle") {
   const color = rowColor(row, totalRows);
   ctx.fillStyle = opaqueWeightColor(row, totalRows, weight);
   ctx.strokeStyle = color;
   ctx.lineWidth = 0.9;
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  if (shape === "triangle") {
+    ctx.moveTo(x, y - radius * 1.25);
+    ctx.lineTo(x + radius * 1.1, y + radius * 0.8);
+    ctx.lineTo(x - radius * 1.1, y + radius * 0.8);
+    ctx.closePath();
+  } else ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
@@ -2828,7 +2928,36 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
   lines.forEach((value, index) => ctx.fillText(value, left, y + index * lineHeight));
 }
 
-function drawWeightLegend(ctx, left, top, width, totalRows, countText) {
+function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
+  const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
+  const items = [{
+    label: localizedText("実データ側：実線・○", "Direct data: solid line / circle"),
+    dashed: false,
+  }];
+  if (paired) items.push({
+    label: localizedText("対向データ側：破線・△", "Complementary data: dashed line / triangle"),
+    dashed: true,
+  });
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const columnWidth = width / items.length;
+  items.forEach((item, index) => {
+    const start = left + index * columnWidth;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash(item.dashed ? [5, 3] : []);
+    ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = INK;
+    setFittedFigureFont(ctx, item.label, 18, 13, columnWidth - 44);
+    ctx.fillText(item.label, start + 40, y);
+  });
+  ctx.restore();
+}
+
+function drawWeightLegend(ctx, left, top, width, diagram, countText) {
+  const totalRows = diagram.totalRows;
   const y0 = top + 6;
   ctx.save();
   ctx.fillStyle = INK;
@@ -2849,47 +2978,57 @@ function drawWeightLegend(ctx, left, top, width, totalRows, countText) {
     ctx.textAlign = "center";
     ctx.fillText(weight.toFixed(weight === 0 || weight === 1 ? 0 : 2), markerX, y0 + 44);
   });
-  ctx.font = `20px ${FIGURE_FONT}`;
+  drawDiagramFamilyLegend(ctx, diagram, left, y0 + 76, width);
   ctx.textAlign = "left";
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 2.2;
-  ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(left, y0 + 76); ctx.lineTo(left + 43, y0 + 76); ctx.stroke();
-  const acquisitionLabel = "細線：全列候補軌道（Tで除外しない）";
+  const acquisitionLabel = localizedText(
+    "線：全列候補　○・△：選択端点　赤線：目的断面",
+    "Lines: all rows; markers: selected endpoints; red line: target plane",
+  );
   ctx.fillStyle = INK;
-  setFittedFigureFont(ctx, acquisitionLabel, 20, 15, width - 53);
-  ctx.fillText(acquisitionLabel, left + 53, y0 + 76);
+  setFittedFigureFont(ctx, acquisitionLabel, 18, 13, width);
+  ctx.fillText(acquisitionLabel, left, y0 + 104);
   if (countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
-    drawWrappedLegendText(ctx, countText, left, y0 + 108, width);
+    drawWrappedLegendText(ctx, countText, left, y0 + 132, width);
   }
   ctx.restore();
 }
 
-function drawCandidateTrace(ctx, diagram, row, turn, x, yDown) {
-  const trace = diagram.traceGeometry;
+function drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit) {
   const angles = trace.angles;
   const axial = trace.axial;
   const scales = trace.scales;
-  const rowOffset = trace.rowOffsets[row];
+  const rowOffset = diagram.traceGeometry.rowOffsets[row];
+  const feed = diagram.traceGeometry.feed;
+  const complementary = trace.family === "complementary";
   const totalRows = diagram.totalRows;
   ctx.save();
   ctx.strokeStyle = rowColor(row, totalRows);
   const densityScale = Math.min(1, Math.sqrt(24 / Math.max(24, totalRows)));
-  ctx.globalAlpha = 0.60 * densityScale;
+  ctx.globalAlpha = (complementary ? 0.45 : 0.60) * densityScale;
   ctx.lineWidth = Math.max(0.45, 1.35 * densityScale);
-  ctx.setLineDash([]);
+  ctx.setLineDash(complementary ? [5, 3] : []);
+  // Avoid artificial horizontal bands from aligned dash phases in dense rows.
+  ctx.lineDashOffset = complementary ? -(row % 11) * 0.73 : 0;
   ctx.beginPath();
   let previousAngle = null;
+  let previousDelta = null;
   for (let index = 0; index < angles.length; index += 1) {
     const angle = angles[index];
-    const delta = axial[index] + turn * trace.feed + scales[index] * rowOffset - diagram.z0;
+    const delta = axial[index] + turn * feed + scales[index] * rowOffset - diagram.z0;
+    // Preserve every acquired reference view. Cull only whole off-screen
+    // segments, never downsample the complementary-angle geometry.
+    const outside = previousDelta !== null && (
+      (delta < -xLimit && previousDelta < -xLimit)
+      || (delta > xLimit && previousDelta > xLimit)
+    );
     const px = x(delta);
     const py = yDown(angle);
-    if (previousAngle === null || Math.abs(angle - previousAngle) > 180) ctx.moveTo(px, py);
+    if (previousAngle === null || outside || Math.abs(angle - previousAngle) > 180) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
     previousAngle = angle;
+    previousDelta = delta;
   }
   ctx.stroke();
   ctx.restore();
@@ -2928,10 +3067,11 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
     ctx.fillText(`${row + 1}`, x0 + 34, y);
     rowLegendX += itemWidths[index] + itemGap;
   });
-  ctx.font = `19px ${FIGURE_FONT}`;
+  drawDiagramFamilyLegend(ctx, diagram, left, top + 54, width);
+  ctx.font = `18px ${FIGURE_FONT}`;
   const acquiredLabel = "全列候補軌道（Tで除外しない）";
   const targetLabel = "目的断面 z₀";
-  const secondRowY = top + 54;
+  const secondRowY = top + 84;
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.2;
   ctx.setLineDash([]);
@@ -2943,17 +3083,21 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   let targetMarkerX = acquiredTextRight + 24;
   let targetTextX = targetMarkerX + 12;
   let targetY = secondRowY;
-  let countY = top + 84;
+  let countY = top + 144;
   if (targetTextX + targetTextWidth > left + width) {
     targetMarkerX = left;
     targetTextX = left + 12;
-    targetY = top + 84;
-    countY = top + 114;
+    targetY = top + 114;
+    countY = top + 174;
   }
   ctx.strokeStyle = RED;
   ctx.lineWidth = 2.4;
   ctx.beginPath(); ctx.moveTo(targetMarkerX, targetY - 12); ctx.lineTo(targetMarkerX, targetY + 12); ctx.stroke();
   ctx.fillStyle = INK; ctx.fillText(targetLabel, targetTextX, targetY);
+  const bandLabel = "淡色帯：2Bの拡大範囲（Tとは別）";
+  ctx.fillStyle = MUTED;
+  setFittedFigureFont(ctx, bandLabel, 17, 13, width);
+  ctx.fillText(bandLabel, left, targetY + 30);
   if (countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
@@ -2970,10 +3114,10 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   const xLimit = xAxis.xMax;
   const plot = axisContext(canvas, { xMin: xAxis.xMin, xMax: xAxis.xMax, yMin: 0, yMax: 360 }, {
     x: "候補列中心  zᵢ − z₀  (mm)",
-    y: "相対X線管角度  β  (°)",
+    y: localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
-    topMargin: publicationMode ? 116 : 164,
+    topMargin: publicationMode ? 148 : 206,
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
   const bandLimit = Math.min(xLimit, mode === "overview"
@@ -2981,33 +3125,31 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     : Math.max(diagram.interpolationBandHalfWidth ?? 0, 0.15));
   ctx.fillStyle = PALE;
   ctx.fillRect(x(-bandLimit), margin.top, x(bandLimit) - x(-bandLimit), innerHeight);
-  if (mode === "overview") {
-    ctx.fillStyle = "#557482";
-    const annotation = "淡色帯：2Bの拡大範囲（Tとは別）";
-    setFittedFigureFont(ctx, annotation, 18, 14, Math.max(160, 2 * bandLimit / (2 * xLimit) * innerWidth - 12));
-    ctx.textAlign = "center";
-    ctx.fillText(annotation, x(0), margin.top + 24);
-  } else {
-    ctx.fillStyle = "#557482";
-    const annotation = "円：選択した補間端点";
-    setFittedFigureFont(ctx, annotation, 18, 14, Math.max(180, innerWidth * 0.42));
-    ctx.textAlign = "right";
-    ctx.fillText(annotation, margin.left + innerWidth - 12, margin.top + 24);
-  }
   ctx.save();
   ctx.beginPath();
   ctx.rect(margin.left, margin.top, innerWidth, innerHeight);
   ctx.clip();
-  for (let row = 0; row < diagram.totalRows; row += 1) {
-    for (const turn of diagram.traceGeometry.turns) {
-      drawCandidateTrace(ctx, diagram, row, turn, x, yDown);
+  // Every family is expressed in the same DIRECT reference-angle coordinate.
+  // In particular, complementary markers are not drawn on direct-only traces.
+  const traceFamilies = diagram.traceFamilies ?? [diagram.traceGeometry];
+  for (const trace of traceFamilies) {
+    // Exact angular matches have only one distinct complementary family.
+    if (trace.id === "complementary-upper") {
+      const lower = traceFamilies.find(item => item.id === "complementary-lower");
+      if (lower && trace.absoluteViewIndices.every((value, index) => value === lower.absoluteViewIndices[index])) continue;
+    }
+    for (let row = 0; row < diagram.totalRows; row += 1) {
+      for (const turn of diagram.traceGeometry.turns) {
+        drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit);
+      }
     }
   }
   if (mode === "zoom") {
     const pointsByWeight = [...diagram.weightedPoints].sort((a, b) => a.weight - b.weight);
     for (const point of pointsByWeight) {
       const px = x(point.x); const py = yDown(point.y);
-      drawWeightedMarker(ctx, point.row, diagram.totalRows, px, py, 5.2, point.weight);
+      const shape = point.traceFamilyId?.startsWith("complementary-") ? "triangle" : "circle";
+      drawWeightedMarker(ctx, point.row, diagram.totalRows, px, py, 5.2, point.weight, shape);
     }
   }
   ctx.strokeStyle = RED;
@@ -3016,19 +3158,23 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
-  const usedTurnText = diagram.usedTurns.length ? diagram.usedTurns.map(value => value > 0 ? `+${value}` : String(value)).join(", ") : "なし";
   if (mode === "overview") {
-    const countText = `各表示角度で全${diagram.totalRows}列の候補軌道を表示（凡例は代表${Math.min(6, diagram.totalRows)}列）／Tで候補を除外しない／表示回転 ${diagram.turnOffsetMin}〜${diagram.turnOffsetMax}`;
+    const countText = localizedText(
+      `全${diagram.totalRows}列・全${diagram.referenceViewSamples}取得角度／共通の実データ側角度βで表示／Tで除外しない`,
+      `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
+    );
     drawOverviewLegend(ctx, diagram, margin.left, 8, innerWidth, publicationMode ? "" : countText);
   } else {
-    const outside = diagram.usedTurnsOutsideOverview.length ? `／俯瞰範囲外 ${diagram.usedTurnsOutsideOverview.length}回転` : "";
-    const countText = `円：全列候補から選択した補間端点（${diagram.renderedAngleSamples}/${diagram.samples}角度表示）／Tで端点を除外しない／寄与回転 ${usedTurnText}${outside}`;
+    const countText = localizedText(
+      `点は${diagram.renderedAngleSamples}角度を抜粋／軌道は全取得角度／Tで除外しない`,
+      `Markers: ${diagram.renderedAngleSamples} reference angles / trajectories: all acquired angles / no T-based exclusion`,
+    );
     drawWeightLegend(
       ctx,
       margin.left,
       8,
       innerWidth,
-      diagram.totalRows,
+      diagram,
       publicationMode ? "" : countText,
     );
   }
@@ -3047,6 +3193,12 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.markerScope = mode === "zoom" ? "selected-interpolation-endpoints" : "none";
   canvas.dataset.selectedEndpointStage = diagram.selectedEndpointStage;
   canvas.dataset.doesNotRestrictCandidatePopulation = String(diagram.doesNotRestrictCandidatePopulation);
+  canvas.dataset.angleCoordinate = diagram.angleCoordinate;
+  canvas.dataset.traceFamilyIds = traceFamilies.map(trace => trace.id).join(",");
+  canvas.dataset.traceSamplesPerFamily = String(diagram.acquiredTraceSamples);
+  canvas.dataset.complementaryMarkerShape = "triangle";
+  canvas.dataset.complementaryLineStyle = "dashed";
+  canvas.dataset.diagramDisplayVersion = "2026-09-07.1";
 }
 
 function drawSeriesMarkers(ctx, points, x, y, color, shape = "circle", stride = 1) {

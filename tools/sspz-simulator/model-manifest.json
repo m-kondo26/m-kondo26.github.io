@@ -1,6 +1,7 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-08-28.2",
+  "diagramDisplayVersion": "2026-09-07.1",
   "purpose": "Visualize how angular-longitudinal candidate geometry can affect configured-output SSPz by applying an idealized fan-beam 180LI acquisition-geometry explanatory model. The acquired complementary views bracketing beta plus 180 degrees plus 2 gamma are each combined with the direct view for longitudinal nearest-bracketing interpolation, and the two angular branches are then linearly interpolated. The reader-facing geometry indicator is the unweighted population standard deviation, in millimetres, of all detector-row centre positions in the direct acquired view and in each distinct acquired view bracketing the ideal complementary angle. It is evaluated before candidate selection, interpolation weighting, row-aperture modelling, and configured slice thickness. The earlier direct-ray 0-to-360-degree full-scan model remains available as a comparator.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
@@ -9,7 +10,7 @@
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "df6dde2b99267b55acf3fd1ef7ad738bc325b014a97995f49e510b07e97cfbd5"
+    "sha256": "00263795ece2bea7ac046dcc3e76a6879f08e85278b055ad3a707cafd2317deb"
   },
   "regressionFixture": {
     "fileName": "tests/full-scan-reference.json",
@@ -39,7 +40,8 @@
     "separate longitudinal nearest-bracketing interpolation for the lower- and upper-angular complementary branches, followed by their convex angular combination",
     "per-view audit of contribution sums, angular-weight sums, longitudinal first-moment residuals, and lower/upper branch gaps",
     "reader-facing per-view unweighted population standard deviation in millimetres across every detector-row centre in the direct acquired view and every distinct acquired angular neighbour bracketing the ideal complementary angle, without candidate selection, interpolation weights, row aperture, or configured thickness",
-    "identical all-N detector-row-centre candidate populations for the no-cone reference and cone-geometry-scaled unwrapped diagrams, with Section 2A thin trajectories denoting the complete candidate pool, Section 2B circles denoting selected nearest interpolation endpoints, and configured slice thickness applied only at the later SSPz stage",
+    "all-N detector-row-centre candidate populations for the direct family and both acquired complementary-angle neighbors, drawn on a common direct-data reference-angle axis using each family's own acquisition source z and row scale; solid lines and circles identify the direct side, dashed lines and triangles identify the complementary side; configured thickness is not used for candidate exclusion",
+    "display-only revision 2026-09-07.1: full acquired-view trajectory grids, absolute-view provenance for every selected marker, comparable display bounds across both geometry conditions, and no changes to numerical SSPz or interpolation weights",
     "internal per-view weighted RMS spread, final contributing-candidate count, inverse-Simpson weight-equivalent count, and pre-merge contribution count retained only as explanatory-SSPz regression audits rather than reader-facing geometry indicators",
     "analytic configured-output variance audit sigma-configured-squared equals mean-view M2 plus configured-thickness-squared over 12",
     "absolute helical view order D-n to C-n to D-n-plus-one with the two constrained cross-family longitudinal spans evaluated separately over all detector rows, both longitudinal endpoint orientations, and required ideal-helix turns",

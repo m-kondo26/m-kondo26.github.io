@@ -1,0 +1,11 @@
+{
+  "name": "sspz-unwrapped-geometry-reference",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-standalone.mjs",
+    "test": "node tests/model-regression.mjs && node tests/lattice-equivalence.mjs && node tests/fan-beam-180li-oracle.mjs && node tests/candidate-count-metrics.mjs && node tests/all-candidate-axial-spread.mjs && node tests/unwrapped-complementary-trajectories.mjs",
+    "serve": "python -m http.server 4173"
+  }
+}
