@@ -57,6 +57,10 @@ The numerical core SHA256 is recorded in `model-manifest.json`. Current local ac
 
 ## Display and publication checks
 
+SSPz profile display contract `2026-09-08.1` is separate from numerical model `2026-09-08.1` and diagram display revision `2026-09-08.3`. Selected-state and all-360-state SSPz painters share `strokeNativeProfile`, connecting the original calculated z/value pairs directly with straight Canvas segments. No display resampling, spline, smoothing, or point/state decimation is applied. The existing log-tail cutoff is 0.001: retained samples are connected in log10 coordinates, with a path break below the cutoff. Japanese/English screen and 600 dpi export use the same painters. Canvas metadata records the rule and native point count.
+
+The recording-Canvas regression checks every coordinate of 1103 nonuniform samples with a narrow peak in eight screen/publication cases, all 360 states, and the exact tail threshold. Negative controls reject point deletion and curved Canvas commands. The numerical core, workers, normalization, FWHM/FWTM, alignment, filtering, state count, and display axes/cutoffs remain unchanged. The numerical core SHA256 remains `27a6e7f48a562050992108af95e21ed5af70b4919a2604c769862d2a92e09a5e`; the worker SHA256 remains `4bc7e71b7a78a846cfc86071e2f73a8f8e0ff3cc950aec3ab4a8e12917ea7052`.
+
 The Japanese and English pages share a generated numerical/rendering core. A versioned script URL prevents the revised page from reusing a prior unversioned calculation bundle. Width, axis, legend, and parameter captions use the same drawing code for screen and publication export.
 
 Display revision 2026-09-08.1 places axes/grid behind SSPz curves. This keeps a flat 100% peak visible when it coincides with a gridline, without altering any computed samples, widths, or plot limits. The recording-Canvas regression exercises the actual screen/publication drawing functions and rejects the previous overpainting order.

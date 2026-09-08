@@ -2,6 +2,8 @@
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-09-08.1",
   "diagramDisplayVersion": "2026-09-08.3",
+  "profileDisplayVersion": "2026-09-08.1",
+  "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The unchanged log-tail rule omits values below 0.001, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
   "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",

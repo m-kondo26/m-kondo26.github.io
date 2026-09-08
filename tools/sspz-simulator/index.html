@@ -237,6 +237,7 @@
         <p class="section-note">幅だけでなく、裾・非対称性・形状全体を同時に確認します。</p>
       </div>
       <p id="profile-model-note" class="model-note">Taguchiらの式（6）に基づく矩形重みのフィルタ補間を適用します。固定した薄い物体に対して再構成面を動かした応答を求めます。FWはTと独立で、装置の設定厚との対応は校正していません。</p>
+      <p id="profile-display-note" class="model-note compact-note">SSPzは計算済みの隣接点を直線で結びます。スプライン補間・平滑化・点の間引きは行いません。画面と600 dpi保存で同じ描画方法を使います。低振幅裾は0.1%以上の点を対数座標で結びます。</p>
 
       <div class="subsection-heading">
         <div>
@@ -321,7 +322,7 @@
       </div>
       <article class="chart-card">
         <div class="chart-title"><h3>選択状態のSSPz</h3><span id="profile-axis-note">フィルタ補間後SSPzの10%水準以上に応じて横軸を自動調整</span></div>
-        <canvas id="profile-chart" width="1200" height="650" aria-label="フィルタ補間後の選択状態SSPz" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
+        <canvas id="profile-chart" width="1200" height="650" aria-label="フィルタ補間後の選択状態SSPz" aria-describedby="profile-detail-reading-order profile-axis-note profile-display-note"></canvas>
         <button class="download-link" data-canvas="profile-chart">投稿用PNG（600 dpi）</button>
       </article>
 
@@ -457,6 +458,6 @@
   </footer>
 
   <script src="worker-source.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle.js?v=2026-09-08.1-r4"></script>
+  <script src="app-bundle.js?v=2026-09-08.1-r5"></script>
 </body>
 </html>

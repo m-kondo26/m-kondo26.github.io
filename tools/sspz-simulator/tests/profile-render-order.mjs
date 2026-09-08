@@ -17,9 +17,9 @@ function functionSource(name) {
 }
 
 const functionNames = ["axisContext", "setFittedFigureFont", "drawAxes", "drawPolyline",
-  "decimalPlacesForStep", "drawProfileEncodingLegend", "drawProfiles", "drawOverlayLegend",
+  "decimalPlacesForStep", "drawProfileEncodingLegend", "strokeNativeProfile", "setProfileDisplayMetadata", "drawProfiles", "drawOverlayLegend",
   "drawProfileOverlay", "filterParameterLabel"];
-const constantNames = ["BLUE", "ORANGE", "INK", "MUTED", "GRID", "FIGURE_FONT", "PROFILE_TAIL_DISPLAY_BOUNDS"];
+const constantNames = ["BLUE", "ORANGE", "INK", "MUTED", "GRID", "FIGURE_FONT", "PROFILE_TAIL_DISPLAY_BOUNDS", "PROFILE_DISPLAY_VERSION"];
 const constants = constantNames.map(name => {
   const match = new RegExp(`^const ${name} = .+;$`, "m").exec(source);
   assert.ok(match, `Application constant ${name} must exist`);
@@ -60,6 +60,8 @@ class RecordingContext {
   beginPath() { this.currentPath = []; }
   moveTo(x, y) { this.currentPath.push({ op: "M", x, y }); }
   lineTo(x, y) { this.currentPath.push({ op: "L", x, y }); }
+  quadraticCurveTo(cx, cy, x, y) { this.currentPath.push({ op: "Q", cx, cy, x, y }); }
+  bezierCurveTo(cx1, cy1, cx2, cy2, x, y) { this.currentPath.push({ op: "C", cx1, cy1, cx2, cy2, x, y }); }
   rect(x, y, width, height) { this.currentPath.push({ op: "R", x, y, width, height }); }
   clip() { this.state.clipped = true; }
   stroke() {
@@ -82,7 +84,7 @@ for (const property of ["strokeStyle", "fillStyle", "lineWidth", "globalAlpha", 
   });
 }
 
-function createRuntime(oldOrder) {
+function createRuntime(oldOrder, nativeMutation = null) {
   const context = vm.createContext({
     console, profileAxisNote: null,
     localizedText: ja => ja,
@@ -90,7 +92,13 @@ function createRuntime(oldOrder) {
     selectedProfileAxis: () => ({ xMin: -3, xMax: 3, tickStep: 1, ticks: [-3, -2, -1, 0, 1, 2, 3] }),
   });
   const functions = functionNames.map(name => {
-    const text = functionSource(name);
+    let text = functionSource(name);
+    if (name === "strokeNativeProfile" && nativeMutation === "drop-points") {
+      text = text.replace("index += 1", "index += 2");
+    }
+    if (name === "strokeNativeProfile" && nativeMutation === "curved-path") {
+      text = text.replace("ctx.lineTo(px, py)", "ctx.quadraticCurveTo(px, py, px, py)");
+    }
     return oldOrder && ["drawProfiles", "drawProfileOverlay"].includes(name) ? restoreOldOrder(text, name) : text;
   }).join("\n\n");
   vm.runInContext(`${constants}\n${functions}\n`
@@ -181,6 +189,83 @@ const specs = [false, true].flatMap(publication => [
 ]);
 const currentRuntime = createRuntime(false);
 const results = specs.map(spec => checkDrawing(currentRuntime, spec));
+
+// More than 1000 nonuniform samples expose within-profile decimation. A peak
+// one sample wide and different per-state shoulders also expose smoothing,
+// assumed-uniform coordinates, and loss of the packed-array state offset.
+const nativeZ = Array.from({ length: 1103 }, (_, index) => -2.4 + 4.8 * (index / 1102) ** 1.07);
+function nativeValues(state = 0) {
+  return nativeZ.map((_, index) => index === 501 ? 1
+    : index === 500 ? 0.001
+    : [0, 503, 1102].includes(index) ? 0.0004
+      : 0.008 + (index % 19) * 0.003 + state * 0.00001);
+}
+function nativeCondition() {
+  const values = new Float64Array(stateCount * nativeZ.length);
+  for (let state = 0; state < stateCount; state += 1) values.set(nativeValues(state), state * nativeZ.length);
+  return { final: values, finalSummary: { maximum: nativeValues(359) }, coverage: new Float64Array(stateCount).fill(1) };
+}
+const nativeFixture = {
+  params: fixture.params,
+  selectedOff: { z: nativeZ, profile: nativeValues(0), filterSamples: 129 },
+  selectedOn: { z: nativeZ.map(value => value + 0.003), profile: nativeValues(17), filterSamples: 129 },
+  overlay: { z: nativeZ, zCount: nativeZ.length, stateCount, off: nativeCondition(), on: nativeCondition() },
+};
+
+function checkNativeDrawing(runtime, spec) {
+  const ctx = new RecordingContext();
+  const canvas = { width: spec.publication ? 1890 : 900, height: spec.publication ? 1365 : 650,
+    dataset: { publicationMode: String(spec.publication), renderScale: spec.publication ? "2.1" : "1" },
+    getContext: () => ctx, setAttribute() {} };
+  const xAxis = { xMin: -3, xMax: 3, step: 1, ticks: [-3, -2, -1, 0, 1, 2, 3], formatter: String };
+  if (spec.kind === "selected") runtime.drawProfiles(canvas, nativeFixture);
+  else runtime.drawProfileOverlay(canvas, nativeFixture, spec.coneOn, spec.kind, xAxis);
+  const tail = spec.kind === "tail";
+  const plot = runtime.axisContext({ ...canvas, getContext: () => new RecordingContext() },
+    { xMin: -3, xMax: 3, yMin: tail ? runtime.testTailBounds.yMin : 0,
+      yMax: tail ? runtime.testTailBounds.yMax : 1.04 },
+    { topMargin: spec.publication ? (spec.kind === "selected" ? 96 : 116) : 126,
+      leftMargin: tail ? 158 : undefined });
+  const curves = ctx.events.filter(event => event.clipped
+    && [runtime.testColors.BLUE, runtime.testColors.ORANGE].includes(event.strokeStyle));
+  assert.equal(curves.length, spec.kind === "selected" ? 2 : stateCount, "Every state must retain its own native path");
+  let checkedPoints = 0;
+  for (const [state, curve] of curves.entries()) {
+    const zs = spec.kind === "selected" && state === 1 ? nativeFixture.selectedOn.z : nativeZ;
+    const values = nativeValues(spec.kind === "selected" && state === 1 ? 17 : state);
+    const expected = [];
+    let active = false;
+    for (let index = 0; index < zs.length; index += 1) {
+      if (tail && values[index] < 0.001) { active = false; continue; }
+      expected.push({ op: active ? "L" : "M", x: plot.x(zs[index]),
+        y: plot.y(tail ? Math.log10(values[index]) : values[index]) });
+      active = true;
+    }
+    assert.equal(curve.path.length, expected.length, "Native samples must not be dropped or resampled");
+    for (let index = 0; index < expected.length; index += 1) {
+      assert.equal(curve.path[index].op, expected[index].op, "Native samples require straight segments and unbridged tail gaps");
+      assert.ok(Math.abs(curve.path[index].x - expected[index].x) < 1e-10
+        && Math.abs(curve.path[index].y - expected[index].y) < 1e-10,
+      `Native coordinate/value changed at state ${state}, path point ${index}`);
+    }
+    checkedPoints += expected.length;
+  }
+  assert.equal(canvas.dataset.profileDisplayVersion, "2026-09-08.1");
+  assert.equal(canvas.dataset.profileInterpolation, "native-samples-piecewise-linear");
+  for (const field of ["profileSpline", "profileSmoothing", "profileDecimation"]) assert.equal(canvas.dataset[field], "none");
+  assert.equal(canvas.dataset.profileDisplayGrid, "original-calculated-z-values");
+  assert.equal(ctx.stack.length, 0);
+  return { ...spec, nativePointCount: nativeZ.length, pathCount: curves.length, checkedPoints };
+}
+const nativeResults = specs.map(spec => checkNativeDrawing(currentRuntime, spec));
+for (const mutation of ["drop-points", "curved-path"]) {
+  const badRuntime = createRuntime(false, mutation);
+  for (const spec of specs) {
+    assert.throws(() => checkNativeDrawing(badRuntime, spec),
+      /Native samples must not be dropped|Native samples require straight segments/,
+      `${mutation} must fail for selected, core, and tail paths in screen/publication modes`);
+  }
+}
 const oldRuntime = createRuntime(true);
 for (const spec of specs) {
   assert.throws(() => checkDrawing(oldRuntime, spec), /100% gridline must be painted before every SSPz plateau/,
@@ -188,5 +273,7 @@ for (const spec of specs) {
 }
 console.log(JSON.stringify({ status: "PASS", executedDrawingCases: results.length,
   oldOrderNegativeControlsRejected: specs.length,
+  nativeCoordinateDrawingCases: nativeResults.length,
+  nativeCoordinateNegativeControlsRejected: specs.length * 2,
   scope: "Real application profile painters with recording Canvas; no numerical model changes or pixel-antialiasing claim.",
-  results }, null, 2));
+  results, nativeResults }, null, 2));

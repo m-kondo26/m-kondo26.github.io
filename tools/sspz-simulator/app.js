@@ -35,6 +35,7 @@ const PAIR_TYPE_COLORS = Object.freeze([
 const ROW_COLORS = ["#0072b2", "#d55e00", "#009e73", "#e69f00", "#cc79a7", "#56b4e9", "#000000", "#777777"];
 const FIGURE_FONT = "Arial, Helvetica, sans-serif";
 const PUBLICATION_DPI = 600;
+const PROFILE_DISPLAY_VERSION = "2026-09-08.1";
 const PUBLICATION_WIDTH_MM = Object.freeze({ panel: 80, full: 180 });
 // The log-tail plot still renders values only at or above 0.1%.  These limits
 // add print-space around the 100% peak and the 0.1% endpoints so neither is
@@ -1599,6 +1600,34 @@ function drawProfileEncodingLegend(ctx, left, top) {
   ctx.restore();
 }
 
+function strokeNativeProfile(ctx, z, values, x, y, { offset = 0, tailView = false } = {}) {
+  // Display the original calculation grid directly, including nonuniform z.
+  // This painter neither resamples/smooths points nor changes model values.
+  ctx.beginPath();
+  let active = false;
+  for (let index = 0; index < z.length; index += 1) {
+    const value = values[offset + index];
+    if (!Number.isFinite(z[index]) || !Number.isFinite(value) || (tailView && value < 0.001)) {
+      active = false;
+      continue;
+    }
+    const px = x(z[index]);
+    const py = y(tailView ? Math.log10(Math.max(0.001, value)) : value);
+    if (!active) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    active = true;
+  }
+  ctx.stroke();
+}
+
+function setProfileDisplayMetadata(canvas) {
+  canvas.dataset.profileDisplayVersion = PROFILE_DISPLAY_VERSION;
+  canvas.dataset.profileInterpolation = "native-samples-piecewise-linear";
+  canvas.dataset.profileSmoothing = "none";
+  canvas.dataset.profileSpline = "none";
+  canvas.dataset.profileDecimation = "none";
+  canvas.dataset.profileDisplayGrid = "original-calculated-z-values";
+}
+
 function drawProfiles(canvas, result) {
   const publicationMode = canvas.dataset.publicationMode === "true";
   const axis = selectedProfileAxis(result);
@@ -1610,8 +1639,6 @@ function drawProfiles(canvas, result) {
     yFormatter: value => value.toFixed(1),
     topMargin: publicationMode ? 96 : 126,
   });
-  const off = result.selectedOff.z.map((z, i) => [z, result.selectedOff.profile[i]]);
-  const on = result.selectedOn.z.map((z, i) => [z, result.selectedOn.profile[i]]);
   // Paint the grid first: a flat normalized peak at exactly 1 must remain
   // visible instead of being overwritten by the 100% gridline.
   drawAxes(plot, axis.ticks, [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
@@ -1619,8 +1646,14 @@ function drawProfiles(canvas, result) {
   plot.ctx.beginPath();
   plot.ctx.rect(plot.margin.left, plot.margin.top, plot.innerWidth, plot.innerHeight);
   plot.ctx.clip();
-  drawPolyline(plot.ctx, off, plot.x, plot.y, BLUE, 4);
-  drawPolyline(plot.ctx, on, plot.x, plot.y, ORANGE, 4);
+  plot.ctx.save();
+  plot.ctx.lineWidth = 4;
+  plot.ctx.setLineDash([]);
+  plot.ctx.strokeStyle = BLUE;
+  strokeNativeProfile(plot.ctx, result.selectedOff.z, result.selectedOff.profile, plot.x, plot.y);
+  plot.ctx.strokeStyle = ORANGE;
+  strokeNativeProfile(plot.ctx, result.selectedOn.z, result.selectedOn.profile, plot.x, plot.y);
+  plot.ctx.restore();
   plot.ctx.save(); plot.ctx.strokeStyle = MUTED; plot.ctx.setLineDash([5,5]); plot.ctx.lineWidth = 1;
   for (const level of [0.5, 0.1]) { plot.ctx.beginPath(); plot.ctx.moveTo(plot.margin.left, plot.y(level)); plot.ctx.lineTo(plot.margin.left + plot.innerWidth, plot.y(level)); plot.ctx.stroke(); }
   plot.ctx.restore();
@@ -1649,6 +1682,8 @@ function drawProfiles(canvas, result) {
   canvas.dataset.responseCoordinate = "reconstruction-plane-minus-fixed-object-mm";
   canvas.dataset.axisRule = "configured-output-at-or-above-ten-percent";
   canvas.dataset.legendOrder = "configured-output-only";
+  setProfileDisplayMetadata(canvas);
+  canvas.dataset.nativeProfilePointCounts = JSON.stringify([result.selectedOff.z.length, result.selectedOn.z.length]);
   canvas.setAttribute("aria-label", localizedText(`フィルタ補間後の選択状態SSPz。${filterParameterLabel(result.params, result.selectedOn.filterSamples)}。横軸は固定した薄い物体に対する再構成面位置`, `Selected-state SSPz after filter interpolation. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. Horizontal axis: reconstruction-plane position relative to a fixed thin object.`));
   if (profileAxisNote) {
     profileAxisNote.textContent = localizedText(`${filterParameterLabel(result.params, result.selectedOn.filterSamples)}／横軸は固定物体に対する再構成面位置（10%以上から自動調整）`, `${filterParameterLabel(result.params, result.selectedOn.filterSamples)} / horizontal axis: reconstruction-plane position relative to the fixed object (auto-scaled from values >=10%)`);
@@ -1751,20 +1786,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     plot.ctx.globalAlpha = complete ? 0.13 : 0.26;
     plot.ctx.lineWidth = 1.1;
     plot.ctx.setLineDash(complete ? [] : [4, 4]);
-    plot.ctx.beginPath();
-    let active = false;
-    for (let zIndex = 0; zIndex < overlay.zCount; zIndex += 1) {
-      const value = values[offset + zIndex];
-      if (tailView && value < 0.001) {
-        active = false;
-        continue;
-      }
-      const px = plot.x(z[zIndex]);
-      const py = plot.y(tailView ? Math.log10(Math.max(0.001, value)) : value);
-      if (!active) plot.ctx.moveTo(px, py); else plot.ctx.lineTo(px, py);
-      active = true;
-    }
-    plot.ctx.stroke();
+    strokeNativeProfile(plot.ctx, z, values, plot.x, plot.y, { offset, tailView });
     plot.ctx.restore();
   }
 
@@ -1822,6 +1844,8 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   plot.ctx.restore();
   canvas.dataset.individualProfileCount = String(overlay.stateCount);
   canvas.dataset.individualProfileRendering = "one-path-per-state";
+  setProfileDisplayMetadata(canvas);
+  canvas.dataset.nativeProfilePointCount = String(overlay.zCount);
   canvas.dataset.xMin = String(xAxis.xMin);
   canvas.dataset.xMax = String(xAxis.xMax);
   canvas.dataset.xStep = String(xAxis.step);

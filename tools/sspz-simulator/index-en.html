@@ -237,6 +237,7 @@
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
       <p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. FW is independent of T and is not calibrated to scanner nominal thickness.</p>
+      <p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 0.1% in logarithmic coordinates.</p>
 
       <div class="subsection-heading">
         <div>
@@ -321,7 +322,7 @@
       </div>
       <article class="chart-card">
         <div class="chart-title"><h3>SSPz for the selected state</h3><span id="profile-axis-note">Horizontal range automatically adjusted from the filter-interpolated SSPz at or above 10%</span></div>
-        <canvas id="profile-chart" width="1200" height="650" aria-label="Filter-interpolated SSPz for the selected state" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
+        <canvas id="profile-chart" width="1200" height="650" aria-label="Filter-interpolated SSPz for the selected state" aria-describedby="profile-detail-reading-order profile-axis-note profile-display-note"></canvas>
         <button class="download-link" data-canvas="profile-chart">Publication PNG (600 dpi)</button>
       </article>
 
@@ -457,6 +458,6 @@
   </footer>
 
   <script src="worker-source-en.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle-en.js?v=2026-09-08.1-r4"></script>
+  <script src="app-bundle-en.js?v=2026-09-08.1-r5"></script>
 </body>
 </html>
