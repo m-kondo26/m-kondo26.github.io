@@ -1,6 +1,6 @@
 # Reproducibility and model scope
 
-Numerical model: **2026-09-08.1**. Diagram/display revision: **2026-09-08.1**.
+Numerical model: **2026-09-08.1**. Diagram/display revision: **2026-09-08.2**.
 
 ## Current axial-response definition
 
@@ -47,7 +47,7 @@ npm run build
 npm test
 ```
 
-The eight test suites cover the numerical model manifest, explicit historical fixtures, independent row/turn enumeration, angular-neighbor geometry, all-row spread, complementary-trajectory provenance, the independent finite Taguchi-filter response, and SSPz drawing order. Historical two-point-kernel fixtures are tested through the explicitly named legacy adapter; their agreement is not a validation target for the new response.
+The nine test suites cover the numerical model manifest, explicit historical fixtures, independent row/turn enumeration, angular-neighbor geometry, all-row spread, complementary-trajectory provenance, the independent finite Taguchi-filter response, SSPz drawing order, and physical-sample marker identity and summed coefficients. Historical two-point-kernel fixtures are tested through the explicitly named legacy adapter; their agreement is not a validation target for the new response.
 
 The Taguchi oracle independently enumerates acquired rows/turns and evaluates each filter position. It does not call production geometry, interpolation, aperture, or normalization helpers. It checks raw responses before normalization, zero FW, reference-T invariance, isocenter behavior, finite K, convergence toward independent segment integration, and the sampling-limit guard.
 
@@ -60,6 +60,10 @@ The numerical core SHA256 is recorded in `model-manifest.json`. Current local ac
 The Japanese and English pages share a generated numerical/rendering core. A versioned script URL prevents the revised page from reusing a prior unversioned calculation bundle. Width, axis, legend, and parameter captions use the same drawing code for screen and publication export.
 
 Display revision 2026-09-08.1 places axes/grid behind SSPz curves. This keeps a flat 100% peak visible when it coincides with a gridline, without altering any computed samples, widths, or plot limits. The recording-Canvas regression exercises the actual screen/publication drawing functions and rejects the previous overpainting order.
+
+Display revision 2026-09-08.2 sums Section 2B angular-branch coefficients sharing `(referenceViewIndex, absoluteViewIndex, row)` before drawing one opaque marker. Different physical samples at coincident coordinates are not merged. Both family roles are retained if a sample is direct and complementary, shown by a circle inside a triangle. This corrects branch overpainting without changing input contributions or numerical SSPz. These weights describe the central local FW=0 diagnostic, not the complete thick-slice filter contribution.
+
+Detector-row hues remain fixed. A row-color legend and sparse inline row numbers help identify crossing trajectories. Only the trajectory lines use multiply blending to show overlap; both opacity and stroke width decrease with the square root of row density (with a minimum stroke width), balancing legibility against dark saturation. Blended line colors are neither new row identities nor numerical weights. Marker colors continue to encode summed coefficients. The actual-Canvas regression checks colors, symbols, positions, blending-state isolation, sample identity, and a negative control using the former unmerged renderer.
 
 SSPz panels are 80 mm wide at 600 dpi (1890x1365 pixels), while the selected-profile figure is 180 mm wide (4252x2303 pixels). Unwrapped diagrams use the existing 80-mm format (1890x1470 pixels). PNG pHYs is 23622 pixels/m, approximately 600 dpi. Captions and filenames include FW and actual K; CSV also includes reference T, requested minimum K, model version, and response coordinate.
 

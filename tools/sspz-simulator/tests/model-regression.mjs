@@ -388,10 +388,11 @@ assert.match(appSource, /inspect-state/);
 assert.doesNotMatch(indexSource, /direct-triangular/);
 assert.match(indexSource, /data-language-target="index-en\.html"/);
 assert.match(appSource, /setFittedFigureFont\(ctx, weightLabel/);
-// The former single line sample now shares its row with the direct/paired
-// family legend; retain the endpoint and red target-plane interpretation.
-assert.match(appSource, /drawDiagramFamilyLegend\(ctx, diagram, left, y0 \+ 76, width\)/);
-assert.match(appSource, /線：全列候補　○・△：選択端点　赤線：目的断面/);
+// Distinct legend rows explain weight, detector-row color, and direct/paired
+// encodings. The weight caption describes summed physical-sample coefficients.
+assert.match(appSource, /drawDetectorRowLegend\(ctx, diagram, left, y0 \+ 74, width\)/);
+assert.match(appSource, /drawDiagramFamilyLegend\(ctx, diagram, left, y0 \+ 104, width\)/);
+assert.match(appSource, /濃淡：同じ取得データの寄与を合算　赤線：目的断面/);
 assert.match(appSource, /function showCalculatingState/);
 assert.match(appSource, /showCalculatingState\(message\.label\)/);
 assert.match(appSource, /lastResult = null;[\s\S]*setBusy\(true\);[\s\S]*showCalculatingState\(undefined, true\)/);
@@ -415,7 +416,7 @@ assert.match(englishIndexSource, /full width at half maximum \(FWHM\)/i);
 assert.match(indexSource, /全検出器列を候補とした0～360°展開図/);
 assert.match(indexSource, /設定スライス厚<i>T<\/i>で候補を除外しません/);
 assert.match(indexSource, /細線は2Aと同じ全検出器列の候補軌道/);
-assert.match(appSource, /選択端点の線形補間重み w/);
+assert.match(appSource, /選択候補の合計重み w \(FW=0\)/);
 assert.match(appSource, /全列候補軌道（Tで除外しない）/);
 assert.match(appSource, /candidatePopulation = diagram\.candidatePopulation/);
 assert.doesNotMatch(appSource, /候補線 \$\{diagram\.candidateLineCount\}本/);
@@ -424,7 +425,8 @@ assert.doesNotMatch(appSource, /計\$\{complementary\.rowCandidatesPerDirectComp
 assert.match(englishIndexSource, /every detector row retained as a candidate/i);
 assert.match(englishIndexSource, /does not exclude candidates according to configured slice thickness/i);
 assert.match(englishIndexSource, /Thin lines show the same all-row candidate trajectories as in 2A/i);
-assert.match(englishAppBundle, /Linear-interpolation weight w of selected endpoints/);
+assert.match(englishAppBundle, /Local total weight w \(FW=0\)/);
+assert.match(englishAppBundle, /Fill: summed contributions from the same acquired sample; red: target plane/);
 assert.match(englishAppBundle, /All-row candidate trajectories \(not filtered by T\)/);
 assert.match(englishWorkerSource, /computing SSPz curves and width metrics for 360 states/i);
 assert.match(englishAppBundle, /Calculating…/);

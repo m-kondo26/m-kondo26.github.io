@@ -2739,7 +2739,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.1`;
+versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.2`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3282,7 +3282,7 @@ function drawWeightedMarker(ctx, row, totalRows, x, y, radius, weight, shape = "
   ctx.strokeStyle = color;
   ctx.lineWidth = 0.9;
   ctx.beginPath();
-  if (shape === "triangle") {
+  if (shape === "triangle" || shape === "circle-triangle") {
     ctx.moveTo(x, y - radius * 1.25);
     ctx.lineTo(x + radius * 1.1, y + radius * 0.8);
     ctx.lineTo(x - radius * 1.1, y + radius * 0.8);
@@ -3290,6 +3290,64 @@ function drawWeightedMarker(ctx, row, totalRows, x, y, radius, weight, shape = "
   } else ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  if (shape === "circle-triangle") {
+    ctx.beginPath(); ctx.arc(x, y, radius * 0.52, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function mergeDiagramMarkers(points) {
+  // A direct acquired sample can contribute through both angular branches.
+  // Sum its coefficients before drawing an opaque marker, not by overpainting.
+  // Coordinate coincidence alone never establishes physical sample identity.
+  const merged = new Map();
+  for (const point of points) {
+    if (![point.referenceViewIndex, point.absoluteViewIndex, point.row].every(Number.isInteger)
+      || ![point.x, point.y, point.weight].every(Number.isFinite) || point.weight < 0) {
+      throw new Error("Invalid acquired-sample identity or coefficient in diagram marker");
+    }
+    const key = `${point.referenceViewIndex}:${point.absoluteViewIndex}:${point.row}`;
+    const previous = merged.get(key);
+    if (!previous) {
+      merged.set(key, {
+        ...point, contributionCount: 1, contributions: [{ ...point }],
+        traceFamilyIds: [point.traceFamilyId], dataKinds: [point.dataKind],
+      });
+      continue;
+    }
+    if (Math.abs(previous.x - point.x) > 1e-9 || Math.abs(previous.y - point.y) > 1e-9) {
+      throw new Error(`Conflicting coordinates for acquired diagram sample ${key}`);
+    }
+    previous.weight += point.weight;
+    previous.contributionCount += 1;
+    previous.contributions.push({ ...point });
+    if (!previous.traceFamilyIds.includes(point.traceFamilyId)) previous.traceFamilyIds.push(point.traceFamilyId);
+    if (!previous.dataKinds.includes(point.dataKind)) previous.dataKinds.push(point.dataKind);
+  }
+  return [...merged.values()];
+}
+
+function drawDetectorRowLegend(ctx, diagram, left, y, width) {
+  const count = Math.min(6, diagram.totalRows);
+  const rows = Array.from({ length: count }, (_, i) => count === 1 ? 0 : Math.round(i * (diagram.totalRows - 1) / (count - 1)));
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = INK;
+  ctx.font = `17px ${FIGURE_FONT}`;
+  const label = localizedText("Color: detector row", "Color: detector row");
+  ctx.fillText(label, left, y);
+  const start = left + ctx.measureText(label).width + 24;
+  const cell = (left + width - start) / count;
+  rows.forEach((row, index) => {
+    const x0 = start + index * cell;
+    ctx.strokeStyle = rowColor(row, diagram.totalRows);
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + 24, y); ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.fillText(String(row + 1), x0 + 31, y);
+  });
+  ctx.restore();
 }
 
 function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
@@ -3345,7 +3403,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   ctx.font = `20px ${FIGURE_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  const weightLabel = "Linear-interpolation weight w of selected endpoints";
+  const weightLabel = localizedText("Local total weight w (FW=0)", "Local total weight w (FW=0)");
   const markerStart = left + Math.max(300, width * 0.48);
   setFittedFigureFont(ctx, weightLabel, 20, 15, markerStart - left - 18);
   ctx.fillText(weightLabel, left, y0 + 18);
@@ -3359,19 +3417,27 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
     ctx.textAlign = "center";
     ctx.fillText(weight.toFixed(weight === 0 || weight === 1 ? 0 : 2), markerX, y0 + 44);
   });
-  drawDiagramFamilyLegend(ctx, diagram, left, y0 + 76, width);
+  drawDetectorRowLegend(ctx, diagram, left, y0 + 74, width);
+  drawDiagramFamilyLegend(ctx, diagram, left, y0 + 104, width);
   ctx.textAlign = "left";
   const acquisitionLabel = localizedText(
-    "Lines: all rows; markers: selected endpoints; red line: target plane",
-    "Lines: all rows; markers: selected endpoints; red line: target plane",
+    "Fill: summed contributions from the same acquired sample; red: target plane",
+    "Fill: summed contributions from the same acquired sample; red: target plane",
   );
   ctx.fillStyle = INK;
   setFittedFigureFont(ctx, acquisitionLabel, 18, 13, width);
-  ctx.fillText(acquisitionLabel, left, y0 + 104);
+  ctx.fillText(acquisitionLabel, left, y0 + 133);
+  const overlapLabel = localizedText(
+    "Overlapping traces: blended colors; inline numbers: detector rows (solid traces, few rows)",
+    "Overlapping traces: blended colors; inline numbers: detector rows (solid traces, few rows)",
+  );
+  ctx.fillStyle = MUTED;
+  setFittedFigureFont(ctx, overlapLabel, 16, 12, width);
+  ctx.fillText(overlapLabel, left, y0 + 157);
   if (countText) {
     ctx.fillStyle = MUTED;
     ctx.font = `18px ${FIGURE_FONT}`;
-    drawWrappedLegendText(ctx, countText, left, y0 + 132, width);
+    drawWrappedLegendText(ctx, countText, left, y0 + 184, width);
   }
   ctx.restore();
 }
@@ -3387,6 +3453,11 @@ function drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit) {
   ctx.save();
   ctx.strokeStyle = rowColor(row, totalRows);
   const densityScale = Math.min(1, Math.sqrt(24 / Math.max(24, totalRows)));
+  // Multiplication makes coincident trajectory colors blend independent of
+  // draw order. Opacity and stroke width both fall with sqrt(row density),
+  // preserving visible trajectories without allowing many-row bands to blacken.
+  // This is an overlap cue only, never a numerical weight or a new row color.
+  ctx.globalCompositeOperation = "multiply";
   ctx.globalAlpha = (complementary ? 0.45 : 0.60) * densityScale;
   ctx.lineWidth = Math.max(0.45, 1.35 * densityScale);
   ctx.setLineDash(complementary ? [5, 3] : []);
@@ -3487,6 +3558,65 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.restore();
 }
 
+function drawDirectRowLabels(ctx, diagram, x, yDown, xLimit, box, points) {
+  // Inline row numbers are an additional identity cue for sparse detectors.
+  // Place them only on well-separated solid trajectories; never move a sample
+  // or label a dense multi-row plot at the expense of its geometry.
+  if (diagram.totalRows > 8) return 0;
+  const trace = diagram.traceFamilies?.find(item => item.family === "direct") ?? diagram.traceGeometry;
+  const occupied = [];
+  const pointPixels = points.map(point => [x(point.x), yDown(point.y)]);
+  const families = diagram.traceFamilies ?? [trace];
+  let count = 0;
+  ctx.save();
+  ctx.font = `bold 13px ${FIGURE_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let row = 0; row < diagram.totalRows; row += 1) {
+    for (const turn of diagram.traceGeometry.turns) {
+      let best = null;
+      const stride = Math.max(1, Math.floor(trace.angles.length / 90));
+      for (let i = 0; i < trace.angles.length; i += stride) {
+        const angle = trace.angles[i];
+        const delta = trace.axial[i] + turn * diagram.traceGeometry.feed
+          + trace.scales[i] * diagram.traceGeometry.rowOffsets[row] - diagram.z0;
+        const px = x(delta); const py = yDown(angle);
+        if (Math.abs(delta) >= xLimit || px < box.left + 15 || px > box.right - 15
+          || py < box.top + 18 || py > box.bottom - 18 || Math.abs(px - x(0)) < 18) continue;
+        let clearance = 50;
+        for (const [mx, my] of [...pointPixels, ...occupied]) clearance = Math.min(clearance, Math.hypot(px - mx, py - my));
+        if (clearance < 23) continue;
+        for (const family of families) {
+          for (let otherRow = 0; otherRow < diagram.totalRows; otherRow += 1) {
+            for (const otherTurn of diagram.traceGeometry.turns) {
+              if (family === trace && otherRow === row && otherTurn === turn) continue;
+              const otherDelta = family.axial[i] + otherTurn * diagram.traceGeometry.feed
+                + family.scales[i] * diagram.traceGeometry.rowOffsets[otherRow] - diagram.z0;
+              clearance = Math.min(clearance, Math.abs(px - x(otherDelta)));
+            }
+          }
+        }
+        if (clearance < 16) continue;
+        const score = clearance - Math.abs(angle - 270) * 0.015;
+        if (!best || score > best.score) best = { px, py, score };
+      }
+      if (!best) continue;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(best.px - 10, best.py - 9, 20, 18);
+      ctx.fillStyle = INK;
+      ctx.fillText(String(row + 1), best.px, best.py);
+      ctx.strokeStyle = rowColor(row, diagram.totalRows);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(best.px - 7, best.py + 8); ctx.lineTo(best.px + 7, best.py + 8); ctx.stroke();
+      occupied.push([best.px, best.py]);
+      count += 1;
+    }
+  }
+  ctx.restore();
+  return count;
+}
+
 function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusXLimit = null) {
   const publicationMode = canvas.dataset.publicationMode === "true";
   const ownLimit = mode === "overview" ? diagram.overviewXLimit : diagram.zoomXLimit;
@@ -3498,7 +3628,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     y: localizedText("Direct-data reference angle  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
-    topMargin: publicationMode ? 148 : 206,
+    topMargin: mode === "zoom" ? (publicationMode ? 200 : 258) : (publicationMode ? 148 : 206),
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
   const bandLimit = Math.min(xLimit, mode === "overview"
@@ -3525,11 +3655,14 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
       }
     }
   }
+  const mergedPoints = mode === "zoom" ? mergeDiagramMarkers(diagram.weightedPoints) : [];
   if (mode === "zoom") {
-    const pointsByWeight = [...diagram.weightedPoints].sort((a, b) => a.weight - b.weight);
+    const pointsByWeight = [...mergedPoints].sort((a, b) => a.weight - b.weight);
     for (const point of pointsByWeight) {
       const px = x(point.x); const py = yDown(point.y);
-      const shape = point.traceFamilyId?.startsWith("complementary-") ? "triangle" : "circle";
+      let shape = point.traceFamilyId?.startsWith("complementary-") ? "triangle" : "circle";
+      const familyRoles = new Set(point.traceFamilyIds.map(id => id?.startsWith("complementary-") ? "complementary" : "direct"));
+      if (familyRoles.size > 1) shape = "circle-triangle";
       drawWeightedMarker(ctx, point.row, diagram.totalRows, px, py, 5.2, point.weight, shape);
     }
   }
@@ -3539,6 +3672,9 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
+  const inlineRowLabels = mode === "zoom" ? drawDirectRowLabels(ctx, diagram, x, yDown, xLimit, {
+    left: margin.left, right: margin.left + innerWidth, top: margin.top, bottom: margin.top + innerHeight,
+  }, mergedPoints) : 0;
   if (mode === "overview") {
     const countText = localizedText(
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
@@ -3579,7 +3715,12 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.traceSamplesPerFamily = String(diagram.acquiredTraceSamples);
   canvas.dataset.complementaryMarkerShape = "triangle";
   canvas.dataset.complementaryLineStyle = "dashed";
-  canvas.dataset.diagramDisplayVersion = "2026-09-08.1";
+  canvas.dataset.markerAggregation = "referenceViewIndex:absoluteViewIndex:row;sum-contributions";
+  canvas.dataset.rawMarkerContributions = String(mode === "zoom" ? diagram.weightedPoints.length : 0);
+  canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
+  canvas.dataset.inlineRowLabels = String(inlineRowLabels);
+  canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
+  canvas.dataset.diagramDisplayVersion = "2026-09-08.2";
 }
 
 function drawSeriesMarkers(ctx, points, x, y, color, shape = "circle", stride = 1) {

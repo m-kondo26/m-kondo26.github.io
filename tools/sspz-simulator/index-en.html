@@ -150,7 +150,7 @@
       </div>
       <div class="flow-strip" aria-label="Flow from the angular-longitudinal diagram to SSPz">
         <span><b>2A</b> All-row candidate diagram</span><i aria-hidden="true">→</i>
-        <span><b>2B</b> Selected endpoints and linear weights</span><i aria-hidden="true">→</i>
+        <span><b>2B</b> Selected candidates and total weights</span><i aria-hidden="true">→</i>
         <span><b>2C</b> 180LI complementary angles, absolute-view pairs, and two-point bracketing</span><i aria-hidden="true">→</i>
         <span><b>3</b> Overlaid SSPz curves and filter-interpolated SSPz</span>
       </div>
@@ -183,8 +183,8 @@
       </div>
 
       <div class="subsection-heading">
-        <div><strong>2B  Nearest endpoints selected from all-row candidates and their linear weights</strong><span>Enlarged view around the target plane</span></div>
-        <p>Thin lines show the same all-row candidate trajectories as in 2A. Circles, triangles, and saturation show endpoints and weights for local FW=0 linear interpolation at the current central position, not all contributors to a thick-slice response. Taguchi-style filter interpolation reselects candidates at every resampling position within FW; contributing acquired samples are therefore not limited to these markers. T does not exclude candidates, and acquired samples outside FW are used when needed to bracket a resampling position inside FW. Markers show selected angles; trajectories use every acquired angle.</p>
+        <div><strong>2B  Endpoints selected from all-row candidates and their total weights</strong><span>Enlarged view around the target plane</span></div>
+        <p>Thin lines show the same all-row candidate trajectories as in 2A. Color identifies the detector row. A crossing does not transfer a color to a different row. With few rows, row numbers are also placed beside the lines. Overlapping trajectories are shown by color blending. A blended color indicates overlap, not another detector row or a weight. Lines are made fainter for many-row displays. Circles denote selected direct-side candidates and triangles complementary-side candidates. A circle inside a triangle identifies an acquired sample assigned to both sides. Saturation represents total weight w after summing contributions from the two angular branches for the same acquired sample (the same acquired view and detector row). Different acquired samples are not summed merely because they occupy the same position. This shows local FW=0 interpolation at the central position, not all contributors to a thick-slice response. Filter interpolation reselects candidates at each position within FW, using acquired samples outside FW when needed for bracketing. Markers show selected angles; trajectories use every acquired angle.</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
@@ -456,7 +456,7 @@
     <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-08.1-r2"></script>
-  <script src="app-bundle-en.js?v=2026-09-08.1-r2"></script>
+  <script src="worker-source-en.js?v=2026-09-08.1-r3"></script>
+  <script src="app-bundle-en.js?v=2026-09-08.1-r3"></script>
 </body>
 </html>

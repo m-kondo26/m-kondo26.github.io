@@ -150,7 +150,7 @@
       </div>
       <div class="flow-strip" aria-label="360度の展開図からSSPzまでの流れ">
         <span><b>2A</b> 全列候補の展開図</span><i aria-hidden="true">→</i>
-        <span><b>2B</b> 選択端点と線形重み</span><i aria-hidden="true">→</i>
+        <span><b>2B</b> 選択候補と合計重み</span><i aria-hidden="true">→</i>
         <span><b>2C</b> 180LIの対応角・絶対ビュー対・二点挟み込み</span><i aria-hidden="true">→</i>
         <span><b>3</b> SSPz重ね合わせ・フィルタ補間後SSPz</span>
       </div>
@@ -183,8 +183,8 @@
       </div>
 
       <div class="subsection-heading">
-        <div><strong>2B　全列候補から選んだ最近接端点と線形重み</strong><span>目的断面近傍を拡大</span></div>
-        <p>細線は2Aと同じ全検出器列の候補軌道です。○・△と濃淡は、現在の中心位置で行うFW=0の局所線形補間の端点と重みを示します。厚いスライスの全寄与候補を示すものではありません。Taguchiらのフィルタ補間では、FW内の各再標本位置で候補を選び直すため、寄与する取得データはこれらの端点だけに限られません。Tで候補を除外せず、FW内の位置を挟むために必要ならFWの外側の取得データも使います。点は一部角度を抜粋し、軌道は全取得角度で計算します。</p>
+        <div><strong>2B　全列候補から選んだ端点と合計重み</strong><span>目的断面近傍を拡大</span></div>
+        <p>細線は2Aと同じ全検出器列の候補軌道です。色は検出器列を表します。線が交差しても、色が別の列へ移るわけではありません。列数が少ない場合は線に列番号も示します。軌道の重なりは混色で示します。混色は重なりを表し、別の検出器列や重みを意味しません。多列では線を薄く表示します。○は実データ側、△は対向データ側の選択候補です。同じ取得データが両側に対応する場合は△の中に○を示します。濃淡は、同じ取得データ（取得ビューと検出器列が同じ）の角度2枝からの寄与を足した合計重みwを表します。同じ位置に重なっても異なる取得データの重みは足しません。これは中心位置でのFW=0の局所補間です。厚いスライスの全寄与候補を示すものではありません。フィルタ補間ではFW内の各位置で候補を選び直し、必要ならFW外の取得データで挟みます。点は一部角度を抜粋し、軌道は全取得角度で計算します。</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
@@ -456,7 +456,7 @@
     <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-08.1-r2"></script>
-  <script src="app-bundle.js?v=2026-09-08.1-r2"></script>
+  <script src="worker-source.js?v=2026-09-08.1-r3"></script>
+  <script src="app-bundle.js?v=2026-09-08.1-r3"></script>
 </body>
 </html>
