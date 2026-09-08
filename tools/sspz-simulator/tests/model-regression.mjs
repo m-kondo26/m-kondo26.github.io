@@ -5,13 +5,17 @@ import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
   PROFILE_MODES,
-  createProfileAssumptions,
-  computeProfileModel,
   computeFanBeamComplementaryGeometry,
   computeSsp,
   computeUnwrapped,
   validateParams,
 } from "../sim-core.js";
+// Numeric configured-thickness fixtures below intentionally retain the old
+// comparator; the public Taguchi method has its own independent oracle suite.
+import {
+  createLegacyProfileAssumptions as createProfileAssumptions,
+  computeLegacyConfiguredProfile as computeProfileModel,
+} from "./legacy-thickness-reference.mjs";
 
 const fixture = JSON.parse(await readFile(new URL("./full-scan-reference.json", import.meta.url), "utf8"));
 const manifest = JSON.parse(await readFile(new URL("../model-manifest.json", import.meta.url), "utf8"));
@@ -202,10 +206,10 @@ assert.equal(DEFAULT_PARAMS.radius, 100);
 assert.equal(DEFAULT_PARAMS.state, 0);
 assert.equal(DEFAULT_PARAMS.zReference, 0);
 assert.equal(DEFAULT_PARAMS.stateSamples, 360);
-assert.equal(DEFAULT_PARAMS.profileMode, PROFILE_MODES.LAYERED_RECT);
+assert.equal(DEFAULT_PARAMS.profileMode, PROFILE_MODES.TAGUCHI_FILTER);
 assert.equal(DEFAULT_PARAMS.viewSamples, 360);
 assert.equal(validateParams({ ...params, viewSamples: undefined, thetaSamples: 720 }).viewSamples, 720);
-assert.equal(MODEL_VERSION, "2026-08-28.2");
+assert.equal(MODEL_VERSION, "2026-09-08.1");
 if (process.env.SSPZ_SKIP_MANIFEST_INTEGRITY !== "1") {
   assert.equal(manifest.modelVersion, MODEL_VERSION);
   assert.equal(manifest.browserCore.sha256, coreHash);
@@ -215,8 +219,17 @@ assert.match(indexSource, /180LI取得幾何（主解析）/);
 assert.match(indexSource, /0～360°実データ側フルスキャン（比較）/);
 assert.match(indexSource, /実測された絶対X線管角度ではありません/);
 assert.ok(indexSource.indexOf('id="overlay-core-block"') < indexSource.indexOf('id="candidate-axial-spread-chart"'));
-assert.match(indexSource, /3A　設定厚反映後の360状態SSPz重ね合わせ/);
-assert.match(indexSource, /3B　設定厚反映後の低振幅裾/);
+assert.match(indexSource, /3A　フィルタ補間後の360状態SSPz重ね合わせ/);
+assert.match(indexSource, /3B　フィルタ補間後の低振幅裾/);
+assert.match(indexSource, /id="profileMode"[^>]*value="taguchi-filter"/);
+assert.match(indexSource, /id="filterWidthMm"[^>]*min="0"[^>]*max="20"/);
+assert.match(indexSource, /id="filterSamples"/);
+assert.match(indexSource, /幅指標をTで除すための参照値です/);
+assert.match(indexSource, /フィルタ幅FWとは独立で、FWHMの目標値ではありません/);
+assert.match(indexSource, /FWと設定厚Tの対応は実機に校正していません/);
+assert.match(indexSource, /フィルタ内の各z位置で隣接する取得候補を選び直して線形補間/);
+assert.match(indexSource, /幅Tの後段平均ではありません/);
+assert.match(indexSource, /厚いスライスの全寄与候補を示すものではありません/);
 assert.match(indexSource, /3C　候補点の体軸方向の広がり/);
 assert.match(indexSource, /採用・重みづけ前の全候補点を投影角度ごとに比較/);
 assert.match(indexSource, /<section class="geometry-analysis" aria-labelledby="gap-analysis-heading">/);
@@ -255,7 +268,7 @@ assert.doesNotMatch(indexSource, /id="overlay-base-/);
 assert.doesNotMatch(indexSource, /data-canvas="overlay-base-/);
 assert.doesNotMatch(indexSource, /id="sweepStage"/);
 assert.doesNotMatch(appSource, /sweepStageSelect/);
-assert.match(indexSource, /設定厚反映後SSPzの1回転内幅変動/);
+assert.match(indexSource, /フィルタ補間後SSPzの1回転内幅変動/);
 assert.match(indexSource, /計算モデルの文献的背景/);
 for (const doi of [
   "10.1118/1.597199",
@@ -269,8 +282,9 @@ for (const doi of [
   assert.ok(manifest.literatureBackground.some(reference => reference.doi === doi));
 }
 assert.match(indexSource, /各論文の再構成アルゴリズムを本Web版が再現している、という意味ではありません/);
-assert.match(appSource, /設定厚適用前の中間幅ではありません/);
-assert.match(appSource, /sweep-configured-thickness-\$\{metric\.rawKey\}-T/);
+assert.match(appSource, /フィルタ補間後の幅を参照値Tで除しています/);
+assert.match(appSource, /FWはTと独立で、FW=TでもFWHM=Tを保証しません/);
+assert.match(appSource, /sweep-taguchi-\$\{metric\.rawKey\}-FW/);
 assert.match(appSource, /function drawProfileOverlay/);
 assert.match(appSource, /function configuredOverlayAxes/);
 assert.match(appSource, /configuredOverlayBounds\(result, 0\.1,/);
@@ -322,7 +336,7 @@ assert.match(workerSource, /candidateCount: new Uint16Array/);
 assert.match(workerSource, /effectiveCandidateCount: new Float32Array/);
 assert.match(workerSource, /candidateContributionCount: new Uint16Array/);
 assert.match(workerSource, /unique-physical-final-nonzero-candidate-count-after-angular-branch-duplicate-merging/);
-assert.match(appSource, /360-relative-states/);
+assert.match(appSource, /360-object-states/);
 assert.match(appSource, /individualProfileRendering = "one-path-per-state"/);
 assert.match(appSource, /const PUBLICATION_DPI = 600/);
 assert.match(appSource, /const INK = "#000000"/);
@@ -334,7 +348,9 @@ assert.match(appSource, /setFittedFigureFont\(ctx, labels\.y, style\.axisFontPx,
 assert.match(appSource, /PROFILE_TAIL_DISPLAY_BOUNDS = Object\.freeze\(\{ yMin: -3\.08, yMax: 0\.08 \}\)/);
 assert.match(appSource, /leftMargin: tailView \? 158 : undefined/);
 assert.match(appSource, /plot\.ctx\.fillText\(conciseStage, plot\.margin\.left, 8\)/);
-assert.match(appSource, /plot\.ctx\.fillText\(conciseCondition, plot\.margin\.left, 38\)/);
+assert.match(appSource, /const subtitle = `\$\{conciseCondition\} \/ \$\{filterParameterLabel\(result\.params, result\.selectedOn\.filterSamples\)\}`/);
+assert.match(appSource, /setFittedFigureFont\(plot\.ctx, subtitle, 20, 13, plot\.innerWidth\)/);
+assert.match(appSource, /plot\.ctx\.fillText\(subtitle, plot\.margin\.left, 38\)/);
 assert.doesNotMatch(appSource, /\$\{conciseStage\}／\$\{conciseCondition\}/);
 assert.match(appSource, /function pngWithResolution/);
 assert.match(appSource, /chunk\.set\(\[112, 72, 89, 115\], 4\)/);
@@ -350,7 +366,7 @@ assert.match(indexSource, /id="status" role="status" aria-live="polite"/);
 assert.match(indexSource, /0～360°実データ側フルスキャン/);
 assert.match(indexSource, /各SSPzの基準となる実データ側ビューを0°以上360°未満に等角度配置します/);
 assert.doesNotMatch(`${indexSource}\n${appSource}`, /上下候補|上下から挟む|上下の候補|直下・直上/);
-assert.match(indexSource, /z₀より小さいz側と大きいz側/);
+assert.match(indexSource, /目的断面のz座標より小さい側と大きい側の最近接2点/);
 assert.doesNotMatch(indexSource, /Wang型ハーフスキャン候補幾何/);
 assert.doesNotMatch(appSource, /drawWeightedMarker\(ctx, family/);
 assert.match(indexSource, /状態の間引きなしで1本ずつ/);
@@ -390,12 +406,15 @@ assert.match(englishIndexSource, /CT Angular-Longitudinal Diagram and SSPz Geome
 assert.match(englishIndexSource, /data-language-target="index\.html"/);
 assert.match(englishIndexSource, /worker-source-en\.js/);
 assert.match(englishIndexSource, /app-bundle-en\.js/);
-assert.match(englishIndexSource, /candidates are found on both the smaller-z and larger-z sides/);
+assert.match(englishIndexSource, /Adjacent acquired samples are linearly interpolated at each position/);
+assert.match(englishIndexSource, /FW is independent of T and is not calibrated to scanner nominal thickness/);
+assert.match(englishIndexSource, /moving the reconstruction plane past a fixed thin object/);
+assert.match(englishIndexSource, /not all contributors to a thick-slice response/);
 assert.match(englishIndexSource, /acquired projection data/);
-assert.match(englishIndexSource, /full width at half maximum \(FWHM\)/);
+assert.match(englishIndexSource, /full width at half maximum \(FWHM\)/i);
 assert.match(indexSource, /全検出器列を候補とした0～360°展開図/);
 assert.match(indexSource, /設定スライス厚<i>T<\/i>で候補を除外しません/);
-assert.match(indexSource, /細線は2Aと同じ全<i>N<\/i>列の候補軌道/);
+assert.match(indexSource, /細線は2Aと同じ全検出器列の候補軌道/);
 assert.match(appSource, /選択端点の線形補間重み w/);
 assert.match(appSource, /全列候補軌道（Tで除外しない）/);
 assert.match(appSource, /candidatePopulation = diagram\.candidatePopulation/);
@@ -404,18 +423,27 @@ assert.doesNotMatch(appSource, /最近接候補 \$\{diagram\.weightedPoints\.len
 assert.doesNotMatch(appSource, /計\$\{complementary\.rowCandidatesPerDirectComplementPair\}列候補/);
 assert.match(englishIndexSource, /every detector row retained as a candidate/i);
 assert.match(englishIndexSource, /does not exclude candidates according to configured slice thickness/i);
-assert.match(englishIndexSource, /Thin trajectories are the same all-<i>N<\/i>-row candidate population/i);
+assert.match(englishIndexSource, /Thin lines show the same all-row candidate trajectories as in 2A/i);
 assert.match(englishAppBundle, /Linear-interpolation weight w of selected endpoints/);
 assert.match(englishAppBundle, /All-row candidate trajectories \(not filtered by T\)/);
 assert.match(englishWorkerSource, /computing SSPz curves and width metrics for 360 states/i);
 assert.match(englishAppBundle, /Calculating…/);
 assert.match(englishAppBundle, /Generating figures for the current conditions/);
+assert.match(appSource, /fw: params\.filterWidthMm/);
+assert.match(appSource, /nf: params\.filterSamples/);
+assert.match(appSource, /旧版の計算値を流用せず/);
+assert.match(appSource, /filter_width_mm/);
+assert.match(appSource, /filter_resampling_count/);
+assert.match(appSource, /requested_minimum_filter_resampling_count/);
+assert.match(appSource, /canvas\.dataset\.requestedFilterSamples = String\(result\.params\.filterSamples\)/);
+assert.match(appSource, /reconstruction-plane-minus-fixed-object-mm/);
 for (const id of [
   "parameter-form", "diagram-overview-off", "diagram-overview-on", "diagram-zoom-off", "diagram-zoom-on",
   "complementary-angle-chart", "complementary-distance-chart", "complementary-general-pair-chart",
   "overlay-core-off", "overlay-core-on", "overlay-tail-on", "candidate-axial-spread-chart",
   "axial-position-explainer", "acquisition-geometry-3d",
   "profile-chart", "sweep-chart", "result-table",
+  "profileMode", "filterWidthMm", "filterSamples",
 ]) {
   assert.ok(indexSource.includes(`id="${id}"`));
   assert.ok(englishIndexSource.includes(`id="${id}"`));
@@ -525,10 +553,9 @@ close("r102.T5.finalFwtmRange", sweepRange(102, 5, "fwtm"), 0.1212719882, 2e-6);
 close("r102.T5.finalSigmaRange", sweepRange(102, 5, "sigma"), 0.0112337278, 2e-6);
 assert.ok(sweepRange(102, 5, "fwhm") < 5e-5);
 
-// The former direct-triangular mode is a migration alias; the supported
-// research model is now unambiguously nearest-bracketing + configured window.
+// The former modes migrate to the literature-based public filter model.
 const migrated = validateParams({ ...baseInput, profileMode: PROFILE_MODES.DIRECT_TRIANGULAR });
-assert.equal(migrated.profileMode, PROFILE_MODES.LAYERED_RECT);
+assert.equal(migrated.profileMode, PROFILE_MODES.TAGUCHI_FILTER);
 
 const invariantBaseOne = computeProfileModel(
   validateParams({ ...baseInput, sliceThicknessMm: 1 }),

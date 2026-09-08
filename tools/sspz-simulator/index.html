@@ -16,14 +16,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1720'/%3E%3Cpath d='M12 45c10-25 30-25 40 0' fill='none' stroke='%2343c2a1' stroke-width='6'/%3E%3Ccircle cx='32' cy='22' r='6' fill='%23f5b85c'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-tool-feedback="sspz">
+<body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
-
-  <aside class="rights-banner" aria-label="利用条件と権利表記">
-    <p><strong>利用条件：</strong>本Webツールは、Kondo CT Imaging Laboratory（九州大学）が無料で提供しています。通常の利用は無料です。</p>
-    <p>プログラム、画面、図表およびコンテンツに関する権利は当研究室に帰属します。転載、改変、再配布、他の研究・教育資料への組込みなどの二次利用には、事前に当研究室の許可が必要です。</p>
-    <p>© 2026 Kondo CT Imaging Laboratory. All rights reserved.　<a href="https://m-kondo26.github.io/ja/" target="_blank" rel="noopener noreferrer">研究室Webサイト</a></p>
-  </aside>
 
   <header class="hero">
     <div>
@@ -78,12 +72,22 @@
         </label>
         <label>設定スライス厚 <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
-          <small class="field-help">FWHMの目標値ではありません。計算されたFWHMは結果として表示します。</small>
+          <small class="field-help">幅指標をTで除すための参照値です。フィルタ幅FWとは独立で、FWHMの目標値ではありません。</small>
+        </label>
+        <label>体軸方向フィルタ幅 <span class="symbol">FW</span> <span class="unit">mm</span>
+          <input id="filterWidthMm" name="filterWidthMm" type="number" min="0" max="20" step="0.1" value="1.0">
+          <small class="field-help">Taguchiらの矩形フィルタ補間の幅です。FW=0はフィルタなし。FWと設定厚Tの対応は実機に校正していません。</small>
+        </label>
+        <label>再標本点数（最小）
+          <select id="filterSamples" name="filterSamples">
+            <option value="33">33</option><option value="65">65</option><option value="129" selected>129</option><option value="257">257</option><option value="513">513</option><option value="1025">1025</option><option value="2049">2049</option>
+          </select>
+          <small class="field-help">式（6）の2I+1の最小値です。FW/Kが最小投影列幅の1/8以下となるよう自動増加し、実際のKを図に表示します。2049点を超える条件は精度不足として停止します。取得ビュー数ではありません。</small>
         </label>
         <label>体軸方向の補間規則
-          <input type="hidden" id="profileMode" name="profileMode" value="layered-rect">
-          <span class="fixed-value">目的断面のz座標を挟む最近接2候補の線形補間</span>
-          <small class="field-help">固定支持幅で探索を打ち切らず、z₀より小さいz側と大きいz側の候補が見つかるまで理想ヘリカル軌道を探索します。これは展開図の上下方向を指しません。</small>
+          <input type="hidden" id="profileMode" name="profileMode" value="taguchi-filter">
+          <span class="fixed-value">Taguchiらのフィルタ補間（矩形重み）</span>
+          <small class="field-help">フィルタ内の各z位置で隣接する取得候補を選び直して線形補間し、その値を等重みで平均します。幅Tの後段平均ではありません。</small>
         </label>
         <label>SSPzに適用する取得幾何
           <select id="reconstructionPath" name="reconstructionPath">
@@ -136,7 +140,7 @@
         <div>
           <strong id="state-inspector-title">360状態から詳細表示する位置（任意）</strong>
           <span id="inspect-state-label">状態 0/359（s = 0.000）</span>
-          <small>全360状態は自動計算済みです。ここでは展開図と1本のSSPzを詳しく見る位置だけを選びます。計算条件や実測した絶対X線管角度ではありません。</small>
+          <small>360状態は1回転寝台移動量内の物体位置です。選択位置を中心に展開図を示し、SSPzは固定した薄い物体の前後へ再構成面を動かして計算します。</small>
         </div>
         <div class="state-inspector-controls">
           <button id="inspect-prev" type="button" class="secondary" aria-label="前のモデル状態" disabled>−1</button>
@@ -148,7 +152,7 @@
         <span><b>2A</b> 全列候補の展開図</span><i aria-hidden="true">→</i>
         <span><b>2B</b> 選択端点と線形重み</span><i aria-hidden="true">→</i>
         <span><b>2C</b> 180LIの対応角・絶対ビュー対・二点挟み込み</span><i aria-hidden="true">→</i>
-        <span><b>3</b> SSPz重ね合わせ・設定厚反映後SSPz</span>
+        <span><b>3</b> SSPz重ね合わせ・フィルタ補間後SSPz</span>
       </div>
 
       <div class="subsection-heading">
@@ -180,7 +184,7 @@
 
       <div class="subsection-heading">
         <div><strong>2B　全列候補から選んだ最近接端点と線形重み</strong><span>目的断面近傍を拡大</span></div>
-        <p>細線は2Aと同じ全<i>N</i>列の候補軌道です。○は実データ側、△は対向データ側から説明用補間モデルが選んだ端点で、それぞれ対応する実線・破線上に配置します。設定スライス厚<i>T</i>は端点選択には使用せず、後段でSSPzへ適用します。180LI主解析では、理想対向角を挟む直前・直後の実取得ビューについて、実データ側と対向データ側の全検出器列候補を統合し、それぞれで目的断面を挟む最近接端点を選びます。体軸方向線形重みに角度方向線形重みを乗じた説明用モデルの寄与を、淡色から濃色までの色で示します。同じz座標の重複端点は重みを等分します。点は見やすさのため一部の角度を抜粋し、軌道は全取得角度で計算しています。これは商用装置が実際に採用する投影データ数を示す図ではありません。</p>
+        <p>細線は2Aと同じ全検出器列の候補軌道です。○・△と濃淡は、現在の中心位置で行うFW=0の局所線形補間の端点と重みを示します。厚いスライスの全寄与候補を示すものではありません。Taguchiらのフィルタ補間では、FW内の各再標本位置で候補を選び直すため、寄与する取得データはこれらの端点だけに限られません。Tで候補を除外せず、FW内の位置を挟むために必要ならFWの外側の取得データも使います。点は一部角度を抜粋し、軌道は全取得角度で計算します。</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
@@ -194,7 +198,7 @@
           <button class="download-link" data-canvas="diagram-zoom-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
-      <p class="diagram-footnote">角度βは実データ側のモデル内相対X線管角度で、0°は実測された絶対管球角ではありません。対向側の軌道と△も、この実データ側角度に対応づけています。コーン幾何なしはγ=0、β<sub>c</sub>=β+180°、q=1の平行ビーム基準、コーン幾何ありはβ<sub>c</sub>=β+180°+2γと距離比qを用いるファンビーム条件です。したがって左右比較は距離比qだけの切替ではありません。2Aは両側の全列候補、2Bの○・△はそこから説明用補間モデルが選んだ端点です。同じ取得データが別の角度の対向側として再び表示されることがあり、線や点の本数を独立なデータ数として数えることはできません。設定スライス厚Tは候補除外や端点選択には使用せず、後段の設定厚反映後SSPzに適用します。理想的なヘリカル軌道は無限に続くため、表示範囲だけを、両側の全列を対象に候補が存在する回転とその前後1回転へ有限化しています。候補位置の計算とSSPzの補間重みは今回の表示修正では変更していません。</p>
+      <p class="diagram-footnote">βは実データ側の相対X線管角度です。対向側も同じ基準角度へ対応付けています。コーン幾何なしはγ=0、βc=β+180°、q=1の参照、ありはβc=β+180°+2γと距離比qを用います。2Aの全列軌道は取得幾何、2Bの端点と2Cの間隔は中心位置でのFW=0の局所補間の監査です。厚いスライスの全寄与候補や装置の採用データ数ではありません。同じ取得データが異なる角度対応に再登場するため、図の線・点は独立なデータ数ではありません。取得幾何は従来どおり保持し、今回変更するのはSSPzの応答定義とフィルタ補間です。</p>
 
       <div class="subsection-heading">
         <div><strong>2C　180LIの対応角・絶対ビュー対・二点挟み込み</strong><span>実データ側と対向データ側を取得順序どおりに対応付ける</span></div>
@@ -232,43 +236,43 @@
         <div><p class="step">3</p><h2 id="response-title">SSPz全形状と変動を見る</h2></div>
         <p class="section-note">幅だけでなく、裾・非対称性・形状全体を同時に確認します。</p>
       </div>
-      <p id="profile-model-note" class="model-note">まず、設定スライス厚を反映した360状態のモデルSSPzを1本ずつ重ね合わせ、設定厚に対して残る位置と形状の変化を直接示します。設定厚適用前の中間SSPzは表示しません。幾何表示には、実データ側の全列と理想対向角を挟む実取得ビューの全列について、列中心位置の体軸方向標準偏差を無重みで示します。候補点の採用、補間・再構成重み、設定厚による閾値は適用しません。</p>
+      <p id="profile-model-note" class="model-note">Taguchiらの式（6）に基づく矩形重みのフィルタ補間を適用します。固定した薄い物体に対して再構成面を動かした応答を求めます。FWはTと独立で、装置の設定厚との対応は校正していません。</p>
 
       <div class="subsection-heading">
         <div>
-          <strong>3A　設定厚反映後の360状態SSPz重ね合わせ：中心形状を見る</strong>
-          <span id="overlay-scope">1回転寝台移動量を360等分（1°相当）</span>
+          <strong>3A　フィルタ補間後の360状態SSPz重ね合わせ：中心形状を見る</strong>
+          <span id="overlay-scope">1回転寝台移動量内の物体位置を360等分</span>
         </div>
-        <p>入力した設定スライス厚Tを反映したモデルSSPzです。横軸は、360状態の設定厚反映後SSPzが10%以上となる中心形状だけから自動決定します。低振幅の広い裾によって中心形状が圧縮されないため、FWHM（半値幅）とFWTM（10%幅）を直接読み取れます。各状態はそれぞれの最大値で正規化し、各状態の再構成面を0とする z − z₀ 座標から追加の位置合わせを行いません。</p>
+        <p>横軸は固定した薄い物体に対する再構成面の位置zᵣ−zₒです。各状態で物体を固定して再構成面を走査し、フィルタ内の各位置で取得候補を選び直します。各曲線は最大値で正規化しますが、ピークや重心による追加の位置合わせは行いません。表示範囲は10%以上の中心形状から求め、低振幅裾は別図で確認します。</p>
       </div>
       <p class="model-note compact-note">細線は360個の等間隔モデル状態を状態の間引きなしで1本ずつ描いたものです。要約曲線や範囲の塗りつぶしを重ねず、曲線同士の重なりをそのまま表示します。これは360回の撮影または実測された絶対X線管角度ではありません。</p>
 
       <div id="overlay-core-block">
         <div class="subsection-heading compact-subheading">
-          <div><strong id="overlay-core-heading">主要表示：設定厚反映後のモデルSSPz</strong><span id="overlay-core-description">設定厚に対して残る幾何学的変動</span></div>
+          <div><strong id="overlay-core-heading">主要表示：フィルタ補間後のモデルSSPz</strong><span id="overlay-core-description">設定厚に対して残る幾何学的変動</span></div>
         </div>
         <div class="chart-grid two">
           <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム180°基準・設定厚反映後</span></div>
-             <canvas id="overlay-core-off" width="900" height="650" aria-label="評価点までの距離変化を反映しない設定厚反映後の360状態SSPz中心形状"></canvas>
+            <div class="chart-title"><h3>コーン幾何を反映しない</h3><span>平行ビーム180°基準・フィルタ補間後</span></div>
+             <canvas id="overlay-core-off" width="900" height="650" aria-label="評価点までの距離変化を反映しないフィルタ補間後の360状態SSPz中心形状"></canvas>
              <button class="download-link" data-canvas="overlay-core-off">投稿用PNG（600 dpi）</button>
           </article>
           <article class="chart-card">
-            <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・設定厚反映後</span></div>
-             <canvas id="overlay-core-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映する設定厚反映後の360状態SSPz中心形状"></canvas>
+            <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・フィルタ補間後</span></div>
+             <canvas id="overlay-core-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映するフィルタ補間後の360状態SSPz中心形状"></canvas>
              <button class="download-link" data-canvas="overlay-core-on">投稿用PNG（600 dpi）</button>
           </article>
         </div>
       </div>
 
       <div class="subsection-heading">
-        <div><strong>3B　設定厚反映後の低振幅裾</strong><span>0.1%以上を対数表示</span></div>
-        <p>3Aのうちコーン幾何を反映した設定厚反映後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。0.1%未満は描画しません。</p>
+        <div><strong>3B　フィルタ補間後の低振幅裾</strong><span>0.1%以上を対数表示</span></div>
+        <p>3Aのうちコーン幾何を反映したフィルタ補間後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。0.1%未満は描画しません。</p>
       </div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映する</h3><span>ファンビーム条件・低振幅裾</span></div>
-          <canvas id="overlay-tail-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映する設定厚反映後360状態SSPzの低振幅裾"></canvas>
+          <canvas id="overlay-tail-on" width="900" height="650" aria-label="評価点までの距離変化を理想化して反映するフィルタ補間後360状態SSPzの低振幅裾"></canvas>
           <button class="download-link" data-canvas="overlay-tail-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
@@ -313,17 +317,17 @@
       </section>
 
       <div class="subsection-heading">
-        <div><strong>3D　閲覧中の1状態の詳細</strong><span id="profile-detail-reading-order">設定厚反映後SSPzだけを表示</span></div>
+        <div><strong>3D　閲覧中の1状態の詳細</strong><span id="profile-detail-reading-order">フィルタ補間後SSPzだけを表示</span></div>
       </div>
       <article class="chart-card">
-        <div class="chart-title"><h3>選択状態のSSPz</h3><span id="profile-axis-note">設定厚反映後SSPzの10%水準以上に応じて横軸を自動調整</span></div>
-        <canvas id="profile-chart" width="1200" height="650" aria-label="設定厚反映後の選択状態SSPz" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
+        <div class="chart-title"><h3>選択状態のSSPz</h3><span id="profile-axis-note">フィルタ補間後SSPzの10%水準以上に応じて横軸を自動調整</span></div>
+        <canvas id="profile-chart" width="1200" height="650" aria-label="フィルタ補間後の選択状態SSPz" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
         <button class="download-link" data-canvas="profile-chart">投稿用PNG（600 dpi）</button>
       </article>
 
       <div class="subsection-heading">
         <div><strong>3E　SSPzを幅指標へ要約</strong><span>全形状を確認した後にFWHM・FWTM・標準偏差を表示</span></div>
-        <p>入力した設定スライス厚を反映したモデルSSPzだけを幅指標へ要約します。ここで示す変動は、設定スライス厚に対して取得幾何が与え得る影響を比較するためのものです。設定厚適用前の中間SSPz幅は再構成スライス厚と誤解されるため、この主解析には表示しません。FWHMは左右二つの50%交点だけを使うため、裾や重心の変化を保持しません。</p>
+        <p>フィルタ補間後のSSPzからFWHM・FWTM・標準偏差を求め、参照値Tで除して表示します。Tは応答を広げる操作やFWHMの目標値には使いません。FWを変えた影響とTによる比率の変化を区別してください。各幅とともに裾や非対称性も確認します。</p>
       </div>
       <div class="chart-controls" aria-label="1回転寝台移動量内の再構成面位置による変動の表示設定">
         <label>表示指標
@@ -336,8 +340,8 @@
       </div>
       <p id="sweep-interpretation" class="model-note compact-note" hidden></p>
       <article class="chart-card">
-        <div class="chart-title"><h3>設定厚反映後SSPzの1回転内幅変動</h3><span id="metric-label">FWHM</span></div>
-        <canvas id="sweep-chart" width="1200" height="650" aria-label="設定スライス厚を反映したモデルSSPzについて、1回転寝台移動量内の再構成面位置に対する幅の変動"></canvas>
+        <div class="chart-title"><h3>フィルタ補間後SSPzの1回転内幅変動</h3><span id="metric-label">FWHM</span></div>
+        <canvas id="sweep-chart" width="1200" height="650" aria-label="フィルタ補間後のモデルSSPzについて、1回転寝台移動量内の物体位置に対する幅の変動"></canvas>
         <button class="download-link" data-canvas="sweep-chart">投稿用PNG（600 dpi）</button>
       </article>
 
@@ -373,7 +377,7 @@
             <li>実データ側の全列と理想対向角を挟む実取得ビューの全列から求める、候補位置の無重み体軸方向標準偏差</li>
             <li>候補点の採用・補間重み・再構成重み・設定厚による閾値を含めない取得幾何の比較</li>
             <li>単位面積の矩形列応答</li>
-            <li>設定スライス厚と同幅の等重み矩形窓を用いた後段の説明モデル</li>
+            <li>Taguchiらの式（6）：各体軸位置で候補を選び直す線形補間と、矩形重みの正規化平均</li>
             <li>X線焦点―評価点距離の変化を、候補列位置と列幅へ反映する理想化補正</li>
           </ul>
         </div>
@@ -389,7 +393,7 @@
           </ul>
         </div>
       </div>
-      <p class="caution"><strong>注意：</strong> 主解析は、各実データ側ビューの理想対向角、その角度を挟む両隣の実取得ビュー、各枝における実データ側・対向データ側の全列候補統合、目的断面を挟む体軸方向線形補間、および2枝の角度方向線形合成をSSPzへ適用します。これは取得幾何に基づく180LI説明モデルであり、商用180LI再構成の再現ではありません。比較解析を選ぶと、SSPzは0～360°の実データ側ビューだけから計算され、2Cは取得幾何監査としてのみ表示されます。理想ヘリカル軌道では探索回転数を固定せず、目的断面を挟む候補が見つかるまで探索します。設定スライス厚は入力条件であり、FWHM・FWTM・標準偏差は生成したSSPzから求める出力です。商用装置の非公開な検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影、装置固有のzフィルタ処理順序は再現しません。患者診療、装置性能保証、商用再構成の定量予測には使用しないでください。</p>
+      <p class="caution"><strong>注意：</strong>本モデルはTaguchiらの式（6）・Fig. 5/6のフィルタ補間を、理想化した取得幾何と列開口に適用します。FW、再標本点数K、参照スライス厚Tは別の入力です。FW=Tを選んでもFWHM=Tを保証せず、実機の設定厚との対応は校正していません。薄い固定物体に対する応答であり、有限径ビーズ、完全な画像再構成、商用装置固有のデータ選択・重み・コーンビーム逆投影は再現しません。2B・2Cの端点と間隔は中心位置でのFW=0の局所補間の監査です。患者診療、装置性能保証、商用再構成の定量予測には使用しないでください。</p>
     </section>
 
     <section class="method-card reference-card" aria-labelledby="reference-title">
@@ -407,7 +411,7 @@
         </li>
         <li>
           <div class="reference-citation">Schaller S, Flohr T, Klingenbeck K, Krause J, Fuchs T, Kalender WA. <a href="https://doi.org/10.1109/42.887832" target="_blank" rel="noopener noreferrer">Spiral interpolation algorithm for multislice spiral CT—Part I: Theory.</a> <i>IEEE Transactions on Medical Imaging.</i> 2000;19:822–834.</div>
-          <p>多列ヘリカルCTにおける体軸方向補間と正規化重みの理論的背景。本Web版の最近接2候補による説明モデルは、同報の適応的体軸補間を実装したものではありません。</p>
+          <p>多列ヘリカルCTにおける体軸方向補間と正規化重みの理論的背景。本Web版は、各再標本位置での局所2点線形補間とTaguchiらのフィルタ平均を用いるもので、同報の適応的体軸補間を実装したものではありません。厚いスライスの応答全体が2候補だけから作られるわけではありません。</p>
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
@@ -415,7 +419,7 @@
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
-          <p>多列ヘリカルCTにおける二点線形補間と、実データ側・対向データ側の候補を体軸位置順に扱う考え方の基礎として参照しました。本Web版は取得幾何上の最近接挟み込みを表示しますが、同報の再構成処理全体を実装していません。</p>
+          <p>厚いスライスのモデルは式（6）とFig. 5/6のフィルタ補間に基づきます。zᵣ+i FW/(2I+1)の各位置で隣接取得データを線形補間し、矩形重みで正規化平均します。K=2I+1は数値積分の再標本点数であり、取得データ数ではありません。同報の最適化ピッチの選択や画像再構成全体は再現していません。</p>
         </li>
         <li>
           <div class="reference-citation">Hu H. <a href="https://doi.org/10.1118/1.598470" target="_blank" rel="noopener noreferrer">Multi-slice helical CT: Scan and reconstruction.</a> <i>Medical Physics.</i> 1999;26:5–18.</div>
@@ -426,7 +430,7 @@
           <p>実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。三次元コーンビームでは厳密に一致する対向レイが一般に存在しないという境界も踏まえ、本Web版2Cは理想化した取得幾何参照に限定し、同報の欠損データ復元法を実装していません。</p>
         </li>
       </ol>
-      <p class="model-note compact-note"><strong>本Web版独自の説明モデル：</strong> 主解析では、各実データ側ビューに対応する理想対向角を挟む両隣の取得ビューについて、実データ側・対向データ側の全列候補を統合した体軸方向線形補間を作り、その2枝を角度方向に線形合成します。さらに設定スライス厚と同幅の矩形窓を後段に適用します。これは文献中の特定の商用再構成法を再現するものではありません。</p>
+      <p class="model-note compact-note"><strong>実装境界：</strong>原典の局所線形補間と矩形フィルタ平均を用い、固定した薄い物体に対する体軸応答を評価します。各再標本位置で候補を選び直した応答を線形性により合成します。従来の固定断面で作った候補応答に幅Tの矩形平均を加える処理は、既定のSSPz計算には使いません。取得幾何の近似、等しいビュー重み、理想列開口は明示した仮定です。これだけで特定装置の厚いスライス再構成を検証したことにはなりません。</p>
     </section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -448,12 +452,11 @@
   </main>
 
   <footer>
-    <p>Model: 180LI acquisition-geometry explanatory model by default, with a direct-ray 0–360° full-scan comparator and a configured-thickness mapping; scanner-specific weighting and backprojection are not reproduced.</p>
-    <p id="version">Web reference build 2026-08-28.2</p>
+    <p>Model: 180LI acquisition geometry by default, with a direct-ray 0–360° comparator and Taguchi-style filter interpolation using FW independent of reference thickness T; scanner-specific weighting, nominal-thickness calibration, and backprojection are not reproduced.</p>
+    <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source.js"></script>
-  <script src="app-bundle.js"></script>
-  <script src="https://m-kondo26.github.io/tool-feedback.js?v=20260825-2" defer></script>
+  <script src="worker-source.js?v=2026-09-08.1"></script>
+  <script src="app-bundle.js?v=2026-09-08.1"></script>
 </body>
 </html>

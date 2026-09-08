@@ -1,7 +1,8 @@
 "use strict";
-const MODEL_VERSION = "2026-08-28.2";
+const MODEL_VERSION = "2026-09-08.1";
 
 const PROFILE_MODES = Object.freeze({
+  TAGUCHI_FILTER: "taguchi-filter",
   LAYERED_RECT: "layered-rect",
   DIRECT_TRIANGULAR: "direct-triangular",
 });
@@ -20,7 +21,9 @@ const DEFAULT_PARAMS = Object.freeze({
   zReference: 0.0,
   state: 0.0,
   sliceThicknessMm: 1.0,
-  profileMode: PROFILE_MODES.LAYERED_RECT,
+  filterWidthMm: 1.0,
+  filterSamples: 129,
+  profileMode: PROFILE_MODES.TAGUCHI_FILTER,
   reconstructionPath: RECONSTRUCTION_PATHS.FAN_BEAM_180LI,
   viewSamples: 360,
   zSamples: 800,
@@ -52,10 +55,14 @@ function validateParams(input) {
     // targetFwhm is accepted only as an old saved-input migration path.
     // It no longer means that the computed FWHM is fitted to this value.
     sliceThicknessMm: Number(input.sliceThicknessMm ?? input.targetFwhm),
-    // Legacy direct-triangular URLs are migrated to the single transparent
-    // reference model: nearest bracketing interpolation followed by the
-    // declared configured-thickness window.
-    profileMode: PROFILE_MODES.LAYERED_RECT,
+    // FW is a reconstruction-filter parameter, NOT a prescribed SSP FWHM.
+    // A missing legacy FW is initialized from T only once. Callers retain the
+    // explicit returned FW when T is subsequently changed.
+    filterWidthMm: Number(input.filterWidthMm ?? input.sliceThicknessMm ?? input.targetFwhm),
+    filterSamples: Number(input.filterSamples ?? 129),
+    filterWidthInitialization: input.filterWidthInitialization
+      ?? (input.filterWidthMm == null ? "legacy-T-initialization-uncalibrated" : "explicit-independent-FW"),
+    profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     reconstructionPath: Object.values(RECONSTRUCTION_PATHS).includes(input.reconstructionPath)
       ? input.reconstructionPath
       : RECONSTRUCTION_PATHS.FAN_BEAM_180LI,
@@ -75,6 +82,9 @@ function validateParams(input) {
   if (p.radius > 250) throw new Error("Set the radial distance from isocenter to a value from 0 to 250 mm.");
   if (p.radius >= p.sourceRadius) throw new Error("The radial distance from isocenter must be smaller than the source-to-isocenter distance.");
   if (p.sliceThicknessMm <= 0 || p.sliceThicknessMm > 20) throw new Error("Set the configured slice thickness to a value greater than 0 and no greater than 20 mm.");
+  if (p.filterWidthMm < 0 || p.filterWidthMm > 20) throw new Error("Set filter width FW between 0 and 20 mm.");
+  if (!Number.isInteger(p.filterSamples) || p.filterSamples < 33 || p.filterSamples > 2049
+    || p.filterSamples % 2 !== 1) throw new Error("Set filter resampling count to an odd integer between 33 and 2049.");
   if (p.viewSamples < 90 || p.viewSamples > 2400) throw new Error("Set the number of relative tube-angle samples per rotation to a value from 90 to 2400.");
   if (p.zSamples < 300 || p.zSamples > 4000) throw new Error("Set the SSPz grid size to a value from 300 to 4000.");
   if (p.stateSamples < 12 || p.stateSamples > 720) throw new Error("Set the number of model states to a value from 12 to 720.");
@@ -1631,6 +1641,7 @@ function computeComplementaryCandidateSeries(p, z0, coneOn) {
   };
 }
 
+/** Legacy fixed-plane sensitivity kernel; retained for geometry diagnostics. */
 function computeSsp(rawParams, options = {}) {
   const p = validateParams(rawParams);
   const requestedState = Number(options.state ?? p.state);
@@ -1921,6 +1932,7 @@ function rectangularAverageProfile(profileInput, zInput, width) {
   return Array.from(out);
 }
 
+/** Legacy fixed-plane kernel followed by rectangular averaging, comparison only. */
 function computeLayeredSsp(rawParams, options = {}) {
   const p = validateParams(rawParams);
   const sliceKernelWidthMm = Math.max(0, Number(options.sliceKernelWidthMm ?? options.sliceKernelWidth ?? 0));
@@ -1940,6 +1952,8 @@ function computeLayeredSsp(rawParams, options = {}) {
   ));
   return {
     ...base,
+    modelStatus: "legacy-comparison-only",
+    responseDefinition: "fixed-reconstruction-plane-sensitivity-kernel-post-averaged",
     profileMode: PROFILE_MODES.LAYERED_RECT,
     candidateWeightHalfSupportMm: null,
     sliceKernelWidthMm,
@@ -1957,18 +1971,351 @@ function computeLayeredSsp(rawParams, options = {}) {
   };
 }
 
+// Taguchi and Aradate (1998), Fig. 5 and Eq. (6): first interpolate the
+// ACQUIRED data at each zf(i)=zRecon+i*FW/(2I+1), then filter these values.
+// The acquired response below is held fixed as zRecon moves. It must not be
+// replaced by computeSsp(zRecon=zObject) followed by a window on object z.
+// The projected rectangular row aperture and off-axis/angular-neighbour
+// geometry are explicit extensions of this simulator, not a reproduction of
+// all optimized-sampling / fan-beam FBP steps of the original paper.
+
+function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidth) {
+  const feed = tableFeedMm(p);
+  const rho = p.radius / p.sourceRadius;
+  const scale = coneOn
+    ? Math.sqrt(Math.max(EPS, 1 + rho * rho - 2 * rho * Math.cos(angleRad - p.phase)))
+    : 1;
+  const aperture = p.rowWidth * scale;
+  const first = feed * angleRad / PI2 + (0.5 - p.rows / 2) * aperture;
+  const last = first + (p.rows - 1) * aperture;
+  const left = zObject - searchHalfWidth;
+  const right = zObject + searchHalfWidth;
+  // All signal-bearing row centres lie inside [left,right]. For each
+  // intersecting row band retain its nearest outside centre on both sides.
+  // Adjacent exterior turns provide zero-valued guards when bands have gaps.
+  // Thus every nonzero interpolation segment has its true nearest endpoints;
+  // FW does not truncate the acquisition search and T is not used here.
+  const firstTurn = Math.floor((left - last) / feed) - 1;
+  const lastTurn = Math.ceil((right - first) / feed) + 1;
+  const knots = [];
+  for (let turn = firstTurn; turn <= lastTurn; turn += 1) {
+    const firstAtTurn = first + turn * feed;
+    const firstRow = Math.max(0, Math.min(p.rows - 1,
+      Math.floor((left - firstAtTurn) / aperture)));
+    const lastRow = Math.max(0, Math.min(p.rows - 1,
+      Math.ceil((right - firstAtTurn) / aperture)));
+    for (let row = firstRow; row <= lastRow; row += 1) {
+      const offset = firstAtTurn + row * aperture - zObject;
+      const boundaryDistance = Math.abs(offset) - aperture / 2;
+      // The half-height boundary is the symmetric thin-bead limit of a
+      // rectangular detector aperture, avoiding double-height edge ties.
+      const response = Math.abs(boundaryDistance) <= 1e-10
+        ? 0.5 / aperture
+        : boundaryDistance < 0 ? 1 / aperture : 0;
+      knots.push({ x: offset, y: response });
+    }
+  }
+  return knots;
+}
+
+function taguchiBranchEvents(familyKnots, weight, events) {
+  if (!(weight > 0)) return false;
+  const ordered = familyKnots.flat().sort((a, b) => a.x - b.x);
+  const knots = [];
+  for (let index = 0; index < ordered.length;) {
+    const x = ordered[index].x;
+    let sum = 0;
+    let count = 0;
+    while (index < ordered.length && Math.abs(ordered[index].x - x) <= 1e-10) {
+      sum += ordered[index].y;
+      count += 1;
+      index += 1;
+    }
+    // Coincident longitudinal samples share the endpoint weight, consistently
+    // with the existing equal-z acquired-candidate policy.
+    knots.push({ x, y: sum / count });
+  }
+  let signal = false;
+  for (let i = 0; i + 1 < knots.length; i += 1) {
+    const left = knots[i];
+    const right = knots[i + 1];
+    if (!(left.y > 0 || right.y > 0)) continue;
+    signal = true;
+    const slope = (right.y - left.y) / (right.x - left.x) * weight;
+    // Slope-change events represent the full piecewise-linear interpolation
+    // exactly, rather than sampling and re-interpolating it on the SSP grid.
+    events.push({ x: left.x, slope, jump: left.y * weight });
+    events.push({ x: right.x, slope: -slope, jump: -right.y * weight });
+  }
+  return signal;
+}
+
+function taguchiForwardKnots(p, zObject, coneOn, reconstructionPath) {
+  const events = [];
+  const searchHalfWidth = p.rowWidth * (1 + p.radius / p.sourceRadius) / 2 + 1e-8;
+  let respondingViews = 0;
+  let acquiredBranchCount = 0;
+  for (let view = 0; view < p.viewSamples; view += 1) {
+    const beta = PI2 * view / p.viewSamples;
+    const direct = taguchiAcquiredFamilyKnots(p, zObject, beta, coneOn, searchHalfWidth);
+    if (reconstructionPath === RECONSTRUCTION_PATHS.DIRECT_FULL_SCAN) {
+      if (taguchiBranchEvents([direct], 1 / p.viewSamples, events)) respondingViews += 1;
+      acquiredBranchCount += 1;
+      continue;
+    }
+    const complementary = fanBeamComplementaryGeometryAtAngle(p, beta, coneOn);
+    const acquired = acquiredViewMapping(p, complementary.complementaryAngleUnwrappedRad);
+    const sameView = acquired.lowerAbsoluteViewIndex === acquired.upperAbsoluteViewIndex;
+    const alpha = sameView ? 0 : Math.max(0, Math.min(1, acquired.angularInterpolationFraction));
+    const branches = [[acquired.lowerAngleUnwrappedRad, 1 - alpha]];
+    if (!sameView && alpha > 0) branches.push([acquired.upperAngleUnwrappedRad, alpha]);
+    let viewHasSignal = false;
+    for (const [angle, angularWeight] of branches) {
+      if (!(angularWeight > 0)) continue;
+      const other = taguchiAcquiredFamilyKnots(p, zObject, angle, coneOn, searchHalfWidth);
+      viewHasSignal = taguchiBranchEvents(
+        [direct, other], angularWeight / p.viewSamples, events,
+      ) || viewHasSignal;
+      acquiredBranchCount += 1;
+    }
+    if (viewHasSignal) respondingViews += 1;
+  }
+  events.sort((a, b) => a.x - b.x);
+  const knots = [];
+  let value = 0;
+  let slope = 0;
+  let previousX = events[0]?.x ?? 0;
+  for (let i = 0; i < events.length;) {
+    const x = events[i].x;
+    value += slope * (x - previousX);
+    let slopeChange = 0;
+    let valueJump = 0;
+    while (i < events.length && events[i].x === x) {
+      slopeChange += events[i].slope;
+      valueJump += events[i].jump;
+      i += 1;
+    }
+    value += valueJump;
+    slope += slopeChange;
+    knots.push({ x, y: Math.max(0, value) });
+    previousX = x;
+  }
+  // The finite acquired response has exactly zero support outside the guards.
+  // Remove only floating-point accumulation at those known zero endpoints.
+  if (knots.length) {
+    knots[0].y = 0;
+    knots[knots.length - 1].y = 0;
+  }
+  return { knots, respondingViews, acquiredBranchCount };
+}
+
+function taguchiPiecewiseMoments(knots) {
+  let area = 0;
+  let first = 0;
+  let second = 0;
+  for (let i = 0; i + 1 < knots.length; i += 1) {
+    const a = knots[i];
+    const b = knots[i + 1];
+    const h = b.x - a.x;
+    const dy = b.y - a.y;
+    const localArea = h * (a.y + dy / 2);
+    const localFirst = h * h * (a.y / 2 + dy / 3);
+    const localSecond = h * h * h * (a.y / 3 + dy / 4);
+    area += localArea;
+    first += a.x * localArea + localFirst;
+    second += a.x * a.x * localArea + 2 * a.x * localFirst + localSecond;
+  }
+  const centroid = area > EPS ? first / area : 0;
+  const variance = area > EPS ? Math.max(0, second / area - centroid * centroid) : 0;
+  return { area, centroid, variance, sigma: Math.sqrt(variance) };
+}
+
+function taguchiEvaluateFilter(knots, z, fw, samples) {
+  const out = new Float64Array(z.length);
+  if (knots.length < 2) return out;
+  const count = fw > 0 ? samples : 1;
+  const halfCount = (count - 1) / 2;
+  const step = fw / count;
+  const dz = z[1] - z[0];
+  const leftSupport = knots[0].x;
+  const rightSupport = knots[knots.length - 1].x;
+  // Angular averaging commutes with Eq. (6)'s finite, normalized linear sum.
+  // For every offset, evaluate the exact acquired-data piecewise-linear
+  // function at zRecon+i*FW/K. No continuous-window approximation is used.
+  for (let sample = -halfCount; sample <= halfCount; sample += 1) {
+    const shift = sample * step;
+    const first = Math.max(0, Math.ceil((leftSupport - shift - z[0]) / dz));
+    const last = Math.min(z.length - 1, Math.floor((rightSupport - shift - z[0]) / dz));
+    let segment = 0;
+    for (let index = first; index <= last; index += 1) {
+      const x = z[index] + shift;
+      while (segment + 1 < knots.length - 1 && knots[segment + 1].x < x) segment += 1;
+      const a = knots[segment];
+      const b = knots[segment + 1];
+      const fraction = Math.max(0, Math.min(1, (x - a.x) / (b.x - a.x)));
+      out[index] += (a.y + fraction * (b.y - a.y)) / count;
+    }
+  }
+  return out;
+}
+
+/** Fixed axial impulse, moving reconstruction plane, Taguchi Eq. (6). */
+function computeTaguchiSsp(rawParams, options = {}) {
+  const p = validateParams(rawParams);
+  const stateInput = Number(options.state ?? p.state);
+  const state = ((stateInput % 1) + 1) % 1;
+  const coneOn = Boolean(options.coneOn);
+  const reconstructionPath = options.reconstructionPath ?? p.reconstructionPath;
+  if (!Object.values(RECONSTRUCTION_PATHS).includes(reconstructionPath)) {
+    throw new Error(`Unsupported acquisition-geometry model: ${reconstructionPath}`);
+  }
+  const filterWidthMm = Number(options.filterWidthMm ?? p.filterWidthMm);
+  const filterSamples = Number(options.filterSamples ?? p.filterSamples);
+  if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
+    || !Number.isInteger(filterSamples) || filterSamples < 33 || filterSamples > 2049
+    || filterSamples % 2 !== 1) throw new Error("Filter width or resampling count is out of range.");
+  const zObject = p.zReference + state * tableFeedMm(p);
+  const forward = taguchiForwardKnots(p, zObject, coneOn, reconstructionPath);
+  const moments = taguchiPiecewiseMoments(forward.knots);
+  const maximumAperture = p.rowWidth * (1 + p.radius / p.sourceRadius);
+  const maxDz = Math.max(2 * p.rowWidth,
+    tableFeedMm(p) + maximumAperture / 2 + MAX_CONFIGURED_SLICE_THICKNESS_MM / 2 + p.rowWidth);
+  // Same grid for both cone settings, every object state, every FW and T.
+  const targetDz = Math.max(p.rowWidth / 64, 0.00025);
+  const requestedInternalZCells = Math.max(p.zSamples, Math.ceil(2 * maxDz / targetDz));
+  const zCount = oddCellCountAtLeast(requestedInternalZCells);
+  const z = uniformCellCenters(-maxDz, maxDz, zCount);
+  const dz = 2 * maxDz / zCount;
+  const rawBase = taguchiEvaluateFilter(forward.knots, z, 0, 1);
+  const rawFinal = filterWidthMm > 0
+    ? taguchiEvaluateFilter(forward.knots, z, filterWidthMm, filterSamples)
+    : rawBase.slice();
+  let basePeak = 0;
+  let finalPeak = 0;
+  let finalArea = 0;
+  for (let i = 0; i < zCount; i += 1) {
+    basePeak = Math.max(basePeak, rawBase[i]);
+    finalPeak = Math.max(finalPeak, rawFinal[i]);
+    finalArea += rawFinal[i] * dz;
+  }
+  const baseProfile = Array.from(rawBase, value => basePeak > 0 ? value / basePeak : 0);
+  const profile = Array.from(rawFinal, value => finalPeak > 0 ? value / finalPeak : 0);
+  const baseStats = profileStats(baseProfile, z, dz);
+  const finalStats = profileStats(profile, z, dz);
+  // Preserve only the explicitly identified, unfiltered REFERENCE-PLANE
+  // geometry diagnostics. They are not the contributors across the FW window.
+  const reference = computeSsp(p, {
+    state, coneOn, reconstructionPath,
+    collectGeometrySeries: Boolean(options.collectGeometrySeries),
+    collectComplementaryCandidates: options.collectComplementaryCandidates,
+  });
+  const filterShiftVarianceMm2 = filterWidthMm > 0
+    ? filterWidthMm ** 2 * (filterSamples ** 2 - 1) / (12 * filterSamples ** 2) : 0;
+  const analyticConfiguredSigmaMm = Math.sqrt(moments.variance + filterShiftVarianceMm2);
+  const minimumProjectedRowApertureMm = p.rowWidth
+    * (coneOn ? 1 - p.radius / p.sourceRadius : 1);
+  const filterSampleStepMm = filterWidthMm > 0 ? filterWidthMm / filterSamples : 0;
+  // Resolution screens are explicit advisory checks, not a substitute for
+  // comparing K with 2K-1 or for the independently tested finite Eq. (6).
+  const recommendedFilterSamples = oddCellCountAtLeast(Math.max(
+    33, 8 * filterWidthMm / minimumProjectedRowApertureMm,
+  ), Number.MAX_SAFE_INTEGER);
+  const gridResolutionAdequate = dz <= minimumProjectedRowApertureMm / 16;
+  const filterResamplingAdequate = filterSampleStepMm <= minimumProjectedRowApertureMm / 8;
+  const relativeNumericalAreaError = moments.area > EPS
+    ? Math.abs(finalArea - moments.area) / moments.area : null;
+  const maximumFilterShift = filterWidthMm * (filterSamples - 1) / (2 * filterSamples);
+  const supportWithinDomain = !forward.knots.length || (
+    forward.knots[0].x - maximumFilterShift >= -maxDz
+    && forward.knots[forward.knots.length - 1].x + maximumFilterShift <= maxDz
+  );
+  const profileValidity = !(moments.area > EPS)
+    ? "no-acquired-response-to-fixed-object"
+    : !(finalPeak > 0) ? "positive-analytic-response-missed-by-output-grid"
+      : !supportWithinDomain ? "response-support-clipped-by-output-domain"
+        : "positive-finite-response";
+  if (profileValidity !== "positive-finite-response") {
+    // Do not turn missing / unresolved reconstructed signal into a claimed
+    // zero-millimetre width or a valid normalized SSP.
+    finalStats.fwhm = NaN;
+    finalStats.fwtm = NaN;
+  }
+  return {
+    ...reference,
+    state, z0: zObject, zObject, coneOn, reconstructionPath,
+    profileMode: PROFILE_MODES.TAGUCHI_FILTER,
+    modelStatus: "literature-based-reference-with-explicit-geometry-extensions",
+    responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
+    fixedObjectResponseDefinition: "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    axialCoordinateDefinition: "z-reconstruction-plane-minus-z-object",
+    filterMethod: "Taguchi-Aradate-1998-Eq6-rectangular-filter-interpolation",
+    filterEvaluation: "exact-finite-Eq6-sum-of-piecewise-linear-acquired-data-interpolation",
+    filterWidthMm, filterSamples,
+    filterResamplingStepMm: filterWidthMm / filterSamples,
+    effectiveFilterSamples: filterWidthMm > 0 ? filterSamples : 1,
+    filterWidthInitialization: p.filterWidthInitialization,
+    filterWidthIsPrescribedFwhm: false,
+    sliceKernelWidthMm: filterWidthMm,
+    sliceKernelWidth: filterWidthMm,
+    candidateSelectionRule: "adjacent-acquired-data-reselected-at-every-filter-resampling-position",
+    candidateWeightHalfSupportMm: null,
+    geometrySeriesDefinition: "unfiltered-fixed-reference-plane-diagnostics-not-FW-integrated-candidate-contributions",
+    diagnosticStage: "reference-plane-FW0-geometry-not-filter-integrated-contributors",
+    geometryIndicator: "reference-plane-FW0-candidate-weighted-rms-not-forward-response-sigma",
+    dataKind: "Taguchi-filter-interpolation-with-explicit-off-axis-geometry-extension-no-transaxial-FBP",
+    z: Array.from(z), profile, baseProfile,
+    rawProfile: Array.from(rawFinal), rawBaseProfile: Array.from(rawBase),
+    baseFwhm: baseStats.fwhm, baseFwtm: baseStats.fwtm,
+    baseSigma: baseStats.sigma, baseCentroid: baseStats.centroid,
+    actualZSamples: zCount, requestedInternalZCells,
+    internalZCountCapped: requestedInternalZCells > MAX_INTERNAL_Z_CELLS,
+    targetLongitudinalCellWidthMm: targetDz,
+    longitudinalCellWidthMm: dz,
+    longitudinalGridInterpretation: "exact-point-evaluations-at-uniform-reconstruction-plane-positions",
+    longitudinalDomainHalfWidthMm: maxDz,
+    preNormalizationPeak: finalPeak, basePreNormalizationPeak: basePeak,
+    preNormalizationArea: finalArea,
+    analyticForwardArea: moments.area,
+    analyticForwardCentroidMm: moments.centroid,
+    analyticBaseSigmaMm: moments.sigma,
+    analyticConfiguredSigmaMm,
+    analyticVarianceDefinition: "fixed-object-forward-response-variance-plus-finite-Eq6-filter-shift-variance",
+    filterShiftVarianceMm2,
+    minimumProjectedRowApertureMm,
+    gridResolutionAdequate,
+    filterResamplingAdequate,
+    recommendedFilterSamples,
+    filterResolutionCriterion: "advisory-FW-over-K-at-most-minimum-projected-row-aperture-over-eight-not-convergence-proof",
+    relativeNumericalAreaError,
+    supportWithinDomain,
+    profileValidity,
+    numericalSigmaResidualMm: finalStats.sigma - analyticConfiguredSigmaMm,
+    meanKernelSecondMomentMm2: null,
+    depositedArea: null, depositionAreaResidual: null, domainClippingAreaResidual: null,
+    forwardPiecewiseKnotCount: forward.knots.length,
+    fixedObjectRespondingViewFraction: forward.respondingViews / p.viewSamples,
+    acquiredAngularBranchCount: forward.acquiredBranchCount,
+    ...finalStats,
+  };
+}
+
 function createProfileAssumptions(rawParams) {
   const p = validateParams(rawParams);
   return {
-    profileMode: PROFILE_MODES.LAYERED_RECT,
-    candidateSelectionRule: "nearest-bracketing",
-    candidateWeightShape: "linear-between-nearest-smaller-z-and-larger-z-candidates",
+    profileMode: PROFILE_MODES.TAGUCHI_FILTER,
+    responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
+    candidateSelectionRule: "adjacent-acquired-data-reselected-at-every-filter-resampling-position",
+    candidateWeightShape: "Taguchi-Eq6-local-linear-resampling-then-normalized-rectangular-filter",
     candidateWeightHalfSupportMm: null,
     candidateWeightFwhmMm: null,
     sliceKernelShape: "rectangular",
-    sliceKernelWidthMm: p.sliceThicknessMm,
-    mapping: "configured-thickness-to-rectangular-kernel",
-    geometryIndicator: "final-candidate-weighted-rms-with-row-aperture-over-configured-thickness",
+    sliceKernelWidthMm: p.filterWidthMm,
+    filterWidthMm: p.filterWidthMm,
+    filterSamples: p.filterSamples,
+    filterWidthInitialization: p.filterWidthInitialization,
+    filterWidthIsPrescribedFwhm: false,
+    mapping: "independent-filter-width-not-fitted-to-configured-thickness",
+    geometryIndicator: "reference-plane-FW0-candidate-weighted-rms-not-forward-response-sigma",
     bracketAuditIndicator: p.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
       ? "angularly-weighted-180li-branch-bracketing-gap-over-configured-thickness"
       : "nearest-bracketing-gap-over-configured-thickness",
@@ -1979,16 +2326,44 @@ function createProfileAssumptions(rawParams) {
 function computeProfileModel(rawParams, options = {}) {
   const p = validateParams(rawParams);
   const assumptions = options.assumptions ?? createProfileAssumptions(p);
-  return computeLayeredSsp(p, {
+  const filterWidthMm = Number(options.filterWidthMm ?? assumptions.filterWidthMm ?? p.filterWidthMm);
+  const requestedFilterSamples = Number(options.filterSamples ?? assumptions.filterSamples ?? p.filterSamples);
+  if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
+    || !Number.isInteger(requestedFilterSamples) || requestedFilterSamples < 33
+    || requestedFilterSamples > 2049 || requestedFilterSamples % 2 !== 1) {
+    throw new Error("Filter width or resampling count is out of range.");
+  }
+  // Public output uses the requested K as a MINIMUM numerical resolution.
+  // Apply the same bound to cone-off and cone-on, so comparison differences
+  // are not caused by unequal discretizations. This changes neither FW nor T.
+  // The exported computeTaguchiSsp remains the literal fixed-K Eq. (6) API
+  // for reproducing finite-K results and independent convergence tests.
+  const minimumProjectedRowApertureMm = p.rowWidth * (1 - p.radius / p.sourceRadius);
+  const accuracyRequiredFilterSamples = oddCellCountAtLeast(Math.max(
+    33, 8 * filterWidthMm / minimumProjectedRowApertureMm,
+  ), Number.MAX_SAFE_INTEGER);
+  if (accuracyRequiredFilterSamples > 2049) {
+    throw new Error(`FW=${filterWidthMm} mm requires at least ${accuracyRequiredFilterSamples} resampling points. This exceeds the current precision limit of 2049 points; no SSPz result is displayed for this condition.`);
+  }
+  const actualFilterSamples = Math.max(requestedFilterSamples, accuracyRequiredFilterSamples);
+  const result = computeTaguchiSsp(p, {
     state: options.state ?? p.state,
     coneOn: Boolean(options.coneOn),
-    sliceKernelWidthMm: assumptions.sliceKernelWidthMm,
+    filterWidthMm,
+    filterSamples: actualFilterSamples,
     collectGeometrySeries: Boolean(options.collectGeometrySeries),
     collectComplementaryCandidates: options.collectComplementaryCandidates,
     reconstructionPath: options.reconstructionPath
       ?? assumptions.reconstructionPath
       ?? p.reconstructionPath,
   });
+  return {
+    ...result,
+    requestedFilterSamples,
+    accuracyRequiredFilterSamples,
+    filterSamplesAdjustedForAccuracy: actualFilterSamples > requestedFilterSamples,
+    filterSamplesAdjustmentRule: "requested-minimum-and-eight-samples-per-minimum-projected-row-aperture-shared-by-cone-settings",
+  };
 }
 
 function computeUnwrapped(rawParams, options = {}) {
@@ -2296,12 +2671,10 @@ let cancelled = false;
 let activeContext = null;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
-const OVERLAY_MAX_Z_POINTS = 1000;
-
 function overlaySampleIndices(length) {
-  const count = Math.min(length, OVERLAY_MAX_Z_POINTS);
-  if (count === length) return Array.from({ length }, (_, index) => index);
-  return Array.from({ length: count }, (_, index) => Math.round(index * (length - 1) / (count - 1)));
+  // Preserve the numerical profile grid in screen and publication overlays.
+  // A fixed 1000-point decimation can miss a narrow peak inside a broad domain.
+  return Array.from({ length }, (_, index) => index);
 }
 
 function createOverlayCondition(stateCount, zCount, angleCount) {
@@ -2466,9 +2839,15 @@ self.onmessage = async event => {
       zCount,
       z: Float32Array.from(sampleIndices, index => selectedOff.z[index]),
       states: Float32Array.from(overlayStates),
-      coordinate: "z-minus-z0-native",
+      coordinate: "reconstruction-plane-z-minus-fixed-object-z",
       normalization: "each-profile-peak-normalized-to-one",
-      stateMeaning: "relative-reconstruction-state-within-one-table-feed-per-rotation",
+      stateMeaning: "fixed-object-position-within-one-table-feed-per-rotation",
+      responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
+      profileMethod: "taguchi-1998-equation-6-finite-rectangular-filter-interpolation",
+      filterWidthMm: params.filterWidthMm,
+      filterSamples: selectedOn.filterSamples,
+      requestedFilterSamples: params.filterSamples,
+      diagnosticStage: "unfiltered-local-interpolation-at-the-central-plane-not-filtered-ssp-contributors",
       reconstructionPath: params.reconstructionPath,
       acquisitionModel: params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
         ? "fan-beam-180li-acquisition-geometry-explanatory-model"
@@ -2533,6 +2912,11 @@ self.onmessage = async event => {
             dataKind: result.dataKind,
             candidateRayFamilyCount: result.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
             candidateSelectionRule: result.candidateSelectionRule,
+            responseDefinition: result.responseDefinition,
+            filterWidthMm: result.filterWidthMm,
+            filterSamples: result.filterSamples,
+            requestedFilterSamples: result.requestedFilterSamples,
+            diagnosticStage: result.diagnosticStage,
             fwhm: result.fwhm,
             fwtm: result.fwtm,
             sigma: result.sigma,

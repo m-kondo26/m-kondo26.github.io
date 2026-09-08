@@ -1,16 +1,16 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
-  "modelVersion": "2026-08-28.2",
+  "modelVersion": "2026-09-08.1",
   "diagramDisplayVersion": "2026-09-07.1",
-  "purpose": "Visualize how angular-longitudinal candidate geometry can affect configured-output SSPz by applying an idealized fan-beam 180LI acquisition-geometry explanatory model. The acquired complementary views bracketing beta plus 180 degrees plus 2 gamma are each combined with the direct view for longitudinal nearest-bracketing interpolation, and the two angular branches are then linearly interpolated. The reader-facing geometry indicator is the unweighted population standard deviation, in millimetres, of all detector-row centre positions in the direct acquired view and in each distinct acquired view bracketing the ideal complementary angle. It is evaluated before candidate selection, interpolation weighting, row-aperture modelling, and configured slice thickness. The earlier direct-ray 0-to-360-degree full-scan model remains available as a comparator.",
+  "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
     "sha256": "c2f554f89cf5bced2504381a7c5955e1eee1598cdf3cf270438c1c9235da0cab",
-    "note": "The primary explanatory SSPz calculation applies the web model's fan-beam 180LI acquisition geometry. For every direct acquired view, it derives the ideal complementary angle, retains the two acquired angular neighbors, performs longitudinal nearest-bracketing interpolation over the union of direct- and complementary-side detector rows for each branch, and linearly combines the branches. Candidate row apertures are rasterized by exact fractional overlap with z cells, and configured-thickness averaging exactly integrates the resulting piecewise-constant cells. The original actual-data-only 360-degree path is retained as an explicit comparator. This is not a reproduction of scanner-specific projection selection, redundancy weighting, z filtering, cone-beam weighting, or backprojection."
+    "note": "Historical baseline only: the named Python reference and full-scan fixture use the former fixed-plane candidate-kernel model. They do not validate the current thick-slice response. Current longitudinal filtering follows Taguchi Eq. (6): reselect adjacent acquired candidates at every resampling z position, linearly interpolate, then apply the normalized finite rectangular-weight sum. Geometry and row apertures remain idealized; complete FBP, scanner-specific weights, and finite bead diameter are excluded."
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "00263795ece2bea7ac046dcc3e76a6879f08e85278b055ad3a707cafd2317deb"
+    "sha256": "27a6e7f48a562050992108af95e21ed5af70b4919a2604c769862d2a92e09a5e"
   },
   "regressionFixture": {
     "fileName": "tests/full-scan-reference.json",
@@ -19,18 +19,18 @@
     "sha256": "fbff09e6f355fcdaa5c97be8175dd52328e0f4edcc8c5026cd2be168ff59159a",
     "parameters": {
       "detectorRows": 4,
-      "rowWidthMm": 1.0,
+      "rowWidthMm": 1,
       "beamPitch": 0.875,
-      "sourceToIsocenterMm": 600.0,
-      "radialPositionMm": 102.0,
-      "referenceReconstructionPositionMm": 9.0,
+      "sourceToIsocenterMm": 600,
+      "radialPositionMm": 102,
+      "referenceReconstructionPositionMm": 9,
       "relativeReconstructionPositionWithinOneRotation": 0.5,
       "viewSamplesOverFull360Degrees": 360,
       "zSamples": 800
     },
     "candidateSelectionRule": "nearest-bracketing-linear",
-    "note": "The 102-mm radial position is retained only as a fixed numerical regression fixture from the study; it is not a recommended public preset.",
-    "status": "PASS",
+    "note": "Historical legacy-thickness-reference fixture, not an acceptance target for Taguchi-filter response. Its 102-mm radius is a numerical fixture, not a recommended preset.",
+    "status": "historical PASS; legacy model only",
     "verifiedOn": "2026-08-28"
   },
   "implemented": [
@@ -43,26 +43,26 @@
     "all-N detector-row-centre candidate populations for the direct family and both acquired complementary-angle neighbors, drawn on a common direct-data reference-angle axis using each family's own acquisition source z and row scale; solid lines and circles identify the direct side, dashed lines and triangles identify the complementary side; configured thickness is not used for candidate exclusion",
     "display-only revision 2026-09-07.1: full acquired-view trajectory grids, absolute-view provenance for every selected marker, comparable display bounds across both geometry conditions, and no changes to numerical SSPz or interpolation weights",
     "internal per-view weighted RMS spread, final contributing-candidate count, inverse-Simpson weight-equivalent count, and pre-merge contribution count retained only as explanatory-SSPz regression audits rather than reader-facing geometry indicators",
-    "analytic configured-output variance audit sigma-configured-squared equals mean-view M2 plus configured-thickness-squared over 12",
     "absolute helical view order D-n to C-n to D-n-plus-one with the two constrained cross-family longitudinal spans evaluated separately over all detector rows, both longitudinal endpoint orientations, and required ideal-helix turns",
     "generalized two-point-LI acquisition-geometry reference formed by merging all direct- and complementary-family detector-row candidates and selecting the adjacent smaller-z and larger-z candidates, with ordinary DD, DC, CD, and CC pairs plus equal-distance ties and exact matches retained",
     "centered detector-row and multiple-turn candidate enumeration",
     "adaptive nearest-smaller-z and nearest-larger-z candidate selection without a fixed support cutoff",
     "within-view linear interpolation weights normalized to one",
     "180LI effective nearest-bracketing gap G-eff over configured slice thickness, with delta-z over configured slice thickness retained for the comparator, as selectable path audits distinct from sigma-g",
-    "unit-area rectangular detector-row response rasterized by exact fractional overlap with every intersected z cell",
-    "one-way mapping from configured slice thickness to an equal-weight rectangular explanatory kernel by exact integration of the piecewise-constant cell profile, including fractional boundary cells",
     "computed FWHM, FWTM, standard deviation, centroid, and whole-profile output without FWHM fitting",
-    "native-coordinate overlays of 360 equally spaced relative reconstruction states as individual profiles without a synthetic pointwise summary curve or filled range",
+    "native-coordinate overlays of 360 equally spaced fixed-object positions as individual profiles without a synthetic pointwise summary curve or filled range",
     "a data-driven, object-fixed, not-to-scale 3-D acquisition-geometry figure showing the relative focal-spot helix, target plane, direct acquired view, acquired complementary-angle bracket, and all detector-row centers mapped to the evaluation-point longitudinal line before interpolation weighting",
     "idealized source-to-point distance scaling toggle",
     "automatic candidate search that expands until the target plane is bracketed, with every detector row retained in the unwrapped overview",
     "result-side inspection of one selected model state without treating that state as an acquisition input",
-    "configured-output-only symmetric horizontal scaling for the selected-state SSPz detail, derived from the response at or above 10 percent",
+    "filter-interpolated-only symmetric horizontal scaling for the selected-state SSPz detail, derived from the response at or above 10 percent",
     "public radial-position range from 0 to 250 mm, including the geometric edge of a 500-mm field of view",
-    "configured-output SSPz split into a linear center-shape view at or above 10 percent and a separate logarithmic low-amplitude-tail view at or above 0.1 percent, with off/on comparisons sharing a domain only within the same view role",
-    "public figures and sampled FWHM/FWTM outputs restricted to configured-output SSPz; the state-sweep CSV retains only explicitly named pre-thickness geometry-kernel audit scalars such as mean second moment and analytic sigma-g, so they are not presented as reconstructed slice thickness",
-    "nearest-bracketing gap ratio retained as a collapsed geometry audit rather than a reconstructed-thickness output"
+    "filter-interpolated SSPz split into a linear center-shape view at or above 10 percent and a separate logarithmic low-amplitude-tail view at or above 0.1 percent, with off/on comparisons sharing a domain only within the same view role",
+    "Taguchi and Aradate Eq. (6) local candidate reselection at z_r+i*FW/K for i=-I,...,I and K=2I+1, followed by a normalized finite rectangular-weight average",
+    "fixed thin-object acquired row-aperture values, moving-plane adjacent-sample interpolation, piecewise-linear aggregation, and finite shifted-sum evaluation",
+    "independent FW and reference T inputs; missing legacy FW initialized numerically to T without scanner calibration",
+    "full numerical z grids in 360-state overlays without within-profile decimation",
+    "PNG captions and file names record FW, K, and reference T; CSV records model version and moving-plane response coordinate"
   ],
   "notImplemented": [
     "Schaller adaptive axial interpolation",
@@ -98,8 +98,8 @@
     },
     {
       "doi": "10.1118/1.598230",
-      "role": "Basis for two-point linear interpolation in multi-slice helical CT and longitudinal ordering of direct- and complementary-family samples.",
-      "implementationBoundary": "The web implementation applies the published complementary-angle relation and adjacent longitudinal interpolation as an acquisition-geometry explanatory model, but does not reproduce the complete scanner reconstruction procedure."
+      "role": "Primary longitudinal filtering source: Eq. (6), Figs. 5/6, local resampling with adjacent linear interpolation and a normalized rectangular filter.",
+      "implementationBoundary": "Only the longitudinal filter-interpolation construction is implemented on the declared idealized acquisition geometry and row-aperture samples. Optimized-pitch selection, complete original FBP, scanner-specific weights, and nominal-thickness calibration are not reproduced."
     },
     {
       "doi": "10.1118/1.598470",
@@ -112,20 +112,44 @@
       "implementationBoundary": "The model remains an idealized acquisition-geometry reference and does not implement missing-data restoration."
     }
   ],
-  "scanCalculationConvention": "The default path evaluates every direct acquired view beta in the half-open interval 0 <= beta < 360 degrees. Its ideal fan-beam complementary angle is beta plus 180 degrees plus 2 gamma. The acquired complementary views immediately before and after that angle define two angular branches. In each branch, the direct-side and complementary-side detector-row candidates are merged, the closest candidate with z smaller than z0 and the closest candidate with z larger than z0 are selected over the ideal infinite helix, and their linear longitudinal weights are normalized to one with zero first moment about z0. The two branch kernels are then combined by the angular interpolation fraction. Equal-z ties share their endpoint weight equally as a neutral geometric convention. The configured slice-thickness rectangle is applied only after this acquisition-geometry kernel is assembled, using exact integration of its piecewise-constant cell representation. The direct-ray 0-to-360-degree full-scan comparator uses the original one-family nearest-bracketing rule. No fixed candidate support cutoff or scanner-specific redundancy weight is applied.",
+  "scanCalculationConvention": "Direct views cover 0 <= beta < 360 degrees. Fan-beam complementary angles use beta+180 degrees+2gamma and their two acquired angular neighbors. Each local resampling coordinate z_f has its own direct/complementary adjacent-candidate selection and normalized linear weights. Angular branches are convexly combined and K resampling values equally averaged. The thin object and its acquired row-aperture samples remain fixed while the reconstruction plane z_r moves. Linear aggregation of the rebracketed piecewise-linear response is used before the finite shifted sum; this is not postconvolution of the former fixed-plane candidate kernel. T is used only as a reference thickness for reported ratios. The direct-only comparator omits complementary samples but uses the same moving-plane/filter response definition.",
   "angleConvention": "The diagram uses a model-relative tube angle beta with 0 degrees at the top and 360 degrees at the bottom. It is not a measured absolute tube angle. The drawn endpoint at 360 degrees closes the displayed helix period but is not double-counted in SSPz integration.",
-  "overlayConvention": "The overlay samples 360 equally spaced relative reconstruction states within one table feed per rotation. All 360 configured-output profiles are rendered as 360 separate thin paths without state decimation, an overlaid pointwise summary curve, or a filled range. These are not 360 acquisitions or measured absolute tube angles. Every profile is peak-normalized and kept on its native z-minus-z0 coordinate without additional alignment. The linear center-shape view derives its symmetric horizontal domain from configured-output values at or above 10 percent of peak. The separate logarithmic tail view derives its domain from configured-output values at or above 0.1 percent. Off/on panels share a domain only within the same view role. The internal pre-thickness response is not exposed as a public SSPz or width result.",
-  "candidateDisplayConvention": "The no-cone reference and cone-geometry-scaled conditions use the same candidate identities: all N detector-row centres in every displayed acquired view. The no-cone reference fixes the angle-dependent row-offset scale to one; it does not restrict the population to central rows or to configured-slice-thickness support. Section 2A thin detector-row-coloured trajectories denote this complete candidate pool without selection or weighting. Section 2B retains the same trajectories and overlays circles only at the nearest interpolation endpoints selected from that pool; marker intensity represents normalized linear interpolation weight, and marker count is not candidate-population size. Configured slice thickness T does not filter the pool or select endpoints; it is applied only after the acquisition-geometry kernel is assembled to form configured-output SSPz. The overview spans every turn containing a selected row-wise nearest smaller-z or larger-z endpoint over the inspected period plus one neighboring turn on either side and renders every detector row without row subsampling. The separate 180LI charts show the ideal complementary angular separation and its acquired-view bracket, the D-n-to-C-n and C-n-to-D-n-plus-one constrained spans in absolute helical acquisition order, and the merged all-candidate pair with its smaller-z and larger-z endpoints. The ideal helix is infinite; the displayed finite range is a reproducible view around the target plane, not the complete acquisition trajectory.",
+  "overlayConvention": "The overlay samples 360 fixed-object positions within one table feed. Each curve fixes that object and moves the reconstruction plane, is individually peak-normalized, and uses z_reconstruction-z_object without peak or centroid alignment. All states and all calculated z samples are rendered. Center panels share a >=10% derived horizontal domain; the cone-on log-tail panel uses values >=0.1%. Display thresholds do not truncate the calculated or exported response.",
+  "candidateDisplayConvention": "The all-N-row direct and complementary acquired-view trajectories and geometric coordinates are unchanged. Cone-off uses q=1 and a 180-degree complementary angle; cone-on uses fan-angle correspondence and each acquired family's own distance scaling. T and FW do not remove the displayed row population. Section 2B markers/weights and Section 2C gaps refer to local FW=0 interpolation at the selected central position, not all acquired samples contributing across a thick-slice filter. The geometry reference plane passes through the object position selected for SSPz. Same acquired samples may reappear in different angular correspondences; displayed counts are not independent data counts.",
   "acquisitionGeometryFigureConvention": "The Section 3C introductory figure is a pre-weight acquisition-geometry display for the currently inspected state. It shows a not-to-scale orthographic focal-spot helix, target plane, one direct acquired view, the two acquired complementary views bracketing the ideal beta plus 180 degrees plus 2 gamma angle, and every detector-row center mapped to the longitudinal line through the evaluation point. Nine representative row rays are drawn in the 3-D panel only for legibility; the adjacent longitudinal panel and numerical calculation retain all rows. A physical detector plane is not inferred because detector-to-isocenter distance is not an input. Color, opacity, and line width encode geometric role only. Circle and triangle markers identify candidates nearest the target plane for explanation; they do not assert use or weight. Schaller AAI h(z), weight normalization, filtering, and backprojection are not applied in this figure.",
-  "weightDisplayConvention": "Candidate markers have a fixed size. Within each detector-row hue, color intensity from pale to dark represents the final normalized contribution after longitudinal and, for the 180LI path, angular interpolation. Coincident candidates share endpoint weight equally; this is a neutral geometric tie convention rather than a scanner redundancy weight.",
+  "weightDisplayConvention": "Section 2B fixed-size circle/triangle markers and saturation encode normalized local FW=0 endpoint weights at the selected central plane, including angular branch weights. They are not the aggregated thick-slice filter weights. Equal-z ties share endpoint weight as an explicit idealized convention.",
   "allCandidateAxialSpreadConvention": "For every direct acquired view beta, the candidate set contains all N detector-row centres in that direct view and all N row centres in each distinct acquired view immediately below and above the ideal complementary angle. A repeated lower-and-upper physical view is included only once, yielding 2N points for an exactly acquired complementary angle and 3N points otherwise. If z-k are the candidate positions, z-bar is their arithmetic mean, and M is their count, the displayed value is sqrt(sum((z-k minus z-bar) squared)/M) in millimetres. It uses no interpolation weight, nearest-candidate selection, support threshold, detector-row aperture variance, or configured slice thickness T. The value is invariant under a common longitudinal translation, so reconstruction-plane position s is not repeated as a second axis. The off/on curves use the same beta and millimetre axes.",
-  "internalCandidateAuditConvention": "Weighted candidate moments and nonzero final-candidate counts remain available only as regression audits for the separate explanatory SSPz model. They are not displayed or relabelled as the pre-weight all-row geometry spread.",
-  "momentConvention": "Every per-view final candidate kernel is normalized to total weight one. Its weighted center mu and second central moment M2 include both candidate-center dispersion and each uniform row aperture's intrinsic variance a-squared over 12. Longitudinal linear interpolation targets zero first moment about z0. With equal direct-view weights, the view-averaged pre-thickness variance is mean-view M2. The centered uniform configured-thickness rectangle adds T-squared over 12, so the explanatory model's analytic identity is sigma-configured-squared equals mean-view M2 plus T-squared over 12. The numerical configured-output standard deviation is audited against this identity.",
-  "numericalRasterizationConvention": "For each entered condition, the finite uniform z grid is shared across relative reconstruction states and cone conditions. The requested count is a minimum; the implementation targets cell width no larger than the smaller of row width over 16 and configured thickness T over 64, raises the count to an odd value so one cell center is exactly z equals zero, and caps it at 65,535 with an explicit cap-hit audit flag. Every unit-area rectangular candidate response is deposited as exact overlap length with each intersected cell divided by aperture width and cell width; no rectangle endpoint is rounded to an integer bin. The configured-thickness moving rectangle integrates the piecewise-constant cell profile with exact fractional overlap at both window boundaries. This conserves area for contained supports and removes endpoint-bin centroid bias while retaining the declared finite-grid, piecewise-constant approximation.",
-  "complementaryPairConvention": "The primary 180LI SSPz path is exact only within the declared idealized acquisition model. Its continuous complementary angle uses the second intersection of the source-to-evaluation-point line with the source orbit. For each acquired angular neighbor, all direct-side and complementary-side detector-row samples are merged and the adjacent candidates around z0 are used, allowing DD, DC, CD, or CC types while retaining equal-distance ties and exact matches. The two branch kernels are combined by the ideal angle's linear fraction between the acquired neighbors. The absolute-order D-n-to-C-n and C-n-to-D-n-plus-one spans remain separate diagnostics and are not averaged as an unvalidated redundancy rule. Scanner-specific detector-channel interpolation, redundancy weights, cone-beam weights, z filtering, and backprojection remain outside scope.",
+  "internalCandidateAuditConvention": "The former computeSsp fixed-plane kernel remains a local-FW0 geometry/legacy numerical diagnostic. Its moments and selected-candidate counts are not interpreted as all thick-slice contributors and are not exported as filtered-response variances.",
+  "momentConvention": "The former mean(M2)+T^2/12 identity belongs only to the historical fixed-plane-kernel plus continuous width-T rectangle model. It is not an acceptance identity for the fixed-object moving-plane response or the finite-K Taguchi filter. Current filtered width and standard-deviation outputs are computed from the new response.",
+  "numericalRasterizationConvention": "The current fixed-object response evaluates acquired ideal row apertures and adjacent interpolation as a piecewise-linear function of reconstruction-plane z, combines angular views by linearity, and evaluates the finite K shifted resampling sum. The output grid is shared across states and cone conditions; the requested count is a minimum. No T-wide post-average or old fixed-plane profile rasterization is used to form the new default output. Numerical acceptance requires comparison to direct per-view, per-z, per-filter-position evaluation and K/grid convergence.",
+  "complementaryPairConvention": "The primary 180LI SSPz path is exact only within the declared idealized acquisition model. Its continuous complementary angle uses the second intersection of the source-to-evaluation-point line with the source orbit. For each acquired angular neighbor, all direct-side and complementary-side detector-row samples are merged and the adjacent candidates around each local z_f are used, allowing DD, DC, CD, or CC types while retaining equal-distance ties and exact matches. The two branch kernels are combined by the ideal angle's linear fraction between the acquired neighbors. The absolute-order D-n-to-C-n and C-n-to-D-n-plus-one spans remain separate diagnostics and are not averaged as an unvalidated redundancy rule. Scanner-specific detector-channel interpolation, redundancy weights, cone-beam weights, z-filter calibration, and backprojection remain outside scope.",
   "launchModes": [
-    "double-click index.html (tested with Google Chrome using the file protocol)",
+    "double-click index.html (standalone build; current revision browser verification uses HTTP, with file-protocol checks retained as historical evidence only)",
     "HTTP static server",
     "GitHub Pages"
-  ]
+  ],
+  "filterInterpolation": {
+    "sourceDoi": "10.1118/1.598230",
+    "sourceLocation": "Eq. (6), Figs. 5 and 6",
+    "profileMode": "taguchi-filter",
+    "filter": "rectangular",
+    "filterWidthMmRange": [
+      0,
+      20
+    ],
+    "filterSamplesDefault": 129,
+    "filterSamplesMeaning": "requested minimum odd count; actual K may increase and is recorded separately",
+    "filterSamplesAccuracyGuard": "FW/K <= rowWidth*(1-radius/sourceRadius)/8; required odd K > 2049 causes a precision-limit error with no result",
+    "filterSamplesOddRange": [
+      33,
+      2049
+    ],
+    "positions": "z_f(i)=z_r+i*FW/K; i=-I,...,I; K=2I+1",
+    "operation": "At each z_f, reselect adjacent acquired direct/complementary row samples in each angular branch, linearly interpolate, combine angular branches, and average K values equally. Acquired candidates outside FW can be used to bracket positions inside FW.",
+    "responseDefinition": "fixed-thin-object-moving-reconstruction-plane",
+    "responseCoordinate": "z_reconstruction-z_object (mm)",
+    "stateMeaning": "fixed-object-position-within-one-table-feed",
+    "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
+    "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
+  }
 }

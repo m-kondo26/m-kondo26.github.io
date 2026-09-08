@@ -4,11 +4,13 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import {
   DEFAULT_PARAMS,
-  computeProfileModel,
   computeSsp,
   computeUnwrapped,
   validateParams,
 } from "../sim-core.js";
+// This diagram regression preserves hashes of the archived SSP comparator.
+// Updated Taguchi output is separately covered by its independent oracle.
+import { computeLegacyConfiguredProfile as computeProfileModel } from "./legacy-thickness-reference.mjs";
 
 // Coordinate/serialization regression for Sections 2A and 2B. The independent
 // angular formula and Cartesian distance calculation below do not call the

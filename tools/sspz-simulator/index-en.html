@@ -16,14 +16,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1720'/%3E%3Cpath d='M12 45c10-25 30-25 40 0' fill='none' stroke='%2343c2a1' stroke-width='6'/%3E%3Ccircle cx='32' cy='22' r='6' fill='%23f5b85c'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-tool-feedback="sspz">
+<body>
   <noscript>JavaScript is required to run this simulator.</noscript>
-
-  <aside class="rights-banner" aria-label="Terms of use and copyright">
-    <p><strong>Terms of Use:</strong> This web tool is provided free of charge by the Kondo CT Imaging Laboratory at Kyushu University. Use of the tool is free.</p>
-    <p>All rights to the software, interface, figures, and content are held by the laboratory. Prior permission from the laboratory is required for secondary use, including reproduction, modification, redistribution, or incorporation into other research or educational materials.</p>
-    <p>© 2026 Kondo CT Imaging Laboratory. All rights reserved.　<a href="https://m-kondo26.github.io/" target="_blank" rel="noopener noreferrer">Laboratory Website</a></p>
-  </aside>
 
   <header class="hero">
     <div>
@@ -78,12 +72,22 @@
         </label>
         <label>Configured slice thickness <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
-          <small class="field-help">This is not a target full width at half maximum (FWHM). The computed FWHM is reported as an output.</small>
+          <small class="field-help">Reference value for width/T ratios. It is independent of filter width FW and is not a target FWHM.</small>
+        </label>
+        <label>Longitudinal filter width <span class="symbol">FW</span> <span class="unit">mm</span>
+          <input id="filterWidthMm" name="filterWidthMm" type="number" min="0" max="20" step="0.1" value="1.0">
+          <small class="field-help">Width of the rectangular filter in Taguchi-style filter interpolation. FW=0 disables filtering. The FW-to-T relationship is not scanner-calibrated.</small>
+        </label>
+        <label>Minimum resampling count
+          <select id="filterSamples" name="filterSamples">
+            <option value="33">33</option><option value="65">65</option><option value="129" selected>129</option><option value="257">257</option><option value="513">513</option><option value="1025">1025</option><option value="2049">2049</option>
+          </select>
+          <small class="field-help">Minimum 2I+1 in Eq. (6). K is increased until FW/K is no greater than one eighth of the minimum projected row width; the actual K is shown in figures. Conditions requiring more than 2049 points stop with a precision-limit error. This is not the acquired-view count.</small>
         </label>
         <label>Longitudinal interpolation rule
-          <input type="hidden" id="profileMode" name="profileMode" value="layered-rect">
-          <span class="fixed-value">Linear interpolation between the two nearest candidates that bracket the target-plane z-coordinate</span>
-          <small class="field-help">The ideal helical trajectory is searched until candidates are found on both the smaller-z and larger-z sides of z₀; the search is not truncated by a fixed support width. These sides refer to z-coordinate values, not to the vertical direction of the diagram.</small>
+          <input type="hidden" id="profileMode" name="profileMode" value="taguchi-filter">
+          <span class="fixed-value">Taguchi-style filter interpolation (rectangular weights)</span>
+          <small class="field-help">At every longitudinal position within the filter, adjacent acquired candidates are reselected and linearly interpolated; the values are then equally averaged. This is not a width-T post-average.</small>
         </label>
         <label>Acquisition geometry applied to SSPz
           <select id="reconstructionPath" name="reconstructionPath">
@@ -136,7 +140,7 @@
         <div>
           <strong id="state-inspector-title">State selected for detailed display (optional)</strong>
           <span id="inspect-state-label">State 0/359 (s = 0.000)</span>
-          <small>All 360 model states are computed automatically. This control selects only the state shown in the detailed diagram and single SSPz plot; it is neither an acquisition condition nor a measured absolute tube angle.</small>
+          <small>The 360 states are object positions within one table feed. The diagram is centered on the selected position; SSPz is calculated by moving the reconstruction plane past a fixed thin object.</small>
         </div>
         <div class="state-inspector-controls">
           <button id="inspect-prev" type="button" class="secondary" aria-label="Previous model state" disabled>−1</button>
@@ -148,7 +152,7 @@
         <span><b>2A</b> All-row candidate diagram</span><i aria-hidden="true">→</i>
         <span><b>2B</b> Selected endpoints and linear weights</span><i aria-hidden="true">→</i>
         <span><b>2C</b> 180LI complementary angles, absolute-view pairs, and two-point bracketing</span><i aria-hidden="true">→</i>
-        <span><b>3</b> Overlaid SSPz curves and post-thickness SSPz</span>
+        <span><b>3</b> Overlaid SSPz curves and filter-interpolated SSPz</span>
       </div>
 
       <div class="subsection-heading">
@@ -180,7 +184,7 @@
 
       <div class="subsection-heading">
         <div><strong>2B  Nearest endpoints selected from all-row candidates and their linear weights</strong><span>Enlarged view around the target plane</span></div>
-        <p>Thin trajectories are the same all-<i>N</i>-row candidate population shown in Section 2A. Circles mark direct-side endpoints and triangles mark complementary-side endpoints selected by the explanatory interpolation model; they lie on their corresponding solid and dashed trajectories. Configured slice thickness <i>T</i> is not used for endpoint selection; it is applied later to SSPz. In the primary 180LI analysis, all detector-row candidates from the direct and complementary ray families are merged separately for the acquired views immediately before and after the ideal complementary angle, and the nearest endpoints bracketing the target plane are selected within each branch. Color saturation shows the explanatory-model contribution obtained by multiplying the longitudinal linear weight by the angular linear weight. Endpoints tied at the same z-coordinate share the weight equally. Markers are shown at a subset of angles for readability, whereas trajectories are calculated at every acquired angle. This figure does not show the number of projection samples actually adopted by a commercial scanner.</p>
+        <p>Thin lines show the same all-row candidate trajectories as in 2A. Circles, triangles, and saturation show endpoints and weights for local FW=0 linear interpolation at the current central position, not all contributors to a thick-slice response. Taguchi-style filter interpolation reselects candidates at every resampling position within FW; contributing acquired samples are therefore not limited to these markers. T does not exclude candidates, and acquired samples outside FW are used when needed to bracket a resampling position inside FW. Markers show selected angles; trajectories use every acquired angle.</p>
       </div>
       <div class="chart-grid two">
         <article class="chart-card">
@@ -194,7 +198,7 @@
           <button class="download-link" data-canvas="diagram-zoom-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
-      <p class="diagram-footnote">Angle β is the direct-side relative tube angle within the model; 0° is not a measured absolute tube angle. Complementary-side trajectories and triangles are also paired with this direct-side angle. The no-cone condition is the parallel-beam reference γ=0, β<sub>c</sub>=β+180°, and q=1; the cone-geometry condition uses β<sub>c</sub>=β+180°+2γ together with the distance ratio q. Thus, the comparison does not isolate q alone. Section 2A shows all-row candidates from both sides; circles and triangles in Section 2B are endpoints selected from that population by the explanatory interpolation model. The same acquired data may appear again as the complementary side of another angle, so the number of lines or markers cannot be interpreted as a count of independent data samples. Configured slice thickness T is not used to exclude candidates or select endpoints; it is applied later to the configured-thickness SSPz. Because the ideal helical trajectory is unbounded, only the display range is made finite: it includes the rotations containing candidates across all rows on both sides, plus one neighboring rotation on each side. This display revision does not change the candidate-position calculations or SSPz interpolation weights.</p>
+      <p class="diagram-footnote">β is the direct-side relative tube angle; complementary trajectories use the same reference angle. The no-cone reference uses γ=0, βc=β+180°, and q=1; the cone condition uses βc=β+180°+2γ and distance ratio q. All-row trajectories in 2A describe acquisition geometry. Endpoints in 2B and gaps in 2C audit local FW=0 interpolation at the central position, not all thick-slice contributors or a scanner-selected sample count. The same acquired sample may reappear in different angular correspondences, so lines and markers are not independent samples. Acquisition geometry is retained; this revision changes the SSPz response definition and filter interpolation.</p>
 
       <div class="subsection-heading">
         <div><strong>2C  180LI complementary angles, absolute-view pairs, and two-point bracketing</strong><span>Pair direct and complementary rays in absolute acquisition order</span></div>
@@ -232,43 +236,43 @@
         <div><p class="step">3</p><h2 id="response-title">Inspect complete SSPz shapes and variation</h2></div>
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
-      <p id="profile-model-note" class="model-note">First, all 360 model SSPz curves after application of the configured slice thickness are overlaid individually to show the remaining changes in position and shape. Intermediate SSPz curves before thickness application are not displayed. The geometry display reports the unweighted longitudinal standard deviation of detector-row-center positions across all rows in the direct view and all rows in the acquired views bracketing the ideal complementary angle. Candidate selection, interpolation or reconstruction weighting, and thresholds based on the configured slice thickness are not applied.</p>
+      <p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. FW is independent of T and is not calibrated to scanner nominal thickness.</p>
 
       <div class="subsection-heading">
         <div>
-          <strong>3A  Overlay of 360 post-thickness SSPz curves: central profiles</strong>
-          <span id="overlay-scope">One table feed divided into 360 states (equivalent to 1°)</span>
+          <strong>3A  Overlay of 360 filter-interpolated SSPz curves: central profiles</strong>
+          <span id="overlay-scope">360 object positions within one table feed</span>
         </div>
-        <p>These model SSPz curves include the configured slice thickness T. The horizontal range is determined automatically from only the post-thickness central profiles at or above 10% across all 360 states. Broad low-amplitude tails therefore do not compress the central profiles, allowing direct inspection of full width at half maximum (FWHM) and full width at tenth maximum (FWTM). Each state is normalized by its own maximum, and no additional alignment is performed beyond defining z - z₀=0 at that state's reconstruction plane.</p>
+        <p>The horizontal axis is reconstruction-plane position relative to a fixed thin object, zᵣ−zₒ. For each state the object is fixed, the reconstruction plane is scanned, and acquired candidates are reselected at every filter position. Each curve is peak-normalized without additional peak or centroid alignment. The displayed range is derived from the central shape at or above 10%; low-amplitude tails are shown separately.</p>
       </div>
       <p class="model-note compact-note">Each thin line represents one of 360 equally spaced model states, with no state subsampling. No summary curve or filled envelope is superimposed, so the overlap among individual curves remains visible. These states do not represent 360 separate acquisitions or measured absolute tube angles.</p>
 
       <div id="overlay-core-block">
         <div class="subsection-heading compact-subheading">
-          <div><strong id="overlay-core-heading">Primary display: post-thickness model SSPz</strong><span id="overlay-core-description">Geometric variation remaining after application of the configured thickness</span></div>
+          <div><strong id="overlay-core-heading">Primary display: filter-interpolated model SSPz</strong><span id="overlay-core-description">Geometric variation remaining after application of the configured thickness</span></div>
         </div>
         <div class="chart-grid two">
           <article class="chart-card">
-            <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; post-thickness</span></div>
-             <canvas id="overlay-core-off" width="900" height="650" aria-label="Post-thickness central SSPz profiles for 360 states without source-to-point distance scaling"></canvas>
+            <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; filter-interpolated</span></div>
+             <canvas id="overlay-core-off" width="900" height="650" aria-label="Filter-interpolated central SSPz profiles for 360 states without source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-off">Publication PNG (600 dpi)</button>
           </article>
           <article class="chart-card">
-            <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; post-thickness</span></div>
-             <canvas id="overlay-core-on" width="900" height="650" aria-label="Post-thickness central SSPz profiles for 360 states with idealized source-to-point distance scaling"></canvas>
+            <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; filter-interpolated</span></div>
+             <canvas id="overlay-core-on" width="900" height="650" aria-label="Filter-interpolated central SSPz profiles for 360 states with idealized source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-on">Publication PNG (600 dpi)</button>
           </article>
         </div>
       </div>
 
       <div class="subsection-heading">
-        <div><strong>3B  Post-thickness low-amplitude tails</strong><span>Log-scale display at or above 0.1%</span></div>
-        <p>The post-thickness SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 0.1% are not drawn.</p>
+        <div><strong>3B  Filter-interpolated low-amplitude tails</strong><span>Log-scale display at or above 0.1%</span></div>
+        <p>The filter-interpolated SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 0.1% are not drawn.</p>
       </div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
           <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; low-amplitude tails</span></div>
-          <canvas id="overlay-tail-on" width="900" height="650" aria-label="Low-amplitude tails of post-thickness SSPz for 360 states with idealized source-to-point distance scaling"></canvas>
+          <canvas id="overlay-tail-on" width="900" height="650" aria-label="Low-amplitude tails of filter-interpolated SSPz for 360 states with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="overlay-tail-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
@@ -313,17 +317,17 @@
       </section>
 
       <div class="subsection-heading">
-        <div><strong>3D  Details for the inspected state</strong><span id="profile-detail-reading-order">Post-thickness SSPz only</span></div>
+        <div><strong>3D  Details for the inspected state</strong><span id="profile-detail-reading-order">Filter-interpolated SSPz only</span></div>
       </div>
       <article class="chart-card">
-        <div class="chart-title"><h3>SSPz for the selected state</h3><span id="profile-axis-note">Horizontal range automatically adjusted from the post-thickness SSPz at or above 10%</span></div>
-        <canvas id="profile-chart" width="1200" height="650" aria-label="Post-thickness SSPz for the selected state" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
+        <div class="chart-title"><h3>SSPz for the selected state</h3><span id="profile-axis-note">Horizontal range automatically adjusted from the filter-interpolated SSPz at or above 10%</span></div>
+        <canvas id="profile-chart" width="1200" height="650" aria-label="Filter-interpolated SSPz for the selected state" aria-describedby="profile-detail-reading-order profile-axis-note"></canvas>
         <button class="download-link" data-canvas="profile-chart">Publication PNG (600 dpi)</button>
       </article>
 
       <div class="subsection-heading">
         <div><strong>3E  Summarize SSPz using width metrics</strong><span>FWHM, FWTM, and standard deviation after inspection of the complete profile</span></div>
-        <p>Only model SSPz curves after application of the configured slice thickness are summarized using width metrics. The displayed variation compares the potential influence of acquisition geometry relative to that thickness. Intermediate SSPz widths before thickness application are omitted from this primary analysis because they can be mistaken for reconstructed slice thickness. FWHM uses only the two outer 50% crossings and therefore does not retain changes in the tails or centroid.</p>
+        <p>FWHM, FWTM, and standard deviation are calculated from the filter-interpolated SSPz and divided by reference thickness T. T is neither a broadening operation nor a target FWHM. Distinguish effects of changing FW from changes in the ratio caused by T. Inspect tails and asymmetry as well as width metrics.</p>
       </div>
       <div class="chart-controls" aria-label="Display settings for variation with reconstruction-plane position within one table feed">
         <label>Displayed metric
@@ -336,8 +340,8 @@
       </div>
       <p id="sweep-interpretation" class="model-note compact-note" hidden></p>
       <article class="chart-card">
-        <div class="chart-title"><h3>Within-rotation width variation of post-thickness SSPz</h3><span id="metric-label">FWHM</span></div>
-        <canvas id="sweep-chart" width="1200" height="650" aria-label="Width variation of post-thickness model SSPz with reconstruction-plane position within one table feed"></canvas>
+        <div class="chart-title"><h3>Within-rotation width variation of filter-interpolated SSPz</h3><span id="metric-label">FWHM</span></div>
+        <canvas id="sweep-chart" width="1200" height="650" aria-label="Width variation of filter-interpolated model SSPz with object position within one table feed"></canvas>
         <button class="download-link" data-canvas="sweep-chart">Publication PNG (600 dpi)</button>
       </article>
 
@@ -373,7 +377,7 @@
             <li>Unweighted longitudinal standard deviation of candidate positions from all rows in the direct view and all rows in the acquired views bracketing the ideal complementary angle</li>
             <li>Comparison of acquisition geometries without candidate selection, interpolation weights, reconstruction weights, or thresholds based on configured slice thickness</li>
             <li>Unit-area rectangular detector-row response</li>
-            <li>Downstream explanatory model using a uniformly weighted rectangular window with the configured slice thickness</li>
+            <li>Taguchi et al., Eq. (6): local linear interpolation with candidate reselection at each longitudinal position, followed by a normalized rectangular-weight average</li>
             <li>Idealized scaling of candidate-row positions and row widths by variation in source-to-point distance</li>
           </ul>
         </div>
@@ -389,7 +393,7 @@
           </ul>
         </div>
       </div>
-      <p class="caution"><strong>Caution:</strong> The primary analysis applies the ideal complementary angle for each direct-ray view, the two acquired views bracketing that angle, all-row merging of direct and complementary ray candidates within each branch, longitudinal linear interpolation across the target plane, and linear angular interpolation between the two branches to SSPz. This is an acquisition-geometry-based 180LI explanatory model, not an emulation of commercial 180LI reconstruction. With the comparator selected, SSPz is computed from direct-ray views over 0-360° only, and Section 2C is shown solely as an acquisition-geometry audit. The ideal helical trajectory is searched without a fixed rotation limit until candidates bracketing the target plane are found. Configured slice thickness is an input, whereas FWHM, FWTM, and standard deviation are outputs measured from the generated SSPz. Proprietary detector-channel interpolation, redundancy weighting, cone-beam weighting, backprojection, and scanner-specific z-filter ordering are not reproduced. Do not use this reference for patient care, scanner quality assurance, or quantitative prediction of commercial reconstruction.</p>
+      <p class="caution"><strong>Caution:</strong> This model applies the filter-interpolation construction in Eq. (6) and Figs. 5/6 of Taguchi et al. to idealized acquisition geometry and row apertures. FW, resampling count K, and reference slice thickness T are separate inputs. FW=T does not guarantee FWHM=T and is not calibrated to scanner nominal thickness. This is the response to a fixed thin object; finite bead diameter, complete image reconstruction, scanner-specific data selection and weights, and cone-beam backprojection are not reproduced. Endpoints and gaps in 2B/2C audit local FW=0 interpolation at the central position. Do not use for patient care, equipment performance guarantees, or quantitative prediction of commercial reconstruction.</p>
     </section>
 
     <section class="method-card reference-card" aria-labelledby="reference-title">
@@ -407,7 +411,7 @@
         </li>
         <li>
           <div class="reference-citation">Schaller S, Flohr T, Klingenbeck K, Krause J, Fuchs T, Kalender WA. <a href="https://doi.org/10.1109/42.887832" target="_blank" rel="noopener noreferrer">Spiral interpolation algorithm for multislice spiral CT—Part I: Theory.</a> <i>IEEE Transactions on Medical Imaging.</i> 2000;19:822–834.</div>
-          <p>Theoretical basis for longitudinal interpolation and normalized weights in multislice spiral CT. The explanatory two-candidate model on this website is not an implementation of the adaptive longitudinal interpolation algorithm described in that paper.</p>
+          <p>Theoretical basis for longitudinal interpolation and normalized weights in multislice spiral CT. This website uses local two-point linear interpolation at each resampling position followed by Taguchi-style filter averaging, not the adaptive axial interpolation algorithm described in that paper. The entire thick-slice response is not formed from only two candidates.</p>
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
@@ -415,7 +419,7 @@
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
-          <p>This study was consulted as a basis for two-point linear interpolation in multi-slice helical CT and for ordering candidates from the direct and complementary ray families by longitudinal position. This website displays the nearest bracketing geometry but does not implement the complete reconstruction procedure described in the paper.</p>
+          <p>The thick-slice model follows filter interpolation in Eq. (6) and Figs. 5/6. Adjacent acquired samples are linearly interpolated at each position zᵣ+i FW/(2I+1), then combined by a normalized rectangular-weight average. K=2I+1 is the numerical resampling count, not the acquired-data count. The paper’s optimized-pitch selection and complete image reconstruction are not reproduced.</p>
         </li>
         <li>
           <div class="reference-citation">Hu H. <a href="https://doi.org/10.1118/1.598470" target="_blank" rel="noopener noreferrer">Multi-slice helical CT: Scan and reconstruction.</a> <i>Medical Physics.</i> 1999;26:5–18.</div>
@@ -426,7 +430,7 @@
           <p>This study was consulted for the geometric relationship between direct and complementary rays and the fan-angle-dependent complementary source angle. In view of the additional limitation that an exactly complementary ray generally does not exist for a three-dimensional cone-beam ray, Section 2C is limited to an idealized acquisition-geometry reference and does not implement the missing-data restoration method described in the paper.</p>
         </li>
       </ol>
-      <p class="model-note compact-note"><strong>Explanatory model specific to this website:</strong> In the primary analysis, longitudinal linear interpolation is formed from all-row merged direct and complementary ray candidates at each of the two acquired views bracketing the ideal complementary angle corresponding to a direct-ray view. The two branches are then combined by linear angular interpolation, followed by a rectangular window with the configured slice thickness. This does not reproduce a specific commercial reconstruction method described in the literature.</p>
+      <p class="model-note compact-note"><strong>Implementation boundary:</strong> Local linear interpolation and rectangular filter averaging from the source are used to evaluate the axial response to a fixed thin object. Responses with candidate reselection at each resampling position are combined using linearity. The former width-T post-average of a fixed-plane candidate response is not used for the default SSPz calculation. Acquisition-geometry approximations, equal view weights, and ideal row apertures remain explicit assumptions. This alone does not validate thick-slice reconstruction in a particular scanner.</p>
     </section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -448,12 +452,11 @@
   </main>
 
   <footer>
-    <p>Model: 180LI acquisition-geometry explanatory model by default, with a direct-ray 0–360° full-scan comparator and a configured-thickness mapping; scanner-specific weighting and backprojection are not reproduced.</p>
-    <p id="version">Web reference build 2026-08-28.2</p>
+    <p>Model: 180LI acquisition geometry by default, with a direct-ray 0–360° comparator and Taguchi-style filter interpolation using FW independent of reference thickness T; scanner-specific weighting, nominal-thickness calibration, and backprojection are not reproduced.</p>
+    <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source-en.js"></script>
-  <script src="app-bundle-en.js"></script>
-  <script src="https://m-kondo26.github.io/tool-feedback.js?v=20260825-2" defer></script>
+  <script src="worker-source-en.js?v=2026-09-08.1"></script>
+  <script src="app-bundle-en.js?v=2026-09-08.1"></script>
 </body>
 </html>

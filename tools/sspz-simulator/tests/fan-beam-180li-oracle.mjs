@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   DEFAULT_PARAMS,
-  computeProfileModel,
+  computeLayeredSsp,
   computeSsp,
   computeUnwrapped,
   validateParams,
@@ -607,7 +607,10 @@ for (const fixture of oracleFixtures) {
       Math.sqrt(oracleMeanKernelSecondMomentMm2),
       2e-10,
     );
-    const configured = computeProfileModel(p, {
+    // Retained legacy comparator: this identity does not validate the new
+    // fixed-object Taguchi response (see taguchi-filter-oracle.mjs).
+    const configured = computeLayeredSsp(p, {
+      sliceKernelWidthMm: p.sliceThicknessMm,
       state: p.state,
       coneOn,
       reconstructionPath: "fan-beam-180li",

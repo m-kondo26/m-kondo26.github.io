@@ -130,6 +130,8 @@ function readParams() {
     zReference: 0,
     state: selectedStateIndex / 360,
     sliceThicknessMm: Number(data.get("sliceThicknessMm")),
+    filterWidthMm: Number(data.get("filterWidthMm")),
+    filterSamples: Number(data.get("filterSamples")),
     profileMode: String(data.get("profileMode") || DEFAULT_PARAMS.profileMode),
     reconstructionPath: String(data.get("reconstructionPath") || DEFAULT_PARAMS.reconstructionPath),
     viewSamples: Number(data.get("viewSamples")),
@@ -161,7 +163,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 6,
+    v: 7,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -169,6 +171,8 @@ function paramsToUrl(params) {
     r: params.radius,
     vs: selectedStateIndex,
     st: params.sliceThicknessMm,
+    fw: params.filterWidthMm,
+    nf: params.filterSamples,
     pm: params.profileMode,
     rp: reconstructionPathUrlValue(params.reconstructionPath),
     wm: metricSelect?.value ?? "fwhm",
@@ -187,7 +191,7 @@ function paramsFromUrl() {
   const hasNewThickness = query.has("st");
   const hasLegacyThickness = !hasNewThickness && query.has("t");
   const hasLegacyState = query.has("s") && !query.has("vs");
-  legacyInputMigrated = hasLegacyThickness || hasLegacyState || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
+  legacyInputMigrated = hasLegacyThickness || hasLegacyState || !query.has("fw") || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
   selectedStateIndex = query.has("vs")
     ? Math.max(0, Math.min(359, Math.round(get("vs", 0))))
     : hasLegacyState
@@ -206,7 +210,9 @@ function paramsFromUrl() {
     sliceThicknessMm: hasNewThickness
       ? get("st", DEFAULT_PARAMS.sliceThicknessMm)
       : get("t", DEFAULT_PARAMS.sliceThicknessMm),
-    profileMode: getText("pm", DEFAULT_PARAMS.profileMode),
+    filterWidthMm: get("fw", hasNewThickness ? get("st", DEFAULT_PARAMS.sliceThicknessMm) : get("t", DEFAULT_PARAMS.sliceThicknessMm)),
+    filterSamples: get("nf", DEFAULT_PARAMS.filterSamples),
+    profileMode: "taguchi-filter",
     reconstructionPath: reconstructionPathFromUrl(getText("rp", "")),
     viewSamples: query.has("nv")
       ? get("nv", DEFAULT_PARAMS.viewSamples)
@@ -1482,7 +1488,7 @@ function selectedProfileAxis(result) {
   includeProfile(result.selectedOff.z, result.selectedOff.profile);
   includeProfile(result.selectedOn.z, result.selectedOn.profile);
 
-  const minimumHalfSpan = Math.max(0.75 * result.params.sliceThicknessMm, 6 * dz);
+  const minimumHalfSpan = Math.max(0.5 * result.params.rowWidth, 6 * dz);
   const requiredHalfSpan = Math.max(minimumHalfSpan, observedHalfSupport * 1.15 + 3 * dz);
   const nice = symmetricNiceAxis(requiredHalfSpan, 3);
   return {
@@ -1518,7 +1524,7 @@ function drawProfiles(canvas, result) {
   const axis = selectedProfileAxis(result);
   const { xMin, xMax } = axis;
   const plot = axisContext(canvas, { xMin, xMax, yMin: 0, yMax: 1.04 }, {
-    x: "再構成面からの位置  z − z₀  (mm)",
+    x: localizedText("物体に対する再構成面の位置  zᵣ − zₒ (mm)", "Reconstruction-plane position relative to object  zᵣ − zₒ (mm)"),
     y: "正規化SSPz",
     xFormatter: value => Number(value).toFixed(decimalPlacesForStep(axis.tickStep)),
     yFormatter: value => value.toFixed(1),
@@ -1540,6 +1546,11 @@ function drawProfiles(canvas, result) {
   drawProfileEncodingLegend(plot.ctx, plot.margin.left, 6);
   plot.ctx.save();
   plot.ctx.fillStyle = MUTED;
+  setFittedFigureFont(plot.ctx, filterParameterLabel(result.params, result.selectedOn.filterSamples), 18, 14, plot.innerWidth);
+  plot.ctx.fillText(filterParameterLabel(result.params, result.selectedOn.filterSamples), plot.margin.left, 72);
+  plot.ctx.restore();
+  plot.ctx.save();
+  plot.ctx.fillStyle = MUTED;
   plot.ctx.font = `18px ${FIGURE_FONT}`;
   plot.ctx.textAlign = "right";
   plot.ctx.textBaseline = "bottom";
@@ -1550,11 +1561,15 @@ function drawProfiles(canvas, result) {
   canvas.dataset.xMax = String(axis.xMax);
   canvas.dataset.xStep = String(axis.tickStep);
   canvas.dataset.configuredThicknessMm = String(result.params.sliceThicknessMm);
+  canvas.dataset.filterWidthMm = String(result.params.filterWidthMm);
+  canvas.dataset.filterSamples = String(result.selectedOn.filterSamples);
+  canvas.dataset.requestedFilterSamples = String(result.params.filterSamples);
+  canvas.dataset.responseCoordinate = "reconstruction-plane-minus-fixed-object-mm";
   canvas.dataset.axisRule = "configured-output-at-or-above-ten-percent";
   canvas.dataset.legendOrder = "configured-output-only";
-  canvas.setAttribute("aria-label", `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の選択状態SSPz比較。横軸は10%水準以上の中心形状から決定`);
+  canvas.setAttribute("aria-label", localizedText(`フィルタ補間後の選択状態SSPz。${filterParameterLabel(result.params, result.selectedOn.filterSamples)}。横軸は固定した薄い物体に対する再構成面位置`, `Selected-state SSPz after filter interpolation. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. Horizontal axis: reconstruction-plane position relative to a fixed thin object.`));
   if (profileAxisNote) {
-    profileAxisNote.textContent = `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm／横軸 ${fmt(axis.xMin, decimalPlacesForStep(axis.tickStep))}～+${fmt(axis.xMax, decimalPlacesForStep(axis.tickStep))} mm（設定厚反映後SSPzの10%水準以上から自動調整）`;
+    profileAxisNote.textContent = localizedText(`${filterParameterLabel(result.params, result.selectedOn.filterSamples)}／横軸は固定物体に対する再構成面位置（10%以上から自動調整）`, `${filterParameterLabel(result.params, result.selectedOn.filterSamples)} / horizontal axis: reconstruction-plane position relative to the fixed object (auto-scaled from values >=10%)`);
   }
 }
 
@@ -1600,7 +1615,7 @@ function configuredOverlayBounds(result, threshold, minimumHalfSpan, conditions 
 }
 
 function configuredOverlayAxes(result) {
-  const core = configuredOverlayBounds(result, 0.1, 0.75 * result.params.sliceThicknessMm);
+  const core = configuredOverlayBounds(result, 0.1, 0.5 * result.params.rowWidth);
   const tail = configuredOverlayBounds(result, 0.001, core.xMax, ["on"]);
   return { core, tail };
 }
@@ -1615,20 +1630,17 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   const z = overlay.z;
   const { xMin, xMax } = xAxis;
   const color = coneOn ? ORANGE : BLUE;
-  const layered = result.params.profileMode === PROFILE_MODES.LAYERED_RECT;
   const tailView = viewMode === "tail";
   const stageLabel = tailView
-    ? `設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の低振幅裾（対数表示）`
-    : layered
-      ? `主要表示：設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の中心形状`
-      : `モデルSSPz T=${fmt(result.params.sliceThicknessMm, 1)} mm`;
+    ? localizedText("フィルタ補間後SSPz・低振幅裾", "Filter-interpolated SSPz: low-amplitude tails")
+    : localizedText("フィルタ補間後SSPz・中心形状", "Filter-interpolated SSPz: central shape");
   const plot = axisContext(canvas, {
     xMin,
     xMax,
     yMin: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMin : 0,
     yMax: tailView ? PROFILE_TAIL_DISPLAY_BOUNDS.yMax : 1.04,
   }, {
-    x: "再構成面からの位置  z − z₀  (mm)",
+    x: localizedText("物体に対する再構成面の位置  zᵣ − zₒ (mm)", "Reconstruction-plane position relative to object  zᵣ − zₒ (mm)"),
     y: tailView ? "正規化SSPz（対数）" : "正規化SSPz",
     xFormatter: xAxis.formatter,
     yFormatter: tailView
@@ -1692,20 +1704,20 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   const conditionLabel = coneOn ? "コーン幾何を反映する（周期的距離変化）" : "コーン幾何を反映しない（平行ビーム近似）";
   if (publicationMode) {
     const conciseCondition = coneOn ? "コーン幾何あり" : "コーン幾何なし";
-    const conciseStage = tailView
-      ? `設定厚反映後・低振幅裾（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
-      : layered
-        ? `設定厚反映後・中心形状（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
-        : `モデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`;
+    const conciseStage = stageLabel;
     // Keep the scientific stage and geometry condition on separate lines.
     // A single English line exceeds the fixed 80-mm journal figure width.
+    setFittedFigureFont(plot.ctx, conciseStage, 23, 17, plot.innerWidth, "700");
     plot.ctx.fillText(conciseStage, plot.margin.left, 8);
     plot.ctx.font = `20px ${FIGURE_FONT}`;
-    plot.ctx.fillText(conciseCondition, plot.margin.left, 38);
+    const subtitle = `${conciseCondition} / ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`;
+    setFittedFigureFont(plot.ctx, subtitle, 20, 13, plot.innerWidth);
+    plot.ctx.fillText(subtitle, plot.margin.left, 38);
   } else {
+    setFittedFigureFont(plot.ctx, stageLabel, 23, 17, plot.innerWidth, "700");
     plot.ctx.fillText(stageLabel, plot.margin.left, 10);
     plot.ctx.fillStyle = MUTED;
-    const statusLabel = `${conditionLabel}／完全状態 ${summary.completeCount}/${overlay.stateCount}`;
+    const statusLabel = `${conditionLabel} / ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`;
     setFittedFigureFont(plot.ctx, statusLabel, 20, 15, plot.innerWidth);
     plot.ctx.fillText(statusLabel, plot.margin.left, 44);
   }
@@ -1730,6 +1742,10 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   canvas.dataset.xMax = String(xAxis.xMax);
   canvas.dataset.xStep = String(xAxis.step);
   canvas.dataset.profileStage = "configured-output-only";
+  canvas.dataset.filterWidthMm = String(result.params.filterWidthMm);
+  canvas.dataset.filterSamples = String(result.selectedOn.filterSamples);
+  canvas.dataset.requestedFilterSamples = String(result.params.filterSamples);
+  canvas.dataset.responseCoordinate = "reconstruction-plane-minus-fixed-object-mm";
   canvas.dataset.viewMode = viewMode;
   if (tailView) {
     canvas.dataset.renderedMinimum = "0.001";
@@ -1739,18 +1755,18 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   canvas.dataset.sharedXDomain = tailView
     ? "configured-output-tail-cone-on"
     : "configured-output-core-off-on";
-  canvas.setAttribute("aria-label", tailView
-    ? `${conditionLabel}における設定厚反映後360状態SSPzの0.1%以上の低振幅裾を対数表示`
-    : `${conditionLabel}における設定厚反映後360状態SSPzの10%以上の中心形状を線形表示`);
+  canvas.setAttribute("aria-label", `${stageLabel} / ${conditionLabel} / ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`);
+}
+
+function filterParameterLabel(params, actualSamples = params.filterSamples) {
+  return `FW=${fmt(params.filterWidthMm, 2)} mm; K=${actualSamples}; T=${fmt(params.sliceThicknessMm, 1)} mm`;
 }
 
 function selectedMetric(result) {
   const key = metricSelect.value;
   const labels = { fwhm: "FWHM", fwtm: "FWTM", sigma: "σ" };
-  const layered = result?.params.profileMode === PROFILE_MODES.LAYERED_RECT;
-  const stageLabel = layered
-    ? `設定厚反映後のモデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`
-    : `モデルSSPz（T=${fmt(result.params.sliceThicknessMm, 1)} mm）`;
+  const layered = false;
+  const stageLabel = localizedText("フィルタ補間後SSPz", "Filter-interpolated SSPz");
   metricLabel.textContent = `${stageLabel} / ${labels[key]}`;
   return { key, rawKey: key, label: labels[key], stageLabel, layered };
 }
@@ -1783,11 +1799,11 @@ function drawSweep(canvas, result) {
   const values = result.sweep.map(ratioValue);
   const yScale = niceScale(values, { targetIntervals: 5, padFraction: 0.08, minimumSpan: 0.01 });
   const plot = axisContext(canvas, { xMin: 0, xMax: 1, yMin: yScale.min, yMax: yScale.max }, {
-    x: "1回転寝台移動量内の再構成面位置  s",
+    x: localizedText("1回転寝台移動量内の物体位置  s", "Object position within one table feed  s"),
     y: `${metric.label} / T`,
     xFormatter: value => Number(value).toFixed(1),
     yFormatter: yScale.formatter,
-    topMargin: publicationMode ? 78 : 134,
+    topMargin: publicationMode ? 105 : 134,
     leftMargin: 158,
   });
   for (const coneOn of [false, true]) {
@@ -1842,10 +1858,15 @@ function drawSweep(canvas, result) {
     plot.ctx.fillText(`${metric.stageLabel} / ${metric.label}`, plot.margin.left, 13);
     plot.ctx.fillStyle = MUTED;
     plot.ctx.font = `20px ${FIGURE_FONT}`;
-    const subtitle = metric.layered
-      ? `設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを適用後に計算した${metric.label}`
-      : `設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmのモデルSSPz`;
+    const subtitle = filterParameterLabel(result.params, result.selectedOn.filterSamples);
     plot.ctx.fillText(subtitle, plot.margin.left, 45);
+    plot.ctx.restore();
+  }
+  if (publicationMode) {
+    plot.ctx.save();
+    plot.ctx.fillStyle = MUTED;
+    setFittedFigureFont(plot.ctx, filterParameterLabel(result.params, result.selectedOn.filterSamples), 19, 14, plot.innerWidth);
+    plot.ctx.fillText(filterParameterLabel(result.params, result.selectedOn.filterSamples), plot.margin.left, 78);
     plot.ctx.restore();
   }
   drawConditionLegend(plot.ctx, plot.margin.left, publicationMode ? 34 : 94);
@@ -1858,12 +1879,8 @@ function drawSweep(canvas, result) {
   canvas.dataset.normalization = "width-divided-by-configured-slice-thickness";
   canvas.dataset.axisRule = "natural-1-2-5-with-consistent-decimals";
   if (sweepInterpretation) {
-    const structurallyConstrained = result.params.profileMode === PROFILE_MODES.LAYERED_RECT
-      && metric.rawKey === "fwhm";
     sweepInterpretation.hidden = false;
-    sweepInterpretation.textContent = structurallyConstrained
-      ? "設定厚と同幅の矩形窓により、設定厚反映後のFWHM/Tは1付近へ構造的に拘束されます。この図は設定厚適用前の中間幅を示しません。曲線が平坦でも幾何学的影響が消えたとは限らないため、設定厚反映後SSPzの全形状、FWTM/T、σ/T、および展開図を併せて確認してください。"
-      : `${metric.stageLabel}の${metric.label}/Tを表示しています。設定厚適用前の中間幅ではありません。FWHMだけでなく、FWTM・σ・設定厚反映後SSPzの全形状を併せて解釈してください。`;
+    sweepInterpretation.textContent = localizedText("Taguchiらのフィルタ補間後の幅を参照値Tで除しています。FWはTと独立で、FW=TでもFWHM=Tを保証しません。フィルタ再標本点数Kを増やした収束と、FWTM・σ・形状全体を併せて確認してください。", "Widths after Taguchi-style filter interpolation are divided by reference thickness T. FW is independent of T; FW=T does not guarantee FWHM=T. Check convergence as filter resampling count K increases, together with FWTM, sigma, and the full profile shape.");
   }
 }
 
@@ -1888,7 +1905,7 @@ function renderSummary(result) {
       </div>`);
     secondaryCards.push(`
       <div class="summary-card ${css}">
-        <span>${label} / 設定厚反映後SSPzのFWHM/T変動幅</span>
+        <span>${label} / ${localizedText("フィルタ補間後SSPzのFWHM/T変動幅", "Range of filter-interpolated SSPz FWHM/T")}</span>
         <strong>${fmt(summary.fwhm.range / result.params.sliceThicknessMm, 4)}</strong>
         <small>${fmt(summary.fwhm.min / result.params.sliceThicknessMm, 3)}–${fmt(summary.fwhm.max / result.params.sliceThicknessMm, 3)}</small>
       </div>`);
@@ -1916,11 +1933,14 @@ function updateProfileModelNote(result) {
     ? "主解析では、各実データ側ビューの理想対向角を挟む両隣の実取得ビューについて、実データ側・対向データ側の全列候補を統合して体軸方向の最近接挟み込みを作り、その2枝を角度方向に線形合成します。"
     : "比較表示では、対向データ側をSSPzへ用いず、0～360°の実データ側ビューだけで体軸方向の最近接挟み込みを作ります。";
   const candidateSpreadText = "幾何表示では、実データ側の全列と、理想対向角を挟む実取得ビューの全列について、列中心位置の体軸方向標準偏差を無重みで示します。候補点の採用、補間・再構成重み、設定厚による閾値は適用しません。";
-  const modelText = `${reconstructionPathLabel(result.params.reconstructionPath)} / ${pathText} 主要表示と幅指標はすべて、1回転寝台移動量内の360状態について、設定スライス厚T=${fmt(result.params.sliceThicknessMm, 1)} mmを反映したモデルSSPzから作成します。中心形状は10%水準以上を線形表示し、コーン幾何を反映した条件の0.1%以上の低振幅裾だけを別の対数表示で示します。設定厚適用前の中間SSPzとその幅は公開図・幅解析から除外しました。${candidateSpreadText} FWHMは合わせ込まず、設定厚反映後の曲線から計算しています。 装置固有の検出器チャネル補間、冗長度重み、コーンビーム重み、逆投影は再現していません。`;
+  const modelText = localizedText(`Taguchiらの式（6）・Fig. 5/6に基づき、再構成面周囲のK個のz位置で取得候補を選び直し、線形補間した値を矩形重みで平均します。${filterParameterLabel(result.params, result.selectedOn.filterSamples)}。固定した薄い物体に対して再構成面を動かした応答です。360状態は寝台移動量内の物体位置であり、各SSPz内の横軸はzᵣ−zₒです。FWと設定厚Tの対応は実機に校正せず、FWHMは結果として計算します。展開図の端点・間隔は中心位置でのFW=0の局所補間の監査で、厚いスライスの全寄与候補ではありません。取得幾何の全列表示は変更していません。これは理想的な列開口と体軸応答のモデルであり、全画像再構成・装置固有の重み・逆投影・有限ビーズ径は再現しません。`, `Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. This ideal row-aperture and axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`);
   const topologyText = multiComponent
     ? " 注意：50%水準が複数成分に分かれています。FWHMだけで形状を代表させないでください。"
     : "";
-  profileModelNote.textContent = modelText + topologyText;
+  const gridWarning = [result.selectedOff, result.selectedOn].some(profile => profile.gridResolutionAdequate === false)
+    ? localizedText(" 注意：SSPzの体軸グリッドが精度目安より粗い状態です。グリッド点数を増やして収束を確認するまで、幅指標を確定値として使用しないでください。", " Warning: the SSPz longitudinal grid is coarser than the accuracy guideline. Increase grid resolution and verify convergence before treating width metrics as final.")
+    : "";
+  profileModelNote.textContent = modelText + topologyText + gridWarning;
 }
 
 function localizedText(ja, en) {
@@ -2743,15 +2763,10 @@ function renderInspectionDetails(result) {
 
 function renderAll(result) {
   renderInspectionDetails(result);
-  const layered = result.params.profileMode === PROFILE_MODES.LAYERED_RECT;
   const finalHeading = document.querySelector("#overlay-core-heading");
   const finalDescription = document.querySelector("#overlay-core-description");
-  if (finalHeading) finalHeading.textContent = layered
-    ? `主要表示：設定厚T=${fmt(result.params.sliceThicknessMm, 1)} mm反映後の中心形状`
-    : "モデルSSPz";
-  if (finalDescription) finalDescription.textContent = layered
-    ? "10%水準以上を線形表示し、設定厚に対して残る幾何学的変動を比較"
-    : "説明用モデルSSPz";
+  if (finalHeading) finalHeading.textContent = localizedText("フィルタ補間後SSPz・中心形状", "Filter-interpolated SSPz: central shape");
+  if (finalDescription) finalDescription.textContent = filterParameterLabel(result.params, result.selectedOn.filterSamples);
   // Core and tail panels have distinct semantic jobs. Each pair shares one
   // symmetric domain between cone-off and cone-on, but a low-amplitude tail is
   // never allowed to compress the linear central-shape view.
@@ -2762,7 +2777,7 @@ function renderAll(result) {
   drawProfileOverlay(document.querySelector("#overlay-tail-on"), result, true, "tail", overlayAxes.tail);
   const overlayScope = document.querySelector("#overlay-scope");
   if (overlayScope && result.overlay) {
-    overlayScope.textContent = `${reconstructionPathLabel(result.params.reconstructionPath)}／1回転寝台移動量を${result.overlay.stateCount}等分（1°相当）／各状態の基準ビュー数 ${result.params.viewSamples}`;
+    overlayScope.textContent = localizedText(`1回転寝台移動量内の物体位置を${result.overlay.stateCount}等分／各状態${result.params.viewSamples}ビュー／${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`, `${result.overlay.stateCount} object positions within one table feed / ${result.params.viewSamples} views per state / ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`);
   }
   drawSweep(document.querySelector("#sweep-chart"), result);
 }
@@ -2782,18 +2797,18 @@ function downloadBlob(filename, content, type = "text/csv;charset=utf-8") {
 
 function downloadSweepCsv() {
   if (!lastResult) return;
-  const header = ["model_version","reconstruction_path","data_kind","scan_angular_range_deg","candidate_ray_family_count","direct_view_samples_per_rotation","profile_mode","candidate_selection_rule","configured_slice_thickness_mm","assumed_slice_kernel_width_mm","model_state_index","model_state_fraction_within_one_table_feed","z0_mm","idealized_source_to_point_distance_scaling","bracket_gap_mean_mm","bracket_gap_max_mm","bracket_gap_ratio_mean","bracket_gap_ratio_max","exact_candidate_fraction","maximum_view_contribution_error","maximum_angular_interpolation_weight_error","maximum_longitudinal_moment_residual_mm","mean_geometry_kernel_second_moment_mm2","analytic_base_sigma_mm","analytic_configured_sigma_mm","numerical_sigma_residual_mm","pre_normalization_area","pre_normalization_peak","configured_output_fwhm_mm","configured_output_fwtm_mm","configured_output_sigma_mm","coverage","profile_area_mm","centroid_mm","half_height_component_count"];
-  const rows = lastResult.sweep.map(row => [MODEL_VERSION,row.reconstructionPath ?? lastResult.params.reconstructionPath,row.dataKind ?? "",360,row.candidateRayFamilyCount ?? (lastResult.params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1),lastResult.params.viewSamples,lastResult.params.profileMode,row.candidateSelectionRule ?? lastResult.assumptions.candidateSelectionRule,lastResult.params.sliceThicknessMm,lastResult.assumptions.sliceKernelWidthMm,row.stateIndex,row.state,row.z0,row.coneOn,row.bracketGapMeanMm,row.bracketGapMaxMm,row.bracketGapRatioMean,row.bracketGapRatioMax,row.exactCandidateFraction,row.maximumViewContributionError,row.maximumAngularInterpolationWeightError,row.maximumLongitudinalMomentResidualMm,row.meanKernelSecondMomentMm2,row.analyticBaseSigmaMm,row.analyticConfiguredSigmaMm,row.numericalSigmaResidualMm,row.preNormalizationArea,row.preNormalizationPeak,row.fwhm,row.fwtm,row.sigma,row.coverage,row.area,row.centroid,row.halfComponents]);
+  const header = ["model_version","reconstruction_path","profile_mode","filter_width_mm","filter_resampling_count","requested_minimum_filter_resampling_count","reference_slice_thickness_mm","filter_width_calibration","response_coordinate","direct_view_samples_per_rotation","model_state_index","object_position_fraction_within_one_table_feed","object_z_mm","idealized_source_to_point_distance_scaling","local_FW0_bracket_gap_mean_mm","local_FW0_bracket_gap_max_mm","local_FW0_bracket_gap_ratio_max","pre_normalization_area","pre_normalization_peak","filtered_fwhm_mm","filtered_fwtm_mm","filtered_sigma_mm","coverage","profile_area_mm","centroid_mm","half_height_component_count"];
+  const rows = lastResult.sweep.map(row => [MODEL_VERSION,row.reconstructionPath ?? lastResult.params.reconstructionPath,lastResult.params.profileMode,lastResult.params.filterWidthMm,lastResult.selectedOn.filterSamples,lastResult.params.filterSamples,lastResult.params.sliceThicknessMm,"not-scanner-calibrated","reconstruction-plane-minus-fixed-object-mm",lastResult.params.viewSamples,row.stateIndex,row.state,row.z0,row.coneOn,row.bracketGapMeanMm,row.bracketGapMaxMm,row.bracketGapRatioMax,row.preNormalizationArea,row.preNormalizationPeak,row.fwhm,row.fwtm,row.sigma,row.coverage,row.area,row.centroid,row.halfComponents]);
   const csv = [header, ...rows].map(row => row.map(csvEscape).join(",")).join("\n");
   downloadBlob(`sspz_${reconstructionPathUrlValue(lastResult.params.reconstructionPath)}_geometry_state_sweep.csv`, `\uFEFF${csv}`);
 }
 
 function downloadProfileCsv() {
   if (!lastResult) return;
-  const rows = [["model_version","reconstruction_path","model_state_index","z_mm","configured_output_sspz_distance_change_off","configured_output_sspz_distance_change_on"]];
+  const rows = [["model_version","reconstruction_path","profile_mode","filter_width_mm","filter_resampling_count","requested_minimum_filter_resampling_count","reference_slice_thickness_mm","model_state_index","reconstruction_plane_minus_fixed_object_mm","filtered_sspz_distance_change_off","filtered_sspz_distance_change_on"]];
   const length = Math.min(lastResult.selectedOff.z.length, lastResult.selectedOn.z.length);
   for (let i = 0; i < length; i += 1) {
-    rows.push([MODEL_VERSION,lastResult.params.reconstructionPath,selectedStateIndex,lastResult.selectedOff.z[i],lastResult.selectedOff.profile[i],lastResult.selectedOn.profile[i]]);
+    rows.push([MODEL_VERSION,lastResult.params.reconstructionPath,lastResult.params.profileMode,lastResult.params.filterWidthMm,lastResult.selectedOn.filterSamples,lastResult.params.filterSamples,lastResult.params.sliceThicknessMm,selectedStateIndex,lastResult.selectedOff.z[i],lastResult.selectedOff.profile[i],lastResult.selectedOn.profile[i]]);
   }
   downloadBlob(`sspz_${reconstructionPathUrlValue(lastResult.params.reconstructionPath)}_geometry_state_${selectedStateIndex}_profiles.csv`, `\uFEFF${rows.map(row => row.map(csvEscape).join(",")).join("\n")}`);
 }
@@ -3058,12 +3073,12 @@ function publicationFilename(canvasId) {
     const metric = selectedMetric(lastResult);
     const thickness = String(Number(lastResult.params.sliceThicknessMm)).replace(".", "p");
     const radius = String(Number(lastResult.params.radius)).replace(".", "p");
-    filename = `sweep-configured-thickness-${metric.rawKey}-T${thickness}mm-r${radius}mm.png`;
+    filename = `sweep-taguchi-${metric.rawKey}-FW${lastResult.params.filterWidthMm}mm-K${lastResult.selectedOn.filterSamples}-T${thickness}mm-r${radius}mm.png`;
   } else if (canvasId.startsWith("overlay-") && lastResult) {
     const [, viewMode, condition] = canvasId.split("-");
     const thickness = String(Number(lastResult.params.sliceThicknessMm)).replace(".", "p");
     const radius = String(Number(lastResult.params.radius)).replace(".", "p");
-    filename = `sspz-overlay-configured-${viewMode}-T${thickness}mm-r${radius}mm-${condition}-360-relative-states.png`;
+    filename = `sspz-overlay-taguchi-${viewMode}-FW${lastResult.params.filterWidthMm}mm-K${lastResult.selectedOn.filterSamples}-T${thickness}mm-r${radius}mm-${condition}-360-object-states.png`;
   } else if (canvasId === "candidate-axial-spread-chart" && lastResult) {
     const rows = String(Number(lastResult.params.rows));
     const rowWidth = String(Number(lastResult.params.rowWidth)).replace(".", "p");
@@ -3071,7 +3086,7 @@ function publicationFilename(canvasId) {
     const radius = String(Number(lastResult.params.radius)).replace(".", "p");
     filename = `geometry-all-candidate-axial-spread-N${rows}-d${rowWidth}mm-p${pitch}-r${radius}mm-${lastResult.params.viewSamples}views.png`;
   } else if (canvasId === "profile-chart" && lastResult) {
-    filename = `sspz-detail-state-${selectedStateIndex}-of-360.png`;
+    filename = `sspz-taguchi-FW${lastResult.params.filterWidthMm}mm-K${lastResult.selectedOn.filterSamples}-T${lastResult.params.sliceThicknessMm}mm-state-${selectedStateIndex}-of-360.png`;
   } else if (canvasId.startsWith("complementary-") && lastResult) {
     const radius = String(Number(lastResult.params.radius)).replace(".", "p");
     filename = `${canvasId}-r${radius}mm-${lastResult.params.viewSamples}views.png`;
@@ -3157,7 +3172,13 @@ const initial = paramsFromUrl() ?? (() => {
     }
     if (stored.targetFwhm != null && stored.sliceThicknessMm == null) {
       legacyInputMigrated = true;
-      return { ...stored, sliceThicknessMm: stored.targetFwhm };
+      stored.sliceThicknessMm = stored.targetFwhm;
+    }
+    if (stored.filterWidthMm == null || stored.profileMode !== "taguchi-filter") {
+      legacyInputMigrated = true;
+      stored.filterWidthMm ??= stored.sliceThicknessMm ?? DEFAULT_PARAMS.sliceThicknessMm;
+      stored.filterSamples ??= DEFAULT_PARAMS.filterSamples;
+      stored.profileMode = "taguchi-filter";
     }
     return stored;
   }
@@ -3166,6 +3187,6 @@ const initial = paramsFromUrl() ?? (() => {
 writeParams({ ...DEFAULT_PARAMS, ...initial });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = "旧URL・保存条件を新方式へ移行しました。旧版の計算値は流用せず、既定の180LI取得幾何でSSPzを再計算するため、旧版と同じ結果にはなりません。比較が必要な場合は、取得幾何から0～360°実データ側フルスキャンを選択してください。";
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("旧URL・保存条件をTaguchiらのフィルタ補間へ移行しました。FWが未指定の場合だけ初期値をTと同じ数値に置いていますが、これは実機に校正した対応ではありません。FWを独立に設定してください。旧版の計算値を流用せず、応答の定義も固定物体に対する再構成面移動へ変更して再計算します。", "Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.");
 }
 runSimulation();

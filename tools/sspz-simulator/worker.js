@@ -13,12 +13,10 @@ let cancelled = false;
 let activeContext = null;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
-const OVERLAY_MAX_Z_POINTS = 1000;
-
 function overlaySampleIndices(length) {
-  const count = Math.min(length, OVERLAY_MAX_Z_POINTS);
-  if (count === length) return Array.from({ length }, (_, index) => index);
-  return Array.from({ length: count }, (_, index) => Math.round(index * (length - 1) / (count - 1)));
+  // Preserve the numerical profile grid in screen and publication overlays.
+  // A fixed 1000-point decimation can miss a narrow peak inside a broad domain.
+  return Array.from({ length }, (_, index) => index);
 }
 
 function createOverlayCondition(stateCount, zCount, angleCount) {
@@ -183,9 +181,15 @@ self.onmessage = async event => {
       zCount,
       z: Float32Array.from(sampleIndices, index => selectedOff.z[index]),
       states: Float32Array.from(overlayStates),
-      coordinate: "z-minus-z0-native",
+      coordinate: "reconstruction-plane-z-minus-fixed-object-z",
       normalization: "each-profile-peak-normalized-to-one",
-      stateMeaning: "relative-reconstruction-state-within-one-table-feed-per-rotation",
+      stateMeaning: "fixed-object-position-within-one-table-feed-per-rotation",
+      responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
+      profileMethod: "taguchi-1998-equation-6-finite-rectangular-filter-interpolation",
+      filterWidthMm: params.filterWidthMm,
+      filterSamples: selectedOn.filterSamples,
+      requestedFilterSamples: params.filterSamples,
+      diagnosticStage: "unfiltered-local-interpolation-at-the-central-plane-not-filtered-ssp-contributors",
       reconstructionPath: params.reconstructionPath,
       acquisitionModel: params.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
         ? "fan-beam-180li-acquisition-geometry-explanatory-model"
@@ -250,6 +254,11 @@ self.onmessage = async event => {
             dataKind: result.dataKind,
             candidateRayFamilyCount: result.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI ? 2 : 1,
             candidateSelectionRule: result.candidateSelectionRule,
+            responseDefinition: result.responseDefinition,
+            filterWidthMm: result.filterWidthMm,
+            filterSamples: result.filterSamples,
+            requestedFilterSamples: result.requestedFilterSamples,
+            diagnosticStage: result.diagnosticStage,
             fwhm: result.fwhm,
             fwtm: result.fwtm,
             sigma: result.sigma,
