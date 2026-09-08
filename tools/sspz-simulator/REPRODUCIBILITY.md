@@ -1,6 +1,6 @@
 # Reproducibility and model scope
 
-Numerical model: **2026-09-08.1**. Diagram/display revision: **2026-09-08.2**.
+Numerical model: **2026-09-08.1**. Diagram/display revision: **2026-09-08.3**.
 
 ## Current axial-response definition
 
@@ -63,7 +63,9 @@ Display revision 2026-09-08.1 places axes/grid behind SSPz curves. This keeps a 
 
 Display revision 2026-09-08.2 sums Section 2B angular-branch coefficients sharing `(referenceViewIndex, absoluteViewIndex, row)` before drawing one opaque marker. Different physical samples at coincident coordinates are not merged. Both family roles are retained if a sample is direct and complementary, shown by a circle inside a triangle. This corrects branch overpainting without changing input contributions or numerical SSPz. These weights describe the central local FW=0 diagnostic, not the complete thick-slice filter contribution.
 
-Detector-row hues remain fixed. A row-color legend and sparse inline row numbers help identify crossing trajectories. Only the trajectory lines use multiply blending to show overlap; both opacity and stroke width decrease with the square root of row density (with a minimum stroke width), balancing legibility against dark saturation. Blended line colors are neither new row identities nor numerical weights. Marker colors continue to encode summed coefficients. The actual-Canvas regression checks colors, symbols, positions, blending-state isolation, sample identity, and a negative control using the former unmerged renderer.
+Detector-row hues remain fixed. A compact row-color legend identifies trajectory colors. Only the trajectory lines use multiply blending to show overlap; both opacity and stroke width decrease with the square root of row density (with a minimum stroke width), balancing legibility against dark saturation. Blended line colors are neither new row identities nor numerical weights. Marker colors continue to encode summed coefficients. The actual-Canvas regression checks colors, symbols, positions, blending-state isolation, sample identity, and a negative control using the former unmerged renderer.
+
+Display revision 2026-09-08.3 removes detector-row numbers from the trajectories at every row count, superseding the sparse inline labels introduced in revision .2. Axes and the compact row-color legend remain visible in Japanese, English and publication PNGs. Geometry, weights, color mapping, opacity, stroke width, canvas dimensions and numerical SSPz are unchanged. The marker-identity suite additionally exercises 24 drawing cases covering 4/160/320 rows, both geometry conditions, screen/publication output and overview/zoom, requiring zero inline labels and unchanged diagram data.
 
 SSPz panels are 80 mm wide at 600 dpi (1890x1365 pixels), while the selected-profile figure is 180 mm wide (4252x2303 pixels). Unwrapped diagrams use the existing 80-mm format (1890x1470 pixels). PNG pHYs is 23622 pixels/m, approximately 600 dpi. Captions and filenames include FW and actual K; CSV also includes reference T, requested minimum K, model version, and response coordinate.
 

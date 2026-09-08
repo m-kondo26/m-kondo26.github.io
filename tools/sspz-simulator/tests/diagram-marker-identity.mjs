@@ -7,6 +7,7 @@ import vm from "node:vm";
 import { DEFAULT_PARAMS, computeUnwrapped, validateParams } from "../sim-core.js";
 
 const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+assert.doesNotMatch(source, /drawDirectRowLabels/, "No inline detector-row label painter or call remains");
 function functionSource(name) {
   const match = new RegExp(`^function ${name}\\(`, "m").exec(source);
   assert.ok(match, `Application function ${name} must exist`);
@@ -165,6 +166,7 @@ class RecordingCanvasContext {
   rect(x, y, width, height) { this.path.push({ op: "R", x, y, width, height }); }
   clip() { this.state.clipped = true; }
   fillRect() {}
+  fillText(text, x, y) { this.events.push({ type: "text", text: String(text), x, y }); }
   setLineDash(dash) { this.state.dash = Array.from(dash); }
   fill() { this.record("fill"); }
   stroke() { this.record("stroke"); }
@@ -188,7 +190,7 @@ function rendererRuntime(restoreUnmergedMarkers = false) {
     axisContext: canvas => ({ ctx: canvas.context, canvas, margin: { left: 0, top: 0 },
       innerWidth: 1000, innerHeight: 360, x: value => value, yDown: value => value }),
     drawAxes() {}, drawOverviewLegend() {}, drawWeightLegend() {},
-    drawDirectRowLabels() {}, drawDetectorRowLegend() {}, drawCandidateTrace() {},
+    drawDetectorRowLegend() {}, drawCandidateTrace() {},
   });
   const constants = ["ROW_COLORS", "PALE", "RED", "INK", "MUTED", "FIGURE_FONT"].map(name => {
     const match = new RegExp(`^const ${name} = .+;$`, "m").exec(source);
@@ -278,6 +280,53 @@ rendererResults.push(verifyRenderedMarkers({ ...userDiagram, weightedPoints: dua
 assert.throws(() => verifyRenderedMarkers(userDiagram, false, true),
   /one glyph per physical sample/, "Memory-local old unmerged rendering must fail the count assertion");
 
+// No row digits may be drawn on trajectories, for sparse or dense detectors,
+// either geometry condition, or either screen/publication rendering mode.
+// Keep the actual drawDiagram and marker painter; only legend/axis internals
+// are isolated so text inside the plot cannot be mistaken for tick/key text.
+const numberFreeDisplayResults = [];
+for (const rows of [4, 160, 320]) {
+  for (const coneOn of [false, true]) {
+    const params = validateParams({ ...userParams, rows,
+      rowWidth: rows === 4 ? 1 : 0.5, radius: rows === 4 ? 102 : 250,
+      viewSamples: rows === 4 ? 720 : 1200, state: 0.5 });
+    const diagram = computeUnwrapped(params, { state: 0.5, coneOn, samples: 720 });
+    const originalDiagram = JSON.stringify(diagram);
+    for (const publicationMode of [false, true]) {
+      for (const mode of ["overview", "zoom"]) {
+        const runtime = rendererRuntime();
+        const ctx = new RecordingCanvasContext();
+        const canvas = { context: ctx, dataset: { publicationMode: String(publicationMode) } };
+        let axesCalls = 0;
+        const legends = [];
+        runtime.drawAxes = () => { axesCalls += 1; };
+        runtime.drawOverviewLegend = (_ctx, legendDiagram) => legends.push({ role: "overview", rows: legendDiagram.totalRows });
+        runtime.drawWeightLegend = (_ctx, _left, _top, _width, legendDiagram) => legends.push({ role: "zoom", rows: legendDiagram.totalRows });
+        runtime.drawDiagram(canvas, diagram, mode);
+        assert.equal(canvas.dataset.inlineRowLabels, "0", `${rows}/${coneOn}/${publicationMode}/${mode}: inline-label metadata`);
+        assert.equal(ctx.events.filter(event => event.type === "text").length, 0,
+          "No detector-row digit or other annotation is painted inside the plot");
+        assert.equal(axesCalls, 1, "Axes are still drawn exactly once");
+        assert.deepEqual(legends, [{ role: mode, rows }], "Compact detector-row key remains part of the corresponding legend");
+        assert.equal(canvas.dataset.diagramDisplayVersion, "2026-09-08.3");
+        assert.equal(JSON.stringify(diagram), originalDiagram, "Display-only revision preserves every numerical diagram field");
+        assert.equal(ctx.events.filter(event => event.type === "fill").length,
+          mode === "zoom" ? independentGroups(diagram.weightedPoints).size : 0,
+          "Removing row labels does not remove or duplicate physical markers");
+        assert.equal(ctx.stack.length, 0);
+        numberFreeDisplayResults.push({ rows, coneOn, publicationMode, mode, inlineRowLabels: 0 });
+      }
+    }
+  }
+}
+assert.match(functionSource("drawOverviewLegend"), /row \+ 1/, "Overview row-number color key remains");
+assert.match(functionSource("drawDetectorRowLegend"), /row \+ 1/, "Zoom row-number color key remains");
+for (const filename of ["app.js", "index.html", "index-en.html", "app-bundle.js", "app-bundle-en.js", "scripts/english-replacements.mjs"]) {
+  const text = fs.readFileSync(new URL(`../${filename}`, import.meta.url), "utf8");
+  assert.doesNotMatch(text, /線上の数字|線に列番号|inline numbers|row numbers are also placed beside|drawDirectRowLabels/,
+    `${filename}: obsolete curve-number instructions or painter must not ship`);
+}
+
 // Separately run the real trajectory painter. A single row/turn trajectory
 // must retain the same row color; dashed complementary paths are distinct.
 const traceRuntime = rendererRuntime();
@@ -307,4 +356,5 @@ for (const diagram of [userDiagram, largeDiagram]) {
 console.log(JSON.stringify({ status: "PASS", scope: "Physical-marker presentation identity and local FW=0 weights; no SSPz numerical changes.",
   userFixture: { rawCount: 284, physicalMarkerCount: 214, duplicateGroups: 70,
     beta160SummedWeight: beta160.weight }, fixtureCount: fixtureResults.length, fixtureResults,
-  rendererResults, traceCases, oldUnmergedRendererNegativeControl: "expected failure confirmed" }, null, 2));
+  rendererResults, traceCases, numberFreeDisplayCases: numberFreeDisplayResults.length, numberFreeDisplayResults,
+  oldUnmergedRendererNegativeControl: "expected failure confirmed" }, null, 2));

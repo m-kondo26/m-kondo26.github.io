@@ -1,7 +1,7 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-09-08.1",
-  "diagramDisplayVersion": "2026-09-08.2",
+  "diagramDisplayVersion": "2026-09-08.3",
   "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
@@ -44,6 +44,7 @@
     "display-only revision 2026-09-07.1: full acquired-view trajectory grids, absolute-view provenance for every selected marker, comparable display bounds across both geometry conditions, and no changes to numerical SSPz or interpolation weights",
     "display-only revision 2026-09-08.1: draw axes and grid before selected and overlaid SSPz curves so that flat 100-percent peaks remain visible; numerical profiles and measured-width calculations are unchanged",
     "display-only revision 2026-09-08.2: merge marker coefficients by reference view, absolute acquired view, and detector row before drawing; preserve distinct physical samples at coincident positions; fixed row-color legend and sparse inline row numbers; multiply-blended trajectories with density-compensated opacity and line width; numerical geometry and SSPz unchanged",
+    "display-only revision 2026-09-08.3: remove detector-row numbers placed on trajectories for every row count; retain the compact detector-row color legend, axes, marker aggregation, colors, opacity, stroke widths, plot dimensions, numerical geometry, interpolation weights, and SSPz unchanged",
     "internal per-view weighted RMS spread, final contributing-candidate count, inverse-Simpson weight-equivalent count, and pre-merge contribution count retained only as explanatory-SSPz regression audits rather than reader-facing geometry indicators",
     "absolute helical view order D-n to C-n to D-n-plus-one with the two constrained cross-family longitudinal spans evaluated separately over all detector rows, both longitudinal endpoint orientations, and required ideal-helix turns",
     "generalized two-point-LI acquisition-geometry reference formed by merging all direct- and complementary-family detector-row candidates and selecting the adjacent smaller-z and larger-z candidates, with ordinary DD, DC, CD, and CC pairs plus equal-distance ties and exact matches retained",

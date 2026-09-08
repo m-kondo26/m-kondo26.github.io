@@ -2739,7 +2739,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.2`;
+versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3428,8 +3428,8 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   setFittedFigureFont(ctx, acquisitionLabel, 18, 13, width);
   ctx.fillText(acquisitionLabel, left, y0 + 133);
   const overlapLabel = localizedText(
-    "軌道の重なり：混色　線上の数字：検出器列（実線・少列のみ）",
-    "Overlapping traces: blended colors; inline numbers: detector rows (solid traces, few rows)",
+    "軌道の重なり：混色",
+    "Overlapping traces: blended colors",
   );
   ctx.fillStyle = MUTED;
   setFittedFigureFont(ctx, overlapLabel, 16, 12, width);
@@ -3558,64 +3558,6 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.restore();
 }
 
-function drawDirectRowLabels(ctx, diagram, x, yDown, xLimit, box, points) {
-  // Inline row numbers are an additional identity cue for sparse detectors.
-  // Place them only on well-separated solid trajectories; never move a sample
-  // or label a dense multi-row plot at the expense of its geometry.
-  if (diagram.totalRows > 8) return 0;
-  const trace = diagram.traceFamilies?.find(item => item.family === "direct") ?? diagram.traceGeometry;
-  const occupied = [];
-  const pointPixels = points.map(point => [x(point.x), yDown(point.y)]);
-  const families = diagram.traceFamilies ?? [trace];
-  let count = 0;
-  ctx.save();
-  ctx.font = `bold 13px ${FIGURE_FONT}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (let row = 0; row < diagram.totalRows; row += 1) {
-    for (const turn of diagram.traceGeometry.turns) {
-      let best = null;
-      const stride = Math.max(1, Math.floor(trace.angles.length / 90));
-      for (let i = 0; i < trace.angles.length; i += stride) {
-        const angle = trace.angles[i];
-        const delta = trace.axial[i] + turn * diagram.traceGeometry.feed
-          + trace.scales[i] * diagram.traceGeometry.rowOffsets[row] - diagram.z0;
-        const px = x(delta); const py = yDown(angle);
-        if (Math.abs(delta) >= xLimit || px < box.left + 15 || px > box.right - 15
-          || py < box.top + 18 || py > box.bottom - 18 || Math.abs(px - x(0)) < 18) continue;
-        let clearance = 50;
-        for (const [mx, my] of [...pointPixels, ...occupied]) clearance = Math.min(clearance, Math.hypot(px - mx, py - my));
-        if (clearance < 23) continue;
-        for (const family of families) {
-          for (let otherRow = 0; otherRow < diagram.totalRows; otherRow += 1) {
-            for (const otherTurn of diagram.traceGeometry.turns) {
-              if (family === trace && otherRow === row && otherTurn === turn) continue;
-              const otherDelta = family.axial[i] + otherTurn * diagram.traceGeometry.feed
-                + family.scales[i] * diagram.traceGeometry.rowOffsets[otherRow] - diagram.z0;
-              clearance = Math.min(clearance, Math.abs(px - x(otherDelta)));
-            }
-          }
-        }
-        if (clearance < 16) continue;
-        const score = clearance - Math.abs(angle - 270) * 0.015;
-        if (!best || score > best.score) best = { px, py, score };
-      }
-      if (!best) continue;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(best.px - 10, best.py - 9, 20, 18);
-      ctx.fillStyle = INK;
-      ctx.fillText(String(row + 1), best.px, best.py);
-      ctx.strokeStyle = rowColor(row, diagram.totalRows);
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(best.px - 7, best.py + 8); ctx.lineTo(best.px + 7, best.py + 8); ctx.stroke();
-      occupied.push([best.px, best.py]);
-      count += 1;
-    }
-  }
-  ctx.restore();
-  return count;
-}
 
 function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusXLimit = null) {
   const publicationMode = canvas.dataset.publicationMode === "true";
@@ -3672,9 +3614,6 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
-  const inlineRowLabels = mode === "zoom" ? drawDirectRowLabels(ctx, diagram, x, yDown, xLimit, {
-    left: margin.left, right: margin.left + innerWidth, top: margin.top, bottom: margin.top + innerHeight,
-  }, mergedPoints) : 0;
   if (mode === "overview") {
     const countText = localizedText(
       `全${diagram.totalRows}列・全${diagram.referenceViewSamples}取得角度／共通の実データ側角度βで表示／Tで除外しない`,
@@ -3718,9 +3657,9 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.markerAggregation = "referenceViewIndex:absoluteViewIndex:row;sum-contributions";
   canvas.dataset.rawMarkerContributions = String(mode === "zoom" ? diagram.weightedPoints.length : 0);
   canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
-  canvas.dataset.inlineRowLabels = String(inlineRowLabels);
+  canvas.dataset.inlineRowLabels = "0";
   canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
-  canvas.dataset.diagramDisplayVersion = "2026-09-08.2";
+  canvas.dataset.diagramDisplayVersion = "2026-09-08.3";
 }
 
 function drawSeriesMarkers(ctx, points, x, y, color, shape = "circle", stride = 1) {
