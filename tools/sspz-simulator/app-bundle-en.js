@@ -2739,7 +2739,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-07.1`;
+versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3579,7 +3579,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.traceSamplesPerFamily = String(diagram.acquiredTraceSamples);
   canvas.dataset.complementaryMarkerShape = "triangle";
   canvas.dataset.complementaryLineStyle = "dashed";
-  canvas.dataset.diagramDisplayVersion = "2026-09-07.1";
+  canvas.dataset.diagramDisplayVersion = "2026-09-08.1";
 }
 
 function drawSeriesMarkers(ctx, points, x, y, color, shape = "circle", stride = 1) {
@@ -4195,6 +4195,9 @@ function drawProfiles(canvas, result) {
   });
   const off = result.selectedOff.z.map((z, i) => [z, result.selectedOff.profile[i]]);
   const on = result.selectedOn.z.map((z, i) => [z, result.selectedOn.profile[i]]);
+  // Paint the grid first: a flat normalized peak at exactly 1 must remain
+  // visible instead of being overwritten by the 100% gridline.
+  drawAxes(plot, axis.ticks, [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
   plot.ctx.save();
   plot.ctx.beginPath();
   plot.ctx.rect(plot.margin.left, plot.margin.top, plot.innerWidth, plot.innerHeight);
@@ -4205,7 +4208,6 @@ function drawProfiles(canvas, result) {
   for (const level of [0.5, 0.1]) { plot.ctx.beginPath(); plot.ctx.moveTo(plot.margin.left, plot.y(level)); plot.ctx.lineTo(plot.margin.left + plot.innerWidth, plot.y(level)); plot.ctx.stroke(); }
   plot.ctx.restore();
   plot.ctx.restore();
-  drawAxes(plot, axis.ticks, [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
   drawProfileEncodingLegend(plot.ctx, plot.margin.left, 6);
   plot.ctx.save();
   plot.ctx.fillStyle = MUTED;
@@ -4313,6 +4315,9 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     leftMargin: tailView ? 158 : undefined,
   });
 
+  // The 100% plateau can coincide exactly with a gridline. Keep the grid
+  // behind every individual SSPz in both the screen and publication paths.
+  drawAxes(plot, xAxis.ticks, tailView ? [-3, -2, -1, 0] : [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
   plot.ctx.save();
   plot.ctx.beginPath();
   plot.ctx.rect(plot.margin.left, plot.margin.top, plot.innerWidth, plot.innerHeight);
@@ -4357,7 +4362,6 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     plot.ctx.stroke();
   }
   plot.ctx.restore();
-  drawAxes(plot, xAxis.ticks, tailView ? [-3, -2, -1, 0] : [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
 
   plot.ctx.save();
   plot.ctx.fillStyle = INK;
