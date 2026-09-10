@@ -13,8 +13,8 @@
   <meta property="og:title" content="CT Angular-Longitudinal Diagram and SSPz Geometry Reference">
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1720'/%3E%3Cpath d='M12 45c10-25 30-25 40 0' fill='none' stroke='%2343c2a1' stroke-width='6'/%3E%3Ccircle cx='32' cy='22' r='6' fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=2026-09-11.2">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -134,9 +134,9 @@
     <section aria-labelledby="geometry-title">
       <div class="section-heading">
         <div><p class="step">2</p><h2 id="geometry-title">Inspect the angular-longitudinal diagram and weights</h2></div>
-        <p class="section-note">The diagrams show the acquired-view trajectories, the 180LI angular correspondence, and longitudinal linear weights near the target plane, allowing the selected acquisition geometry to be followed through to SSPz.</p>
+        <p class="section-note">Follow the acquired positions through to SSPz.</p>
       </div>
-      <div class="state-inspector" aria-labelledby="state-inspector-title">
+      <p class="comparison-key">Paired comparison: left = no cone geometry (parallel reference); right = cone geometry included. Shared explanations appear above the pair; each panel has its own condition label.</p><div class="state-inspector" aria-labelledby="state-inspector-title">
         <div>
           <strong id="state-inspector-title">State selected for detailed display (optional)</strong>
           <span id="inspect-state-label">State 0/359 (s = 0.000)</span>
@@ -158,70 +158,70 @@
       <div class="subsection-heading">
         <div>
           <strong>2A  Angular-longitudinal diagram over 0-360° with every detector row retained as a candidate</strong>
-          <span id="overview-scope">Display: all-row candidate trajectories (rotations containing selected endpoints)</span>
-          <span id="calculation-scope">All-row candidates retained; no exclusion based on configured thickness T</span>
-        </div>
-        <p>The horizontal axis is the distance between a candidate detector-row center and the target plane; the vertical axis is the direct-side relative tube angle <i>β</i>. Solid lines show all <i>N</i> rows on the direct side, and dashed lines show all <i>N</i> rows on the complementary side paired with that angle. Complementary-side positions are plotted against the same reference-angle axis while retaining their longitudinal positions at acquisition; their acquisition times and table positions are not shifted to those of the direct view. Candidate searching retains all <i>N</i> rows in every acquired view and does not exclude candidates according to configured slice thickness <i>T</i>. The left column is a parallel-beam reference with a complementary-angle offset of 180° and a distance ratio of 1. The right column uses the fan-beam complementary angle for the ray through the evaluation point and the source-to-point distance at the acquisition angle. The two conditions coincide at isocenter. When the full-scan comparison is selected, only the solid direct-side trajectories are shown.</p>
+          </div>
+        <p class="section-summary">All detector-row positions are shown. Solid lines: direct data; dashed lines: complementary data.</p><details class="reading-details"><summary>Details</summary><p>The horizontal axis is the distance between a candidate detector-row center and the target plane; the vertical axis is the direct-side relative tube angle <i>β</i>. Solid lines show all <i>N</i> rows on the direct side, and dashed lines show all <i>N</i> rows on the complementary side paired with that angle. Complementary-side positions are plotted against the same reference-angle axis while retaining their longitudinal positions at acquisition; their acquisition times and table positions are not shifted to those of the direct view. Candidate searching retains all <i>N</i> rows in every acquired view and does not exclude candidates according to configured slice thickness <i>T</i>. The left column is a parallel-beam reference with a complementary-angle offset of 180° and a distance ratio of 1. The right column uses the fan-beam complementary angle for the ray through the evaluation point and the source-to-point distance at the acquisition angle. The two conditions coincide at isocenter. When the full-scan comparison is selected, only the solid direct-side trajectories are shown.</p>
         <p class="model-note compact-note">These diagrams are not restricted to a fixed central fan channel. The ray toward the selected transverse position is determined at each acquisition angle, so its position within the fan changes during rotation for an off-center evaluation point. The dashed complementary-side trajectories show the acquired views immediately before and after the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>. Here, <i>γ</i> is the signed angle from the fan-center direction to the direction of the evaluation point. Lines connect the positions calculated at every acquired angle as visual guides; they do not represent additional measured data between acquired views. The discrete arrangement of in-plane detector channels is not reproduced.</p>
         <p class="geometry-equation-note">
           For the right column, the distance ratio to a fixed evaluation point is defined as
           <span class="equation">q(β) = L(β)/R = √{1 + (r/R)² − 2(r/R)cosβ}</span>
           Here, <i>R</i> is the source-to-isocenter distance, <i>r</i> is the isocenter-to-point distance, <i>β</i> is the relative tube angle with 0° defined where the source is in the same radial direction as the evaluation point, and <i>L(β)</i> is the source-to-point distance at that angle. The distance ratio <i>q</i> increases from 0° to 180° and decreases from 180° to 360°. In contrast, the difference from the parallel-beam approximation, <i>q − 1</i>, changes sign within one rotation, so the magnitude of its effect decreases and then increases again. A candidate row center is calculated by adding the detector-row position scaled by <span class="equation">q(β)</span> to the linear longitudinal displacement from table motion. On the complementary side, the table position and distance ratio are evaluated at the actual complementary-data acquisition angle, not at <i>β</i> on the display axis. Consequently, the solid and dashed trajectories are not related by a simple 180° shift.
         </p>
-      </div>
+      <span id="overview-scope">Display: all-row candidate trajectories (rotations containing selected endpoints)</span>
+          <span id="calculation-scope">All-row candidates retained; no exclusion based on configured thickness T</span>
+        </details></div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; all N rows</span></div>
+          <div class="chart-title"><h3>Without cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Parallel-beam 180° reference; all N rows</span></details></div>
           <canvas id="diagram-overview-off" width="900" height="700" aria-label="Angular-longitudinal diagram showing every detector row without configured-thickness candidate exclusion and without source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-overview-off">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam complement + periodic distance scaling; all N rows</span></div>
+          <div class="chart-title"><h3>With cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Fan-beam complement + periodic distance scaling; all N rows</span></details></div>
           <canvas id="diagram-overview-on" width="900" height="700" aria-label="Angular-longitudinal diagram showing every detector row without configured-thickness candidate exclusion and with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-overview-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
 
       <div class="subsection-heading">
-        <div><strong>2B  Endpoints selected from all-row candidates and their total weights</strong><span>Enlarged view around the target plane</span></div>
-        <p>Thin lines show the same all-row candidate trajectories as in 2A. Color identifies the detector row. A crossing does not transfer a color to a different row. Overlapping trajectories are shown by color blending. A blended color indicates overlap, not another detector row or a weight. Lines are made fainter for many-row displays. Circles denote selected direct-side candidates and triangles complementary-side candidates. A circle inside a triangle identifies an acquired sample assigned to both sides. Saturation represents total weight w after summing contributions from the two angular branches for the same acquired sample (the same acquired view and detector row). Different acquired samples are not summed merely because they occupy the same position. This shows local FW=0 interpolation at the central position, not all contributors to a thick-slice response. Filter interpolation reselects candidates at each position within FW, using acquired samples outside FW when needed for bracketing. Markers show selected angles; trajectories use every acquired angle.</p>
-      </div>
+        <div><strong>2B  Endpoints selected from all-row candidates and their total weights</strong></div>
+        <p class="section-summary">Enlarged view near the target plane. Circles and triangles mark selected candidates; shading indicates interpolation weights.</p><details class="reading-details"><summary>Details</summary><p>Thin lines show the same all-row candidate trajectories as in 2A. Color identifies the detector row. A crossing does not transfer a color to a different row. Overlapping trajectories are shown by color blending. A blended color indicates overlap, not another detector row or a weight. Lines are made fainter for many-row displays. Circles denote selected direct-side candidates and triangles complementary-side candidates. A circle inside a triangle identifies an acquired sample assigned to both sides. Saturation represents total weight w after summing contributions from the two angular branches for the same acquired sample (the same acquired view and detector row). Different acquired samples are not summed merely because they occupy the same position. This shows local FW=0 interpolation at the central position, not all contributors to a thick-slice response. Filter interpolation reselects candidates at each position within FW, using acquired samples outside FW when needed for bracketing. Markers show selected angles; trajectories use every acquired angle.</p>
+      <span>Enlarged view around the target plane</span></details></div>
       <div class="chart-grid two">
         <article class="chart-card">
-          <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° endpoints selected from all rows</span></div>
+          <div class="chart-title"><h3>Without cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Parallel-beam 180° endpoints selected from all rows</span></details></div>
           <canvas id="diagram-zoom-off" width="900" height="700" aria-label="Enlarged diagram showing every detector-row candidate and the interpolation endpoints selected from them, without source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-off">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam endpoints selected from all rows</span></div>
+          <div class="chart-title"><h3>With cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Fan-beam endpoints selected from all rows</span></details></div>
           <canvas id="diagram-zoom-on" width="900" height="700" aria-label="Enlarged diagram showing every detector-row candidate and the interpolation endpoints selected from them, with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-on">Publication PNG (600 dpi)</button>
         </article>
       </div>
-      <p class="diagram-footnote">β is the direct-side relative tube angle; complementary trajectories use the same reference angle. The no-cone reference uses γ=0, βc=β+180°, and q=1; the cone condition uses βc=β+180°+2γ and distance ratio q. All-row trajectories in 2A describe acquisition geometry. Endpoints in 2B and gaps in 2C audit local FW=0 interpolation at the central position, not all thick-slice contributors or a scanner-selected sample count. The same acquired sample may reappear in different angular correspondences, so lines and markers are not independent samples. Acquisition geometry is retained; this revision changes the SSPz response definition and filter interpolation.</p>
+      <details class="reading-details"><summary>Details</summary><p class="diagram-footnote">β is the direct-side relative tube angle; complementary trajectories use the same reference angle. The no-cone reference uses γ=0, βc=β+180°, and q=1; the cone condition uses βc=β+180°+2γ and distance ratio q. All-row trajectories in 2A describe acquisition geometry. Endpoints in 2B and gaps in 2C audit local FW=0 interpolation at the central position, not all thick-slice contributors or a scanner-selected sample count. The same acquired sample may reappear in different angular correspondences, so lines and markers are not independent samples. Acquisition geometry is retained; this revision changes the SSPz response definition and filter interpolation.</p>
 
-      <div class="subsection-heading">
-        <div><strong>2C  180LI complementary angles, absolute-view pairs, and two-point bracketing</strong><span>Pair direct and complementary rays in absolute acquisition order</span></div>
-      </div>
-      <div class="complementary-intro">
+      </details><div class="subsection-heading">
+        <div><strong>2C  180LI complementary angles, absolute-view pairs, and two-point bracketing</strong></div>
+      <p class="section-summary">Inspect complementary angles, acquisition order, and candidate selection in sequence. The following figures show different quantities.</p><details class="reading-details"><summary>Details</summary><span>Pair direct and complementary rays in absolute acquisition order</span></details></div>
+      <details class="reading-details"><summary>Details</summary><div class="complementary-intro">
         <p>For the direct ray at each acquired view β, the line joining the x-ray source and the evaluation point is extended to its second intersection with the source orbit. This defines the source angle β<sub>c</sub> of the complementary ray. Under the displayed sign convention, β<sub>c</sub>=β+180°+2γ. The first plot shows the ideal complementary angle and the immediately preceding and following acquired views that bracket it. Rather than only rounding to one nearest view, the calculation retains the angular residuals to both neighboring views and the angular interpolation fraction.</p>
         <p>The second plot separately shows the two spans in absolute acquisition order: direct ray<sub>n</sub> to complementary ray<sub>n</sub>, and complementary ray<sub>n</sub> to direct ray<sub>n+1</sub>. The arrows indicate acquisition order, not longitudinal order. Within each span, all detector rows are searched for the minimum bracket around the target plane, allowing either family to provide the smaller-z endpoint. This display audits the geometry of both consecutive spans instead of assessing the 180°+2γ correspondence from only one candidate.</p>
         <p>The third plot merges all detector-row candidates from the direct and complementary ray families into one set and selects the nearest two points on the smaller-z and larger-z sides of the target plane. The endpoints are retained jointly as one bracket rather than evaluated independently. If d<sub>−</sub> and d<sub>+</sub> denote the distances to the smaller-z and larger-z candidates, respectively, the merged bracket width is G<sub>merge</sub>=d<sub>−</sub>+d<sub>+</sub>. A selected pair may be direct-direct, direct-complementary, complementary-direct, or complementary-complementary. Candidates tied at the same z-coordinate share the endpoint's total weight equally, and exact matches to the target plane are retained. In the primary 180LI analysis, this merging and longitudinal linear interpolation are performed separately for the lower and upper acquired views bracketing the ideal complementary angle, and the two branches are combined according to the angular position.</p>
         <p class="model-note compact-note">The complementary-ray family is not a separate acquisition; it is the same acquired projection data re-indexed through the 180LI angular relationship. Each absolute view has as many candidates as the entered number of detector rows. The plotted endpoints do not represent the total candidate count. When 180LI acquisition geometry is selected, the angular correspondence, neighboring acquired views, all-row candidate merging, longitudinal weights, and angular weights are applied to the explanatory SSPz. When the direct-ray 0-360° full scan is selected, Section 2C remains as a comparative acquisition-geometry audit and is not applied to SSPz. Scanner-specific detector-channel interpolation, redundancy weighting, cone-beam weighting, and backprojection are not reproduced.</p>
       </div>
-      <div class="chart-grid two">
+      </details><div class="chart-grid sequential-charts">
         <article class="chart-card">
-          <div class="chart-title"><h3>Fan-beam complementary-ray angle</h3><span>β<sub>c</sub>−β = 180° + 2γ</span></div>
+          <div class="chart-title"><h3>Fan-beam complementary-ray angle</h3><details class="reading-details"><summary>Details</summary><span>β<sub>c</sub>−β = 180° + 2γ</span></details></div>
           <canvas id="complementary-angle-chart" width="900" height="700" aria-label="Angular correspondence between the direct and complementary rays"></canvas>
           <button class="download-link" data-canvas="complementary-angle-chart">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card">
-          <div class="chart-title"><h3>Two spans linked in absolute acquisition order</h3><span>Direct rayₙ→complementary rayₙ / complementary rayₙ→direct rayₙ₊₁</span></div>
+          <div class="chart-title"><h3>Two spans linked in absolute acquisition order</h3><details class="reading-details"><summary>Details</summary><span>Direct rayₙ→complementary rayₙ / complementary rayₙ→direct rayₙ₊₁</span></details></div>
           <canvas id="complementary-distance-chart" width="900" height="700" aria-label="Two direct/complementary-ray spans in absolute acquisition order"></canvas>
           <button class="download-link" data-canvas="complementary-distance-chart">Publication PNG (600 dpi)</button>
         </article>
         <article class="chart-card span-two">
-          <div class="chart-title"><h3>Nearest bracketing pair after merging all candidates</h3><span>Acquisition-geometry reference for generalized two-point linear interpolation</span></div>
+          <div class="chart-title"><h3>Nearest bracketing pair after merging all candidates</h3><details class="reading-details"><summary>Details</summary><span>Acquisition-geometry reference for generalized two-point linear interpolation</span></details></div>
           <canvas id="complementary-general-pair-chart" width="1200" height="700" aria-label="Nearest two-point bracketing after merging all detector-row candidates from the direct and complementary ray families"></canvas>
           <button class="download-link" data-canvas="complementary-general-pair-chart">Publication PNG (600 dpi)</button>
         </article>
@@ -236,30 +236,30 @@
         <div><p class="step">3</p><h2 id="response-title">Inspect complete SSPz shapes and variation</h2></div>
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
-      <p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. FW is independent of T and is not calibrated to scanner nominal thickness.</p>
-      <p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 0.1% in logarithmic coordinates.</p>
+      <details class="reading-details"><summary>Details</summary><p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. FW is independent of T and is not calibrated to scanner nominal thickness.</p>
+      </details><details class="reading-details"><summary>Details</summary><p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 0.1% in logarithmic coordinates.</p>
 
-      <div class="subsection-heading">
+      </details><div class="subsection-heading">
         <div>
           <strong>3A  Overlay of 360 filter-interpolated SSPz curves: central profiles</strong>
-          <span id="overlay-scope">360 object positions within one table feed</span>
-        </div>
-        <p>The horizontal axis is reconstruction-plane position relative to a fixed thin object, zᵣ−zₒ. For each state the object is fixed, the reconstruction plane is scanned, and acquired candidates are reselected at every filter position. Each curve is peak-normalized without additional peak or centroid alignment. The displayed range is derived from the central shape at or above 10%; low-amplitude tails are shown separately.</p>
-      </div>
-      <p class="model-note compact-note">Each thin line represents one of 360 equally spaced model states, with no state subsampling. No summary curve or filled envelope is superimposed, so the overlap among individual curves remains visible. These states do not represent 360 separate acquisitions or measured absolute tube angles.</p>
+          </div>
+        <p class="section-summary">All 360 SSPz profiles are overlaid. Each is peak-normalized, without alignment.</p><details class="reading-details"><summary>Details</summary><p>The horizontal axis is reconstruction-plane position relative to a fixed thin object, zᵣ−zₒ. For each state the object is fixed, the reconstruction plane is scanned, and acquired candidates are reselected at every filter position. Each curve is peak-normalized without additional peak or centroid alignment. The displayed range is derived from the central shape at or above 10%; low-amplitude tails are shown separately.</p>
+      <span id="overlay-scope">360 object positions within one table feed</span>
+        </details></div>
+      <details class="reading-details"><summary>Details</summary><p class="model-note compact-note">Each thin line represents one of 360 equally spaced model states, with no state subsampling. No summary curve or filled envelope is superimposed, so the overlap among individual curves remains visible. These states do not represent 360 separate acquisitions or measured absolute tube angles.</p>
 
-      <div id="overlay-core-block">
+      </details><div id="overlay-core-block">
         <div class="subsection-heading compact-subheading">
-          <div><strong id="overlay-core-heading">Primary display: filter-interpolated model SSPz</strong><span id="overlay-core-description">Geometric variation remaining after application of the configured thickness</span></div>
-        </div>
+          <div><strong id="overlay-core-heading">Primary display: filter-interpolated model SSPz</strong></div>
+        <details class="reading-details"><summary>Details</summary><span id="overlay-core-description">Geometric variation remaining after application of the configured thickness</span></details></div>
         <div class="chart-grid two">
           <article class="chart-card">
-            <div class="chart-title"><h3>Without cone geometry</h3><span>Parallel-beam 180° reference; filter-interpolated</span></div>
+            <div class="chart-title"><h3>Without cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Parallel-beam 180-degree reference; filter-interpolated</span></details></div>
              <canvas id="overlay-core-off" width="900" height="650" aria-label="Filter-interpolated central SSPz profiles for 360 states without source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-off">Publication PNG (600 dpi)</button>
           </article>
           <article class="chart-card">
-            <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; filter-interpolated</span></div>
+            <div class="chart-title"><h3>With cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Fan-beam condition; filter-interpolated</span></details></div>
              <canvas id="overlay-core-on" width="900" height="650" aria-label="Filter-interpolated central SSPz profiles for 360 states with idealized source-to-point distance scaling"></canvas>
              <button class="download-link" data-canvas="overlay-core-on">Publication PNG (600 dpi)</button>
           </article>
@@ -267,12 +267,12 @@
       </div>
 
       <div class="subsection-heading">
-        <div><strong>3B  Filter-interpolated low-amplitude tails</strong><span>Log-scale display at or above 0.1%</span></div>
-        <p>The filter-interpolated SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 0.1% are not drawn.</p>
-      </div>
+        <div><strong>3B  Low-amplitude SSPz tails</strong></div>
+        <p class="section-summary">Logarithmic view of the cone-geometry SSPz tails down to 0.1%.</p><details class="reading-details"><summary>Details</summary><p>The filter-interpolated SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 0.1% are not drawn.</p>
+      <span>Log-scale display at or above 0.1%</span></details></div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
-          <div class="chart-title"><h3>With cone geometry</h3><span>Fan-beam condition; low-amplitude tails</span></div>
+          <div class="chart-title"><h3>With cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Fan-beam condition; low-amplitude tails</span></details></div>
           <canvas id="overlay-tail-on" width="900" height="650" aria-label="Low-amplitude tails of filter-interpolated SSPz for 360 states with idealized source-to-point distance scaling"></canvas>
           <button class="download-link" data-canvas="overlay-tail-on">Publication PNG (600 dpi)</button>
         </article>
@@ -292,7 +292,7 @@
             <p id="acquisition-geometry-description" class="visually-hidden">This not-to-scale schematic uses object-fixed coordinates. The left panel shows the relative helical focal-spot trajectory, selected reconstruction plane, and representative direct- and complementary-side rays. The right panel shows every detector-row-center position as a short tick and uses circles and triangles for candidates nearest the reconstruction plane. Candidate selection and weighting are not shown.</p>
           </div>
           <figcaption id="axial-position-figure-caption" class="axial-position-key">
-            <h3>Scope of this figure</h3>
+            <details class="reading-details"><summary>Details</summary><h3>Scope of this figure</h3>
             <p>This is a not-to-scale schematic in object-fixed coordinates. From the current inputs, it shows the table feed per rotation <i>F</i>=<i>pNd</i>, the selected reconstruction plane <i>z</i><sub>0</sub>=<i>z</i><sub>ref</sub>+<i>sF</i>, the direct-side angle <i>β</i>, and the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>.</p>
             <dl class="acquisition-geometry-legend">
               <div><dt><span class="geometry-swatch direct"></span>Direct side</dt><dd>Thin lines show all row positions; circles mark candidates nearest the reconstruction plane</dd></div>
@@ -302,15 +302,15 @@
             </dl>
             <p id="acquisition-geometry-summary" class="axial-position-map-note">After computation, the geometry corresponding to the current inputs and inspected state is shown here.</p>
             <p class="axial-position-limit-note"><strong>Display boundary:</strong> Thin rays in the left panel show nine representative rows, and short ticks in the right panel show all <i>N</i> rows. Circles and triangles are positional guides for the candidates nearest the reconstruction plane; they do not indicate candidate selection, weighting, or a threshold based on configured thickness. Because detector-to-isocenter distance is not an input, the figure shows row-center positions on the longitudinal line through the evaluation point rather than a physical detector plane. The AAI weighting function <i>h</i>(<i>z</i>) of Schaller et al. is not applied.</p>
-          </figcaption>
+          </details></figcaption>
         </figure>
         <div class="subsection-heading compact-subheading">
-          <div><span id="gap-scope">Horizontal axis: relative tube angle β (0-360°) / Vertical axis: longitudinal standard deviation of candidate positions σ<sub>z</sub> (mm)</span></div>
-          <p id="gap-analysis-description">For each direct-side view, the unweighted standard deviation of the longitudinal positions is calculated from all <i>N</i> rows in that view and all <i>N</i> rows in the acquired views bracketing the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>. An acquired view that coincides with another is included only once. Candidate selection, interpolation or reconstruction weighting, and thresholds based on the configured slice thickness <i>T</i> are not applied. This curve shows the spread of candidate positions produced by the acquisition geometry; it is not the final SSPz.</p>
-        </div>
+          <div></div>
+          <details class="reading-details"><summary>Details</summary><details class="reading-details"><summary>Details</summary><p id="gap-analysis-description">For each direct-side view, the unweighted standard deviation of the longitudinal positions is calculated from all <i>N</i> rows in that view and all <i>N</i> rows in the acquired views bracketing the ideal complementary angle <i>β</i><sub>c</sub>=<i>β</i>+180°+2<i>γ</i>. An acquired view that coincides with another is included only once. Candidate selection, interpolation or reconstruction weighting, and thresholds based on the configured slice thickness <i>T</i> are not applied. This curve shows the spread of candidate positions produced by the acquisition geometry; it is not the final SSPz.</p>
+        </details><span id="gap-scope">Horizontal axis: relative tube angle β (0-360°) / Vertical axis: longitudinal standard deviation of candidate positions σ<sub>z</sub> (mm)</span></details></div>
         <div class="chart-grid single-panel">
           <article class="chart-card span-two">
-            <div class="chart-title"><h3>Unweighted longitudinal standard deviation of all candidate detector-row centers</h3><span>Without versus with cone-geometry scaling</span></div>
+            <div class="chart-title"><h3>Unweighted longitudinal standard deviation of all candidate detector-row centers</h3><details class="reading-details"><summary>Details</summary><span>Without versus with cone-geometry scaling</span></details></div>
             <canvas id="candidate-axial-spread-chart" width="1200" height="700" aria-label="Comparison curves without and with cone-geometry scaling, with relative tube angle on the horizontal axis and the unweighted longitudinal standard deviation of all candidate detector-row centers on the vertical axis" aria-describedby="gap-analysis-description"></canvas>
             <button class="download-link" data-canvas="candidate-axial-spread-chart">Publication PNG (600 dpi)</button>
           </article>
@@ -318,18 +318,18 @@
       </section>
 
       <div class="subsection-heading">
-        <div><strong>3D  Details for the inspected state</strong><span id="profile-detail-reading-order">Filter-interpolated SSPz only</span></div>
-      </div>
+        <div><strong>3D  Details for the inspected state</strong></div>
+      <details class="reading-details"><summary>Details</summary><span id="profile-detail-reading-order">Filter-interpolated SSPz only</span></details></div>
       <article class="chart-card">
-        <div class="chart-title"><h3>SSPz for the selected state</h3><span id="profile-axis-note">Horizontal range automatically adjusted from the filter-interpolated SSPz at or above 10%</span></div>
+        <div class="chart-title"><h3>SSPz for the selected state</h3><details class="reading-details"><summary>Details</summary><span id="profile-axis-note">Horizontal range follows the SSPz region above 10%</span></details></div>
         <canvas id="profile-chart" width="1200" height="650" aria-label="Filter-interpolated SSPz for the selected state" aria-describedby="profile-detail-reading-order profile-axis-note profile-display-note"></canvas>
         <button class="download-link" data-canvas="profile-chart">Publication PNG (600 dpi)</button>
       </article>
 
       <div class="subsection-heading">
-        <div><strong>3E  Summarize SSPz using width metrics</strong><span>FWHM, FWTM, and standard deviation after inspection of the complete profile</span></div>
-        <p>FWHM, FWTM, and standard deviation are calculated from the filter-interpolated SSPz and divided by reference thickness T. T is neither a broadening operation nor a target FWHM. Distinguish effects of changing FW from changes in the ratio caused by T. Inspect tails and asymmetry as well as width metrics.</p>
-      </div>
+        <div><strong>3E  Summarize SSPz using width metrics</strong></div>
+        <p class="section-summary">Compare FWHM, FWTM and other width metrics across all 360 states.</p><details class="reading-details"><summary>Details</summary><p>FWHM, FWTM, and standard deviation are calculated from the filter-interpolated SSPz and divided by reference thickness T. T is neither a broadening operation nor a target FWHM. Distinguish effects of changing FW from changes in the ratio caused by T. Inspect tails and asymmetry as well as width metrics.</p>
+      <span>FWHM, FWTM, and standard deviation after inspection of the complete profile</span></details></div>
       <div class="chart-controls" aria-label="Display settings for variation with reconstruction-plane position within one table feed">
         <label>Displayed metric
           <select id="widthMetric">
@@ -339,9 +339,9 @@
           </select>
         </label>
       </div>
-      <p id="sweep-interpretation" class="model-note compact-note" hidden></p>
-      <article class="chart-card">
-        <div class="chart-title"><h3>Within-rotation width variation of filter-interpolated SSPz</h3><span id="metric-label">FWHM</span></div>
+      <details class="reading-details"><summary>Details</summary><p id="sweep-interpretation" class="model-note compact-note" hidden></p>
+      </details><article class="chart-card">
+        <div class="chart-title"><h3>SSPz width variation within one table feed</h3><details class="reading-details"><summary>Details</summary><span id="metric-label">FWHM</span></details></div>
         <canvas id="sweep-chart" width="1200" height="650" aria-label="Width variation of filter-interpolated model SSPz with object position within one table feed"></canvas>
         <button class="download-link" data-canvas="sweep-chart">Publication PNG (600 dpi)</button>
       </article>
@@ -441,8 +441,8 @@
           <p>This study was consulted for the geometric relationship between direct and complementary rays and the fan-angle-dependent complementary source angle. In view of the additional limitation that an exactly complementary ray generally does not exist for a three-dimensional cone-beam ray, Section 2C is limited to an idealized acquisition-geometry reference and does not implement the missing-data restoration method described in the paper.</p>
         </li>
       </ol>
-      <p class="model-note compact-note"><strong>Implementation boundary:</strong> Local linear interpolation and rectangular filter averaging from the source are used to evaluate the axial response to a fixed thin object. Responses with candidate reselection at each resampling position are combined using linearity. The former width-T post-average of a fixed-plane candidate response is not used for the default SSPz calculation. Acquisition-geometry approximations, equal view weights, and ideal row apertures remain explicit assumptions. This alone does not validate thick-slice reconstruction in a particular scanner.</p>
-    </section>
+      <details class="reading-details"><summary>Details</summary><p class="model-note compact-note"><strong>Implementation boundary:</strong> Local linear interpolation and rectangular filter averaging from the source are used to evaluate the axial response to a fixed thin object. Responses with candidate reselection at each resampling position are combined using linearity. The former width-T post-average of a fixed-plane candidate response is not used for the default SSPz calculation. Acquisition-geometry approximations, equal view weights, and ideal row apertures remain explicit assumptions. This alone does not validate thick-slice reconstruction in a particular scanner.</p>
+    </details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
       <p class="step">6</p>
@@ -454,8 +454,8 @@
         <li>The URL saved with “Copy URL for these settings” and, when helpful, a screenshot</li>
         <li>The expected behavior and the result that was displayed</li>
       </ul>
-      <p class="model-note compact-note"><strong>Correction policy:</strong> We will review each report and, when an error is confirmed, correct the website and describe the update. Public availability does not guarantee that the model is complete or error-free.</p>
-      <div class="feedback-actions">
+      <details class="reading-details"><summary>Details</summary><p class="model-note compact-note"><strong>Correction policy:</strong> We will review each report and, when an error is confirmed, correct the website and describe the update. Public availability does not guarantee that the model is complete or error-free.</p>
+      </details><div class="feedback-actions">
         <a class="feedback-link primary-feedback" href="https://github.com/m-kondo26/m-kondo26.github.io/issues/new" target="_blank" rel="noopener noreferrer">Report an error (GitHub Issues)</a>
         <a class="feedback-link" href="https://m-kondo26.github.io/#contact" target="_blank" rel="noopener noreferrer">Laboratory contact</a>
       </div>

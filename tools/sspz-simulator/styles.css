@@ -73,7 +73,7 @@ section { margin: 1.5rem 0; }
   box-shadow: var(--shadow);
 }
 .control-shell, .method-card { padding: clamp(1.1rem, 2.5vw, 2rem); }
-.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.section-heading { display: block; text-align: center; margin-bottom: 1rem; }
 .section-heading > div:first-child { display: flex; align-items: center; gap: 0.65rem; }
 .section-heading h2, .method-card h2 { margin: 0; font-size: clamp(1.35rem, 2vw, 1.9rem); }
 .step {
@@ -120,11 +120,11 @@ section { margin: 1.5rem 0; }
 .state-inspector-controls { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 0.6rem; }
 .state-inspector-controls input { width: 100%; }
 .state-inspector-controls .secondary { min-width: 3.4rem; }
-.subsection-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 1.35rem 0 0.65rem; }
+.subsection-heading { display: block; text-align: center; margin: 1.8rem 0 0.9rem; }
 .subsection-heading > div { display: grid; gap: 0.1rem; }
 .subsection-heading strong { font-size: 1.02rem; }
 .subsection-heading span, .subsection-heading p { color: var(--muted); font-size: 0.82rem; }
-.subsection-heading p { max-width: 720px; margin: 0; text-align: right; }
+.subsection-heading p { max-width: none; margin: .5rem 0; text-align: center; }
 .complementary-intro { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 1rem; align-items: stretch; margin: 0 0 0.75rem; }
 .complementary-intro > p { margin: 0; color: var(--muted); font-size: 0.86rem; line-height: 1.65; }
 .complementary-intro > .model-note { color: var(--ink); }
@@ -181,9 +181,9 @@ progress { width: 100%; accent-color: var(--blue); }
 .chart-grid.single-panel { width: min(100%, 900px); margin-inline: auto; }
 .chart-card.span-two { grid-column: 1 / -1; width: min(100%, 900px); justify-self: center; }
 .chart-card { position: relative; padding: 1rem; min-width: 0; }
-.chart-title { display: flex; align-items: baseline; justify-content: space-between; gap: 0.7rem; margin-bottom: 0.3rem; }
+.chart-title { display: block; text-align: center; margin-bottom: .6rem; }
 .chart-title h3 { margin: 0; font-size: 1.05rem; }
-.chart-title span { color: var(--muted); font-size: 0.78rem; text-align: right; }
+.chart-title span { color: var(--muted); font-size: 0.78rem; text-align: center; }
 canvas { display: block; width: 100%; height: auto; aspect-ratio: 9 / 6.2; background: white; }
 #overlay-base-off, #overlay-base-on, #overlay-final-off, #overlay-final-on { aspect-ratio: 9 / 6.5; }
 #candidate-axial-spread-chart { aspect-ratio: 12 / 7; }
@@ -372,3 +372,20 @@ footer p { margin: 0.2rem 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Paired columns encode conditions, not title-versus-description roles. */
+.section-heading > div:first-child { justify-content: center; }
+.section-heading .section-note { max-width: none; text-align: center; margin: .6rem auto; }
+.comparison-key { text-align: center; padding: .8rem; background: #eef3f5; border-radius: 8px; font-size: .9rem; }
+.reading-details { margin: .6rem 0; font-size: .85rem; line-height: 1.65; }
+.reading-details > summary { cursor: pointer; color: #375568; font-weight: 600; text-align: center; }
+.reading-details[open] { padding: .6rem 1rem; background: #f7f9fa; border-radius: 6px; }
+.reading-details p, .subsection-heading .reading-details p { text-align: left; max-width: none; margin: .6rem 0; }
+.reading-details span { display: block; }
+.sequential-charts { grid-template-columns: 1fr; max-width: 960px; margin-inline: auto; }
+.sequential-charts .span-two { width: auto; justify-self: stretch; }
+.axial-position-explainer { grid-template-columns: 1fr; }
+.axial-position-key { border-left: 0; }
+.geometry-analysis-heading { display: block; text-align: center; }
+.geometry-analysis-heading > span { display: block; }
+.subsection-heading .section-summary { font-size: .9rem; }
