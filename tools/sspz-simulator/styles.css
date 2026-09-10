@@ -389,3 +389,5 @@ footer p { margin: 0.2rem 0; }
 .geometry-analysis-heading { display: block; text-align: center; }
 .geometry-analysis-heading > span { display: block; }
 .subsection-heading .section-summary { font-size: .9rem; }
+.reading-details .complementary-intro { display: block; }
+.reading-details .complementary-intro > p { margin: .7rem 0; }
