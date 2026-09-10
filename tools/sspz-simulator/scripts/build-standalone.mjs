@@ -6,7 +6,7 @@ const stripExports = source => source.replace(/^export\s+/gm, "");
 
 const core = stripExports(await readFile(new URL("../sim-core.js", import.meta.url), "utf8"));
 const worker = stripImports(await readFile(new URL("../worker.js", import.meta.url), "utf8"));
-const app = stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
+const app = (await readFile(new URL("../shape-export.js", import.meta.url), "utf8")) + '\n' + stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
 const workerBundle = `"use strict";\n${core}\n${worker}\n`;

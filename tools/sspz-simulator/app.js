@@ -236,6 +236,7 @@ function setBusy(busy) {
   });
   downloadCsvButton.disabled = busy || !lastResult;
   downloadProfileButton.disabled = busy || !lastResult;
+  document.querySelector('#download-excel-button').disabled = busy || !lastResult?.shapeAnalysis;
   if (downloadComplementaryGeometryButton) {
     downloadComplementaryGeometryButton.disabled = busy || !lastResult;
   }
@@ -2870,6 +2871,10 @@ function renderInspectionDetails(result) {
 }
 
 function renderAll(result) {
+  try { result.shapeAnalysis = {off: SSPZShape.analyze(result.overlay, 'off'), on: SSPZShape.analyze(result.overlay, 'on')}; }
+  catch(error) { result.shapeAnalysis = null; document.querySelector('#shape-status').textContent = error.message; }
+  drawShapeDeviation(document.querySelector('#shape-deviation-off'), result, 'off');
+  drawShapeDeviation(document.querySelector('#shape-deviation-on'), result, 'on');
   renderInspectionDetails(result);
   const finalHeading = document.querySelector("#overlay-core-heading");
   const finalDescription = document.querySelector("#overlay-core-description");
@@ -2888,6 +2893,42 @@ function renderAll(result) {
     overlayScope.textContent = localizedText(`1回転寝台移動量内の物体位置を${result.overlay.stateCount}等分／各状態${result.params.viewSamples}ビュー／${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`, `${result.overlay.stateCount} object positions within one table feed / ${result.params.viewSamples} views per state / ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}`);
   }
   drawSweep(document.querySelector("#sweep-chart"), result);
+}
+
+function drawShapeDeviation(canvas, result, key) {
+  if(!result.shapeAnalysis) return;
+  const a=result.shapeAnalysis[key], span=result.params.sliceThicknessMm<=1?1.5:Math.max(4,result.params.sliceThicknessMm*.8);
+  const plot=axisContext(canvas,{xMin:-span,xMax:span,yMin:-.06,yMax:.06},{x:'',y:'SSPz − mean',xFormatter:v=>String(v),yFormatter:v=>v.toFixed(2),leftMargin:140,topMargin:85,bottomMargin:155});
+  const {ctx,x,y,margin,innerWidth,innerHeight}=plot;
+  drawAxes(plot,[-span,0,span],[-.06,0,.06]);
+  ctx.save();ctx.beginPath();ctx.rect(margin.left,margin.top,innerWidth,innerHeight);ctx.clip();ctx.fillStyle='black';ctx.fillRect(margin.left,margin.top,innerWidth,innerHeight);
+  for(let i=0;i<a.x.length;i++){
+    if(a.x[i]+a.step/2 < -span||a.x[i]-a.step/2>span)continue;
+    for(let b=0;b<a.bins;b++) {const value=Math.round(255*Math.sqrt(a.hist[i*a.bins+b]));if(!value)continue;ctx.fillStyle=key==='on'?`rgb(${value},0,0)`:`rgb(${value},${value},${value})`;ctx.fillRect(x(a.x[i]-a.step/2),y(a.low+(b+1)*a.width),Math.max(.5,x(a.x[i]+a.step/2)-x(a.x[i]-a.step/2)),y(a.low+b*a.width)-y(a.low+(b+1)*a.width)+.1);}
+  }
+  ctx.restore();ctx.fillStyle=INK;ctx.font=`bold 30px ${FIGURE_FONT}`;ctx.textAlign='left';ctx.fillText(key==='on'?'(b)':'(a)',18,35);
+  ctx.font=`26px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(key==='on'?'Fan-beam cone geometry':'Parallel reference',margin.left+innerWidth/2,40);
+  ctx.font=`31px ${FIGURE_FONT}`;ctx.fillText('z position (mm)',margin.left+innerWidth/2,margin.top+innerHeight+68);
+  const barY=plot.height-45;
+  for(let i=0;i<200;i++){const v=Math.round(255*Math.sqrt(i/199));ctx.fillStyle=key==='on'?`rgb(${v},0,0)`:`rgb(${v},${v},${v})`;ctx.fillRect(margin.left+i*innerWidth/200,barY,innerWidth/200+1,15);}
+  ctx.fillStyle=INK;ctx.font=`23px ${FIGURE_FONT}`;ctx.fillText('0',margin.left,barY+36);ctx.fillText('50',margin.left+innerWidth/2,barY+36);ctx.fillText('100',margin.left+innerWidth,barY+36);ctx.fillText('Fraction (%)',margin.left+innerWidth/2,barY-8);
+  const counts=Object.values(result.shapeAnalysis).map(v=>v.valid.length).join(' / ');
+  const outside=Object.values(result.shapeAnalysis).reduce((sum,v)=>sum+v.outside.reduce((n,x)=>n+x,0),0);
+  document.querySelector('#shape-status').textContent=localizedText(`採用状態数（左／右）：${counts}。表示偏差範囲外：${outside}点（Excelの偏差には全値を保存）。`,`Included states (left/right): ${counts}. Outside deviation range: ${outside} samples (all deviations retained in Excel).`);
+}
+
+async function downloadAllProfilesExcel() {
+  if(!lastResult?.shapeAnalysis)return;
+  const button=document.querySelector('#download-excel-button');button.disabled=true;
+  const captured=lastResult;
+  try {
+    document.querySelector('#shape-status').textContent=localizedText('全状態のExcelファイルを作成中…','Preparing all-state Excel workbook…');
+    await new Promise(resolve=>setTimeout(resolve,30));
+    const blob=await SSPZShape.workbook(captured,captured.shapeAnalysis,MODEL_VERSION);
+    downloadBlob('SSPz_all_states.xlsx',blob);
+    document.querySelector('#shape-status').textContent=localizedText('Excelファイルを出力しました。曲線・平均・偏差・計算条件を収録しています。','Excel exported: profiles, means, deviations and calculation settings.');
+  } catch(error){document.querySelector('#shape-status').textContent=error.message;}
+  finally{button.disabled=false;}
 }
 
 function csvEscape(value) {
@@ -3096,6 +3137,9 @@ function publicationPixelWidth(canvasId) {
 }
 
 function renderCanvasById(canvasId, canvas, result) {
+  if (canvasId.startsWith('shape-deviation-')) {
+    drawShapeDeviation(canvas, result, canvasId.endsWith('-on') ? 'on' : 'off'); return;
+  }
   if (canvasId.startsWith("diagram-")) {
     const overviewLimit = Math.max(result.diagramOff.overviewXLimit, result.diagramOn.overviewXLimit);
     const zoomLimit = Math.max(result.diagramOff.zoomXLimit, result.diagramOn.zoomXLimit);
@@ -3261,6 +3305,7 @@ document.querySelectorAll("[data-radius]").forEach(button => button.addEventList
 document.querySelectorAll("[data-canvas]").forEach(button => button.addEventListener("click", () => downloadCanvas(button.dataset.canvas)));
 downloadCsvButton.addEventListener("click", downloadSweepCsv);
 downloadProfileButton.addEventListener("click", downloadProfileCsv);
+document.querySelector('#download-excel-button').addEventListener('click',downloadAllProfilesExcel);
 downloadComplementaryGeometryButton?.addEventListener("click", downloadComplementaryGeometryCsv);
 let acquisitionGeometryResizeFrame = 0;
 window.addEventListener("resize", () => {

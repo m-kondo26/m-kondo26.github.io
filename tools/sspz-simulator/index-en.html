@@ -361,6 +361,16 @@
       </div>
     </section>
 
+    <section class="method-card" aria-labelledby="shape-title">
+      <h2 id="shape-title">SSPz deviations from the mean</h2>
+      <p id="shape-description">Distributions of deviations after aligning each native FWHM midpoint to 0 mm and subtracting the pointwise mean. Profiles use a common 0.01-mm linear grid. Deviation bins have width 0.002; intensity is the square root of the fraction of states in each bin. This does not represent differences between absolute mean shapes or measured start-angle probabilities.</p>
+      <div class="chart-grid two">
+        <article class="chart-card"><canvas id="shape-deviation-off" width="900" height="650" aria-label="Parallel reference SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-off">Publication PNG (600 dpi)</button></article>
+        <article class="chart-card"><canvas id="shape-deviation-on" width="900" height="650" aria-label="Fan-beam SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-on">Publication PNG (600 dpi)</button></article>
+      </div>
+      <p id="shape-status" aria-live="polite">Available after calculation.</p>
+      <button id="download-excel-button" type="button" class="secondary">Export all 360 SSPz profiles, means and deviations to Excel</button>
+    </section>
     <section class="method-card" aria-labelledby="method-title">
       <p class="step">4</p>
       <h2 id="method-title">Model scope</h2>
@@ -458,6 +468,6 @@
   </footer>
 
   <script src="worker-source-en.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle-en.js?v=2026-09-08.1-r5"></script>
+  <script src="app-bundle-en.js?v=2026-09-11.1"></script>
 </body>
 </html>

@@ -361,6 +361,16 @@
       </div>
     </section>
 
+    <section class="method-card" aria-labelledby="shape-title">
+      <h2 id="shape-title">SSPzの平均からの偏差</h2>
+      <p id="shape-description">各曲線のFWHM中点を0 mmに揃え、各位置の平均SSPzを引いた偏差の分布です。0.01 mmの共通格子へ線形補間します。偏差のビン幅は0.002、濃さは各ビンの状態割合の平方根です。平均形状そのものの差や、実測開始角度の確率を表すものではありません。</p>
+      <div class="chart-grid two">
+        <article class="chart-card"><canvas id="shape-deviation-off" width="900" height="650" aria-label="Parallel reference SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-off">投稿用PNG（600 dpi）</button></article>
+        <article class="chart-card"><canvas id="shape-deviation-on" width="900" height="650" aria-label="Fan-beam SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-on">投稿用PNG（600 dpi）</button></article>
+      </div>
+      <p id="shape-status" aria-live="polite">計算後に表示します。</p>
+      <button id="download-excel-button" type="button" class="secondary">全360状態のSSPz・平均・偏差をExcel保存</button>
+    </section>
     <section class="method-card" aria-labelledby="method-title">
       <p class="step">4</p>
       <h2 id="method-title">モデルの範囲</h2>
@@ -458,6 +468,6 @@
   </footer>
 
   <script src="worker-source.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle.js?v=2026-09-08.1-r5"></script>
+  <script src="app-bundle.js?v=2026-09-11.1"></script>
 </body>
 </html>

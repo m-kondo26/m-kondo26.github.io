@@ -44,7 +44,11 @@ FWとTは独立です。旧URL・保存条件でFWが未指定の場合だけ、
 
 日本語版は `index.html`、英語版は `index-en.html` をダブルクリックするだけで起動できます。Google Chromeの `file://` 直接起動でも計算できる構成です。両ページ右上の言語切替は、現在の計算条件をURLクエリとして引き継ぎます。
 
-公開版は[日本語](https://m-kondo26.github.io/tools/sspz-simulator/)／[English](https://m-kondo26.github.io/tools/sspz-simulator/index-en.html)から利用できます。ローカルファイル実行を組織の設定が禁止している場合は、Pythonによる静的サーバーを使用できます。
+ローカルファイル実行を組織のブラウザ設定が禁止している場合は、`起動_サーバー.cmd`をダブルクリックしてください。Pythonによるローカルサーバーを起動し、既定ブラウザを開きます。表示された黒い画面でEnterキーを押すとサーバーを終了します。
+
+手動で起動する場合は、次の静的サーバー方式を使用します。
+
+単純な静的ファイルなので、Pythonがあれば次のコマンドで起動できます。
 
 ```powershell
 python -m http.server 4173
@@ -80,11 +84,11 @@ Web画面は日本語版と英語版を同じ計算核および作図処理か�
 
 PNGにはFW・K・T、CSVにはモデル版・応答座標・FW・K・参照Tを保存します。SSPzの全計算グリッドを描き、360状態も間引きません。低振幅裾の表示下限0.1%は描画上の閾値で、計算結果がそこで消えることを意味しません。
 
+SSPz描画版 `profileDisplayVersion=2026-09-08.1` は、計算済みのz座標とSSPz値の隣接点を共通の描画関数で直線接続します。不等間隔のz座標もそのまま使い、描画のための再標本化、スプライン補間、平滑化、点や360状態の間引きは行いません。日本語・英語の画面と600 dpi PNGは同じ描画関数を使います。対数裾では従来どおり0.1%以上の元の点を対数座標で結び、閾値未満を跨いで線をつなぎません。これは描画規約の共通化・明示であり、前段のフィルタ補間計算、正規化、幅指標、`sim-core.js`、`worker.js` と数値モデル版 `2026-09-08.1` は変更していません。展開図専用の `diagramDisplayVersion=2026-09-08.3` は別に保持します。
+
 ## 公開と権利
 
-SSPz描画版 `profileDisplayVersion=2026-09-08.1` では、計算済みのz座標とSSPz値の隣接点を共通関数で直線接続します。不等間隔の計算点も保持し、描画のための再標本化、スプライン補間、平滑化、点や360状態の間引きは行いません。日英の画面と600 dpi PNGは同じ描画関数を使います。対数裾では従来どおり0.1%以上の元の点を対数座標で結び、閾値未満を跨いで線をつなぎません。数値モデル、正規化、幅指標は変更していません。
-
-日本語・英語の権利表記を共通ビルドで保持します。無料で通常利用できますが、無料提供と再配布許諾は同じではありません。画面の権利表記に従ってください。この配布はWebシミュレータの更新であり、研究原稿の結果や結論を更新したことを意味しません。文献は出典としてリンクし、論文PDFや研究データは本配布に含めません。
+日本語・英語の権利表記を共通ビルドで保持します。無料で通常利用できますが、無料提供と再配布許諾は同じではありません。画面の権利表記に従ってください。本更新はローカルの実装・検証であり、公開サイトや原稿を自動的に差し替えたことを意味しません。
 
 ## 計算モデルの文献的背景
 
@@ -116,4 +120,13 @@ Web画面には、モデル開発時に参照した以下の研究と、本Web�
 - `tests/`: フルスキャン計算契約と固定数値の回帰試験
 - `model-manifest.json`: モデル版、基準コード・固定データのハッシュ、実装範囲
 - `REPRODUCIBILITY.md`: 数値回帰・ブラウザQA・公開手順の記録
-- 公開は研究室サイトのGitHub Pages設定に従います。配布前に上記のビルド・テストを実行し、配布後に日英ページと出力を確認します。
+- `.github/workflows/deploy-pages.yml`: GitHub Pages公開処理
+
+
+## 2026-09-11: mean-centered shape distributions and Excel export
+
+The new paired heatmaps align each complete native SSPz at its bilateral linear FWHM midpoint, interpolate on a shared 0.01-mm grid, and subtract the pointwise mean separately for each reference condition. Fixed deviation bins span -0.06 to +0.06 in steps of 0.002; intensity is sqrt(state fraction), on a common 0–1 scale. Excluded states and out-of-range samples are disclosed. The model calculation is unchanged.
+
+The Excel button exports all 360 native peak-normalized profiles for both references, aligned profiles, pointwise means, deviations, inclusion flags and centers, sweep metrics, units, parameters, and model/export versions. Native data preserve the worker Float32 values; no display rounding is applied. The workbook uses standard OOXML with ZIP compression, or uncompressed ZIP when browser compression is unavailable. Native, aligned, and deviation sheets support independent replotting. Fractions refer to sampled model states, not measured start-angle probabilities.
+
+Validation: tests/shape-export.mjs; all eight manuscript simulation conditions agree with the retained Python shape deviations within 9e-16; Japanese/English UI, XLSX readback, and 600-dpi PNG export checked.
