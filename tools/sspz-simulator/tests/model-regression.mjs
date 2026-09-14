@@ -27,7 +27,7 @@ const englishIndexSource = await readFile(new URL("../index-en.html", import.met
 const englishAppBundle = await readFile(new URL("../app-bundle-en.js", import.meta.url), "utf8");
 const englishWorkerSource = await readFile(new URL("../worker-source-en.js", import.meta.url), "utf8");
 const englishWorkerModule = await readFile(new URL("../worker-en.js", import.meta.url), "utf8");
-const coreHash = createHash("sha256").update(coreSource).digest("hex");
+const coreHash = createHash("sha256").update(coreSource.toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
 const DIRECT_FULL_SCAN_PATH = "direct-full-scan";
 const FAN_BEAM_180LI_PATH = "fan-beam-180li";
 

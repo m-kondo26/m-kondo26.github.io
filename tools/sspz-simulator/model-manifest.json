@@ -12,7 +12,8 @@
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "917b16531d84644bc4d5d6d7aeffcb8ee92c383f6da60f553722a857693773dd"
+    "sha256": "9e0ad206dc4c772142a89ddff6e1505c2bdef5d5ce933dc2ead405da24c785e3",
+    "sha256Convention": "UTF-8 bytes with LF line endings, matching the published GitHub Pages source"
   },
   "regressionFixture": {
     "fileName": "tests/full-scan-reference.json",
