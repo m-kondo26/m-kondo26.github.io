@@ -391,3 +391,8 @@ footer p { margin: 0.2rem 0; }
 .subsection-heading .section-summary { font-size: .9rem; }
 .reading-details .complementary-intro { display: block; }
 .reading-details .complementary-intro > p { margin: .7rem 0; }
+[hidden] { display: none !important; }
+.fdk-controls { grid-column: 1 / -1; border-top: 1px solid #d0d4d7; padding-top: 18px; }
+#fdk-panel { margin-top: 28px; }
+#fdk-panel canvas { width: 100%; height: auto; aspect-ratio: auto; }
+#fdk-panel h3 { font-size: 1rem; margin: 0 0 8px; }

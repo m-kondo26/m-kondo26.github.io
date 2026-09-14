@@ -1,4 +1,8 @@
 const replacements = [
+  ["取得データの配置を展開図で示し、SSPzとの関係を計算します。従来の体軸方向補間モデルに加え、80・160・320列の投影生成と3次元FBP（FDK近似）を選択できます。", "Explore acquired-data geometry and SSPz. Select the axial interpolation reference or 3D FBP (FDK approximation), including projection generation for 80, 160 and 320 detector rows."],
+  ["0では寝台移動なしの展開図を表示します。補間点・SSPzは計算しません。", "At 0, stationary-table diagrams are displayed. Interpolation points and SSPz are not calculated."],
+  ["ピッチ0：寝台移動なしの展開図", "Pitch 0: stationary-table geometry"],
+  ["ヘリカルSSPz・補間重み・状態変動は計算対象外です。", "Helical SSPz, interpolation weights and state sweeps are not evaluated."],
   ['主要表示：フィルタ補間後のモデルSSPz','Primary display: filter-interpolated model SSPz'],
   ['平行ビーム180°基準・フィルタ補間後','Parallel-beam 180-degree reference; filter-interpolated'],
   ['ファンビーム条件・フィルタ補間後','Fan-beam condition; filter-interpolated'],

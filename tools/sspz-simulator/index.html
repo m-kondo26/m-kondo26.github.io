@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-11.2">
+  <link rel="stylesheet" href="styles.css?v=2026-09-14.1">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -26,7 +26,7 @@
         <a class="language-link" href="index-en.html" data-language-target="index-en.html" lang="en">English</a>
       </div>
       <h1>CT展開図・SSPz幾何リファレンス</h1>
-      <p class="lead">各実データ側ビューと、ファン角に応じた理想対向角を挟む対向データ側の両隣実取得ビューを対応付ける180LI取得幾何を主解析として、候補X線の位置、線形補間重み、体軸方向スライス感度プロファイル（SSPz）の関係を表示します。0～360°の実データ側だけを用いるフルスキャン計算も比較用に選択できます。</p>
+      <p class="lead">取得データの配置を展開図で示し、SSPzとの関係を計算します。従来の体軸方向補間モデルに加え、80・160・320列の投影生成と3次元FBP（FDK近似）を選択できます。</p>
     </div>
     <div class="hero-badge" aria-label="利用条件とモデルの位置づけ">
       <strong>無料・登録不要</strong>
@@ -61,7 +61,8 @@
           <input id="rowWidth" name="rowWidth" type="number" min="0.05" max="10" step="0.05" value="1.0">
         </label>
         <label>ビームピッチ
-          <input id="beamPitch" name="beamPitch" type="number" min="0.05" max="3" step="0.025" value="0.875">
+          <input id="beamPitch" name="beamPitch" type="number" min="0" max="3" step="0.025" value="0.875">
+          <small class="field-help">0では寝台移動なしの展開図を表示します。補間点・SSPzは計算しません。</small>
         </label>
         <label>焦点―回転中心距離 <span class="unit">mm</span>
           <input id="sourceRadius" name="sourceRadius" type="number" min="100" max="2000" step="1" value="600">
@@ -463,11 +464,11 @@
   </main>
 
   <footer>
-    <p>Model: 180LI acquisition geometry by default, with a direct-ray 0–360° comparator and Taguchi-style filter interpolation using FW independent of reference thickness T; scanner-specific weighting, nominal-thickness calibration, and backprojection are not reproduced.</p>
+    <p>Models: axial filter-interpolation reference, or cylindrical-detector full-turn helical 3D FBP (FDK approximation). Neither reproduces a scanner-specific reconstruction algorithm.</p>
     <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle.js?v=2026-09-11.1"></script>
+  <script src="worker-source.js?v=2026-09-14.1"></script>
+  <script src="app-bundle.js?v=2026-09-14.1"></script>
 </body>
 </html>

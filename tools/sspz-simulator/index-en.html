@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-11.2">
+  <link rel="stylesheet" href="styles.css?v=2026-09-14.1">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -26,7 +26,7 @@
         <a class="language-link" href="index.html" data-language-target="index.html" lang="ja">Japanese</a>
       </div>
       <h1>CT Angular-Longitudinal Diagram and SSPz Geometry Reference</h1>
-      <p class="lead">The primary analysis uses 180LI acquisition geometry to associate each direct-ray view with the two acquired complementary-ray views bracketing the ideal fan-angle-dependent complementary angle. It displays the relationships among candidate-ray positions, linear interpolation weights, and the longitudinal slice sensitivity profile (SSPz). A direct-ray-only 0-360° full-scan calculation is also available as a comparator.</p>
+      <p class="lead">Explore acquired-data geometry and SSPz. Select the axial interpolation reference or 3D FBP (FDK approximation), including projection generation for 80, 160 and 320 detector rows.</p>
     </div>
     <div class="hero-badge" aria-label="Access and model scope">
       <strong>Free to use · No registration required</strong>
@@ -61,7 +61,8 @@
           <input id="rowWidth" name="rowWidth" type="number" min="0.05" max="10" step="0.05" value="1.0">
         </label>
         <label>Beam pitch
-          <input id="beamPitch" name="beamPitch" type="number" min="0.05" max="3" step="0.025" value="0.875">
+          <input id="beamPitch" name="beamPitch" type="number" min="0" max="3" step="0.025" value="0.875">
+          <small class="field-help">At 0, stationary-table diagrams are displayed. Interpolation points and SSPz are not calculated.</small>
         </label>
         <label>Source-to-isocenter distance <span class="unit">mm</span>
           <input id="sourceRadius" name="sourceRadius" type="number" min="100" max="2000" step="1" value="600">
@@ -463,11 +464,11 @@
   </main>
 
   <footer>
-    <p>Model: 180LI acquisition geometry by default, with a direct-ray 0–360° comparator and Taguchi-style filter interpolation using FW independent of reference thickness T; scanner-specific weighting, nominal-thickness calibration, and backprojection are not reproduced.</p>
+    <p>Models: axial filter-interpolation reference, or cylindrical-detector full-turn helical 3D FBP (FDK approximation). Neither reproduces a scanner-specific reconstruction algorithm.</p>
     <p id="version">Web reference build 2026-09-08.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-08.1-r4"></script>
-  <script src="app-bundle-en.js?v=2026-09-11.1"></script>
+  <script src="worker-source-en.js?v=2026-09-14.1"></script>
+  <script src="app-bundle-en.js?v=2026-09-14.1"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import {
   tableFeedMm,
   validateParams,
 } from "./sim-core.js";
+import { reconstructFdkSeries } from "./fdk-core.js";
 
 let cancelled = false;
 let activeContext = null;
@@ -102,6 +103,19 @@ function overlayTransferList(overlay) {
 
 self.onmessage = async event => {
   const message = event.data;
+  if (message.type === 'fdk-run') {
+    cancelled = false;
+    try {
+      const result = await reconstructFdkSeries(message.params, {
+        cancelled: () => cancelled,
+        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.round(value*100)}%`}),
+      });
+      self.postMessage({type:'fdk-result',result});
+    } catch(error) {
+      self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
+    }
+    return;
+  }
   if (message.type === "cancel") {
     cancelled = true;
     return;
@@ -133,7 +147,16 @@ self.onmessage = async event => {
   cancelled = false;
   activeContext = null;
   try {
-    const params = validateParams(message.params);
+    const params = validateParams(message.params, { allowZeroPitch: true });
+    if (params.beamPitch === 0) {
+      activeContext = null;
+      self.postMessage({ type: "geometry-result", result: {
+        params, geometryOnly: true,
+        diagramOff: computeUnwrapped(params, { coneOn: false }),
+        diagramOn: computeUnwrapped(params, { coneOn: true }),
+      } });
+      return;
+    }
     self.postMessage({ type: "progress", value: 0.01, label: "設定スライス厚と仮定重みを適用中" });
     const assumptions = createProfileAssumptions(params);
     if (cancelled) return self.postMessage({ type: "cancelled" });

@@ -42,7 +42,7 @@ const MAX_CONFIGURED_SLICE_THICKNESS_MM = 20;
 // narrowest supported detector rows and the widest helical gaps.
 const MAX_INTERNAL_Z_CELLS = 65535;
 
-function validateParams(input) {
+function validateParams(input, { allowZeroPitch = false } = {}) {
   const p = {
     rows: Math.round(Number(input.rows)),
     rowWidth: Number(input.rowWidth),
@@ -78,7 +78,7 @@ function validateParams(input) {
   if (finite.length) throw new Error(`The following inputs could not be parsed as numbers: ${finite.map(([key]) => key).join(", ")}`);
   if (p.rows < 1 || p.rows > 320) throw new Error("Set the number of detector rows to a value from 1 to 320.");
   if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("Set the single-row width to a value greater than 0 and no greater than 10 mm.");
-  if (p.beamPitch <= 0 || p.beamPitch > 3) throw new Error("Set the beam pitch to a value greater than 0 and no greater than 3.");
+  if (p.beamPitch < 0 || (!allowZeroPitch && p.beamPitch === 0) || p.beamPitch > 3) throw new Error("Set the beam pitch to a value greater than 0 and no greater than 3.");
   if (p.sourceRadius <= 0) throw new Error("The source-to-isocenter distance must be positive.");
   if (p.radius > 250) throw new Error("Set the radial distance from isocenter to a value from 0 to 250 mm.");
   if (p.radius >= p.sourceRadius) throw new Error("The radial distance from isocenter must be smaller than the source-to-isocenter distance.");
@@ -2368,7 +2368,7 @@ function computeProfileModel(rawParams, options = {}) {
 }
 
 function computeUnwrapped(rawParams, options = {}) {
-  const p = validateParams(rawParams);
+  const p = validateParams(rawParams, { allowZeroPitch: true });
   const requestedState = Number(options.state ?? p.state);
   const state = ((requestedState % 1) + 1) % 1;
   const coneOn = Boolean(options.coneOn);
@@ -2440,7 +2440,7 @@ function computeUnwrapped(rawParams, options = {}) {
   }
   const displayRows = Array.from({ length: p.rows }, (_, row) => row);
   const rowOffsets = Float64Array.from(displayRows, row => (row + 0.5 - p.rows / 2) * p.rowWidth);
-  const centerTurn = roundHalfEven(z0 / feed);
+  const centerTurn = feed === 0 ? 0 : roundHalfEven(z0 / feed);
   // The ideal helix is infinite.  The reproducible finite display contract is
   // every turn containing a row-wise nearest smaller-z or larger-z candidate in
   // ANY displayed family over the full reference-angle period, plus one
@@ -2451,7 +2451,7 @@ function computeUnwrapped(rawParams, options = {}) {
   const endpointOffsets = rowOffsets.length > 1
     ? [rowOffsets[0], rowOffsets[rowOffsets.length - 1]]
     : [rowOffsets[0]];
-  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+  for (let viewIndex = 0; feed > 0 && viewIndex < acquiredTraceSamples; viewIndex += 1) {
     const rangeViewIndices = new Set([viewIndex]);
     if (reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI) {
       // The two displayed conditions share one turn window.  Their fan-angle
@@ -2483,8 +2483,8 @@ function computeUnwrapped(rawParams, options = {}) {
     }
   }
   if (!Number.isFinite(turnMin) || !Number.isFinite(turnMax)) {
-    turnMin = centerTurn - 2;
-    turnMax = centerTurn + 2;
+    turnMin = feed === 0 ? 0 : centerTurn - 2;
+    turnMax = feed === 0 ? 0 : centerTurn + 2;
   }
   const turns = Int32Array.from({ length: turnMax - turnMin + 1 }, (_, index) => turnMin + index);
   const turnOffsetMin = turnMin - centerTurn;
@@ -2500,7 +2500,7 @@ function computeUnwrapped(rawParams, options = {}) {
   );
   let validViewCount = 0;
   let normalizationErrorMax = 0;
-  for (let i = 0; i < samples; i += 1) {
+  for (let i = 0; feed > 0 && i < samples; i += 1) {
     const mappedViewIndex = Math.min(
       p.viewSamples - 1,
       Math.floor(i * p.viewSamples / samples),
@@ -2564,8 +2564,9 @@ function computeUnwrapped(rawParams, options = {}) {
   const zoomXLimit = Math.max(baseZoomXLimit, maximumWeightedDistance + Math.max(0.15, p.rowWidth * 0.15));
   const usedTurns = [...new Set(weightedPoints.map(point => point.turnOffset))].sort((a, b) => a - b);
   const usedTurnsOutsideOverview = usedTurns.filter(turn => turn < turnOffsetMin || turn > turnOffsetMax);
-  const complementaryCandidates = computeComplementaryCandidateSeries(p, z0, coneOn);
+  const complementaryCandidates = feed === 0 ? null : computeComplementaryCandidateSeries(p, z0, coneOn);
   return {
+    geometryOnly: feed === 0,
     coneOn,
     reconstructionPath,
     state,
@@ -2733,11 +2734,198 @@ globalThis.SSPZShape = (() => {
       sheets.push([key+'_States',[['state_index','object_position_fraction','included_in_shape','FWHM_midpoint_mm','coverage'],...ids.map((_,s)=>{const j=a.valid.indexOf(s);return [s,o.states[s],j>=0?1:0,j>=0?a.mid[j]:'',o[key].coverage[s]];})]]);
     }
     const keys=Object.keys(result.sweep[0]??{});sheets.push(['Width_metrics',[keys,...result.sweep.map(r=>keys.map(k=>r[k]))]]);
+    return fromSheets(sheets);
+  }
+  function fromSheets(sheets) {
     const files=[['[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>'],['_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],['xl/workbook.xml','<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sheets.map(([name],i)=>'<sheet name="'+escape(name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('')+'</sheets></workbook>'],['xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('')+'</Relationships>']];
     sheets.forEach(([,rows],i)=>files.push(['xl/worksheets/sheet'+(i+1)+'.xml',sheet(rows)]));return zip(files);
   }
-  return {analyze,workbook};
+  return {analyze,workbook,fromSheets};
 })();
+
+// Integrated UI for the browser worker, using the existing shared form,
+// geometry conventions, XLSX writer and PNG resolution metadata.
+const FDK_UI_FIELDS={sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
+  xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:1,phase:0,state:0,normalization:'minmax'};
+let fdkResult=null;
+const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
+function readFdkParams(){
+  const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
+  if(out.computationModel!=='fdk')return out;
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
+    const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
+  }
+  return out;
+}
+function writeFdkUrl(url,p){
+  if(p.computationModel!=='fdk')return;
+  url.searchParams.set('model','fdk');
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS))url.searchParams.set('fdk_'+k,p[k]??v);
+}
+function fdkParamsFromUrl(q){
+  const out={computationModel:q.get('model')==='fdk'?'fdk':'axial'};
+  if(out.computationModel!=='fdk')return out;
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
+  return out;
+}
+function initializeFdkUi(initial){
+  const pick=document.createElement('label');pick.innerHTML=fdkText('','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('','3D FBP (helical FDK approximation)')}</option></select>`;
+  form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
+  const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
+  const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
+  const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
+  controls.innerHTML=`<p class="section-summary">${fdkText('','Rows, row width, pitch, source radius, evaluation radius and views per turn use the shared controls above.')}</p>
+  <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('','rows')}</button>`).join('')}<span>${fdkText('','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
+  <div class="parameter-grid">
+  ${num('sphereDiameter','','Sphere diameter (mm)',.1,10,.01)}
+  ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
+  ${sel('apertureSamples','','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
+  ${num('zStep','','Reconstruction z spacing (mm)',.01,.2,.01)}
+  ${num('zExtent','','Reconstruction z half-range (mm)',1,20,.5)}
+  ${num('xyExtent','','Local image half-range (mm)',.5,10,.5)}
+  ${sel('xySamples','','Local image matrix',[[17,'17 × 17'],[33,'33 × 33'],[65,'65 × 65']])}
+  ${sel('phaseCount','','Number of start angles',[[1,'1'],[4,'4'],[12,'12']])}
+  ${num('phase','','Source angle at z = 0 (rad)',0,6.28318530718,.01)}
+  ${num('state','','Object z / table feed per turn',0,1,.01)}
+  ${sel('normalization','','Normalization for display and widths', [['minmax',fdkText('','Minimum 0, maximum 1')],['peak',fdkText('','Peak 1 (retain negative values)')]])}
+  </div><p class="model-note">${fdkText('','Each slice uses a contiguous full turn; pitch 0 uses circular FDK. Computation stops if the required projections fall outside the detector; missing data are not extrapolated.')}</p>`;
+  form.append(controls);
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
+  const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
+  panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('','From acquired geometry to 3D FBP')}</h2></div>
+  <p class="section-summary">${fdkText('','Sphere projections on the cylindrical detector → flat-detector rebinning → cone preweight → transaxial Ram-Lak filtering → 3D backprojection → slice-wise ROI mean.')}</p>
+  <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p>
+  <div class="chart-grid two">
+  <article class="chart-card"><h3>${fdkText('','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('','Sphere-derived SSPz')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('','Axial image through the sphere center')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('','Coronal image through the sphere center')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
+  </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('','The sphere center is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
+  <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','This is an approximate FDK-type 3D FBP. It shares the source trajectory and detector-row positions with the existing diagrams, but uses a different reconstruction path from the axial interpolation model. It does not reproduce TCOT or implement exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. Reference thickness T and filter width FW do not apply to this path.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','Equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  document.querySelector('.control-shell').after(panel);
+  const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
+  const axialViewHelp=viewHelp?.textContent;
+  function modeChanged(){
+    const on=pick.querySelector('select').value==='fdk';controls.hidden=!on;panel.hidden=!on;
+    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell'))s.hidden=on;});
+    for(const k of ['sliceThicknessMm','filterWidthMm','filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
+    const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
+    if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn; independent of the number of start angles.'):axialViewHelp;
+    if(legacyUrlNote&&on)legacyUrlNote.hidden=true;
+    if(!runButton.disabled)status.textContent=fdkText('','Model selected. Check the conditions and calculate.');
+  }
+  pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();
+  resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
+  controls.querySelectorAll('[data-fdk-rows]').forEach(b=>b.addEventListener('click',()=>{if(runButton.disabled)return;form.elements.rows.value=b.dataset.fdkRows;form.elements.rowWidth.value=.5;form.elements.beamPitch.value=.5;status.textContent=fdkText('','Preset selected. Press Calculate.');}));
+  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob('FDK_SSPz.csv','\uFEFF'+[['z_position_mm',...r.profiles.flatMap((_,i)=>['raw_'+i,'normalized_'+i])],...Array.from(r.z,(z,i)=>[z,...r.profiles.flatMap(p=>[p.raw[i],p.profile[i]])])].map(row=>row.join(',')).join('\r\n'));};
+  document.getElementById('fdk-json').onclick=()=>{if(fdkResult)downloadBlob('FDK_volume.json',JSON.stringify(fdkResult,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('fdk-xlsx').onclick=async()=>{
+    const r=fdkResult;if(!r)return;
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config),['coordinate','z relative to sphere center (mm); no FWHM alignment'],['ROI','disk centered on sphere, radius = sphere radius'],['raw_profile','mean reconstructed attenuation in disk ROI'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+      ['SSPz',[['z_position_mm',...r.profiles.flatMap((_,i)=>['raw_'+i,'normalized_'+i])],...Array.from(r.z,(z,i)=>[z,...r.profiles.flatMap(p=>[p.raw[i],p.profile[i]])])]],
+      ['Mean_difference',[['z_position_mm','mean_normalized',...r.profiles.map((_,i)=>'difference_'+i)],...Array.from(r.z,(z,i)=>[z,r.mean[i],...r.meanDifference.map(p=>p[i])])]],
+      ['Widths',[['start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...r.profiles.map(p=>[p.phase,p.fwhm.width,p.fwtm.width,p.baseline])]]];
+    downloadBlob('FDK_SSPz.xlsx',await SSPZShape.fromSheets(sheets),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  };
+  document.getElementById('fdk-png').onclick=async()=>{if(!fdkResult)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.7);fdkDrawProfile(c,fdkResult);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob('FDK_SSPz_600dpi.png',await pngWithResolution(blob,600),'image/png');};
+}
+function fdkToggleDownloads(on){for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png'])document.getElementById(id).disabled=!on;}
+function runFdkSimulation(){
+  const params={...readParams(),...readFdkParams()};
+  releaseWorker();clearError();lastResult=null;fdkResult=null;fdkToggleDownloads(false);setBusy(true);
+  document.getElementById('fdk-summary').textContent=fdkText('','Computing 3D FBP…');document.getElementById('fdk-result-config').textContent='';
+  for(const canvas of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(canvas,'3D FBP',fdkText('','Calculating'));
+  document.getElementById('fdk-difference-wrap').hidden=true;
+  startedAt=performance.now();progress.value=0;
+  const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
+  syncLanguageLinks(url.search);worker=createComputationWorker();
+  const fail=text=>{setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'3D FBP',fdkText('','No valid reconstruction'),'error');releaseWorker();};
+  worker.onmessage=({data:m})=>{
+    if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;}
+    else if(m.type==='fdk-result'){
+      fdkResult=m.result;renderFdkResult(fdkResult);progress.value=1;setBusy(false);fdkToggleDownloads(true);status.textContent=fdkText('','Completed ')+((performance.now()-startedAt)/1000).toFixed(1)+' s / 3D FBP';releaseWorker();
+    }else if(m.type==='cancelled'){setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;releaseWorker();}
+    else if(m.type==='error'){
+      let text=m.message;
+      if(text.startsWith('FDK_COVERAGE'))text=fdkText('',text);
+      if(text.startsWith('FDK_DOMAIN'))text=fdkText('',text);
+      fail(text);
+    }
+  };worker.onerror=e=>fail(e.message);worker.postMessage({type:'fdk-run',params});
+}
+function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null){
+  const ctx=canvas.getContext('2d'),s=canvas.width/1000,w=canvas.width,h=canvas.height;
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.font=`${25*s}px Arial`;ctx.fillStyle='#000';ctx.textAlign='left';ctx.fillText(panel,18*s,30*s);
+  const b={left:130*s,right:w-35*s,top:72*s,bottom:h-105*s};
+  const x=v=>b.left+(v-xmin)/(xmax-xmin)*(b.right-b.left),y=v=>b.bottom-(v-ymin)/(ymax-ymin)*(b.bottom-b.top);
+  const label=v=>Math.abs(v)<1e-10?'0':Math.abs(v)>=100?v.toFixed(0):Number(v.toFixed(2)).toString();
+  ctx.font=`${23*s}px Arial`;
+  for(let i=0;i<=4;i++){
+    const vx=xmin+(xmax-xmin)*i/4;
+    ctx.strokeStyle='#d6d6d6';ctx.lineWidth=s;ctx.beginPath();ctx.moveTo(x(vx),b.top);ctx.lineTo(x(vx),b.bottom);ctx.stroke();
+    ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(label(vx),x(vx),b.bottom+32*s);
+  }
+  for(const vy of yTicks??Array.from({length:5},(_,i)=>ymin+(ymax-ymin)*i/4)){
+    ctx.strokeStyle='#d6d6d6';ctx.beginPath();ctx.moveTo(b.left,y(vy));ctx.lineTo(b.right,y(vy));ctx.stroke();ctx.fillStyle='#000';ctx.textAlign='right';ctx.fillText(label(vy),b.left-14*s,y(vy)+8*s);
+  }
+  ctx.strokeStyle='#000';ctx.lineWidth=1.6*s;ctx.strokeRect(b.left,b.top,b.right-b.left,b.bottom-b.top);
+  ctx.textAlign='center';ctx.font=`${27*s}px Arial`;ctx.fillText(xlabel,(b.left+b.right)/2,h-26*s);
+  ctx.save();ctx.translate(35*s,(b.top+b.bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText(ylabel,0,0);ctx.restore();
+  return {ctx,s,b,x,y};
+}
+function fdkDrawLines(a,xs,series){
+  const {ctx,s,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
+  for(const values of series){ctx.strokeStyle=series.length>1?'rgba(213,94,0,.6)':'#d55e00';ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
+}
+function fdkDrawProfile(canvas,r){
+  const ymin=Math.min(0,...r.profiles.map(p=>Math.min(...p.profile))),low=ymin<0?Math.floor(ymin*10)/10:0,a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.2,'z position (mm)','Normalized SSPz','(b)',low<0?[low,0,.5,1]:[0,.5,1]);
+  fdkDrawLines(a,r.z,r.profiles.map(p=>p.profile));
+  const widths=r.profiles.map(p=>p.fwhm.width),mean=widths.reduce((s,v)=>s+v,0)/widths.length;
+  const sd=widths.length>1?Math.sqrt(widths.reduce((s,v)=>s+(v-mean)**2,0)/(widths.length-1)):null;
+  a.ctx.font=`${25*a.s}px Arial`;a.ctx.textAlign='center';a.ctx.fillStyle='#000';
+  a.ctx.fillText(`FWHM ${mean.toFixed(2)}${sd===null?'':' ± '+sd.toFixed(3)} mm`,(a.b.left+a.b.right)/2,a.y(1.08));
+  const fw=r.profiles[0].fwhm,yy=a.y(.5);a.ctx.strokeStyle='#000';a.ctx.lineWidth=1.5*a.s;a.ctx.beginPath();a.ctx.moveTo(a.x(fw.left),yy);a.ctx.lineTo(a.x(fw.right),yy);
+  for(const [v,d] of [[fw.left,1],[fw.right,-1]]){a.ctx.moveTo(a.x(v)+d*9*a.s,yy-5*a.s);a.ctx.lineTo(a.x(v),yy);a.ctx.lineTo(a.x(v)+d*9*a.s,yy+5*a.s);}a.ctx.stroke();
+}
+function fdkDrawGeometry(canvas,r){
+  const c=r.config,feed=c.feed,step=2*Math.PI/c.viewSamples;
+  const first=Math.ceil(((feed?2*Math.PI*r.zObject/feed:0)-Math.PI)/step-1e-12),beta0=c.phase+first*step;
+  const betas=Array.from({length:c.viewSamples+1},(_,i)=>beta0+i*step),curves=[];let limit=0;
+  for(let row=0;row<c.rows;row++){
+    const values=betas.map(beta=>{const L=Math.hypot(c.sourceRadius*Math.cos(beta)-c.radius,c.sourceRadius*Math.sin(beta));return feed*(beta-c.phase)/(2*Math.PI)+(row-(c.rows-1)/2)*c.rowWidth*L/c.sourceRadius-r.zObject;});
+    limit=Math.max(limit,...values.map(Math.abs));curves.push(values);
+  }
+  limit=Math.ceil(limit/5)*5||5;
+  const a=fdkAxes(canvas,-limit,limit,0,360,'Row position relative to sphere (mm)','Acquired angle within turn (°)','(a)');
+  const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();ctx.lineWidth=Math.max(.6,1.1- c.rows/800)*s;ctx.strokeStyle='#687780';ctx.globalAlpha=Math.max(.22,Math.min(.7,25/c.rows));
+  for(const values of curves){ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(a.x(v),a.y(360*i/c.viewSamples)):ctx.moveTo(a.x(v),a.y(0)));ctx.stroke();}
+  ctx.globalAlpha=1;ctx.strokeStyle='#d55e00';ctx.lineWidth=2*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),a.y(0));ctx.lineTo(a.x(0),a.y(360));ctx.stroke();ctx.restore();
+  ctx.font=`${22*s}px Arial`;ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(`${c.rows} rows / central-slice full turn`,(a.b.left+a.b.right)/2,49*s);
+}
+function fdkDrawImage(canvas,r,coronal){
+  const n=r.config.xySamples,nz=r.z.length,m=(n-1)/2,iz=(nz-1)/2,values=[];
+  const nx=n,ny=coronal?nz:n;
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)values.push(coronal?r.volume[((nz-1-j)*n+m)*n+i]:r.volume[(iz*n+(n-1-j))*n+i]);
+  const peak=r.volume.reduce((m,v)=>Math.max(m,v),0),pixel=2*r.config.xyExtent/(n-1),xmin=-r.config.xyExtent-pixel/2,xmax=-xmin;
+  const ymin=coronal?r.z[0]-r.config.zStep/2:xmin,ymax=-ymin;
+  const a=fdkAxes(canvas,xmin,xmax,ymin,ymax,'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const w=a.b.right-a.b.left,h=a.b.bottom-a.b.top,scale=Math.min(w/(xmax-xmin),h/(ymax-ymin));
+  // Reuse the numeric frame but draw a square metric image in its own bounds.
+  // Give x and y the same mm-to-pixel scale by extending the narrower axis.
+  const rx=(xmax-xmin)/2,ry=(ymax-ymin)/2,cx=(a.b.left+a.b.right)/2,cy=(a.b.top+a.b.bottom)/2;
+  const physical=fdkAxes(canvas,-w/(2*scale),w/(2*scale),-h/(2*scale),h/(2*scale),'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const temp=document.createElement('canvas');temp.width=nx;temp.height=ny;const tc=temp.getContext('2d'),im=tc.createImageData(nx,ny);
+  values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
+  physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Attenuation: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
+}
+function renderFdkResult(r){
+  const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('','Reconstruction complete. Full-turn acquisition coverage was checked for every slice.');
+  document.getElementById('fdk-result-config').textContent=`${c.rows} ${fdkText('','rows')} × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / sphere ${c.sphereDiameter.toFixed(2)} mm / ${r.profiles.length} ${fdkText('','start angles')} / ${fdkText('','first angle: ')}FWTM ${r.fwtm.width.toFixed(2)} mm`+(r.profiles.length>1?fdkText('','. FWHM: mean ± SD of individual widths. Arrow, images and geometry show the first angle.'):'');
+  fdkDrawGeometry(document.getElementById('fdk-geometry'),r);fdkDrawProfile(document.getElementById('fdk-profile'),r);fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
+  document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
+  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...r.meanDifference.map(p=>Math.max(...p.map(Math.abs))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');fdkDrawLines(a,r.z,r.meanDifference);}
+}
 
 // Figure palette and typography follow the journal-facing conventions used by
 // Medical Physics: black sans-serif text, gray gridlines, restrained color,
@@ -2811,7 +2999,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.3`;
+versionLabel.textContent = `Web build 2026-09-14.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -2873,6 +3061,7 @@ function readParams() {
     zSamples: Number(data.get("zSamples")),
     stateSamples: 360,
     phase: 0,
+    ...readFdkParams(),
   };
 }
 
@@ -2915,6 +3104,7 @@ function paramsToUrl(params) {
     nz: params.zSamples,
   };
   for (const [key, value] of Object.entries(compact)) url.searchParams.set(key, value);
+  writeFdkUrl(url, params);
   return url;
 }
 
@@ -2954,6 +3144,7 @@ function paramsFromUrl() {
       : get("nt", DEFAULT_PARAMS.viewSamples),
     zSamples: get("nz", DEFAULT_PARAMS.zSamples),
     stateSamples: 360,
+    ...fdkParamsFromUrl(query),
   };
 }
 
@@ -2961,18 +3152,18 @@ function setBusy(busy) {
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
   form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
-  const inspectDisabled = busy || !lastResult;
+  const inspectDisabled = busy || !lastResult || lastResult.geometryOnly;
   if (inspectState) inspectState.disabled = inspectDisabled;
   if (inspectPrev) inspectPrev.disabled = inspectDisabled;
   if (inspectNext) inspectNext.disabled = inspectDisabled;
   document.querySelectorAll("[data-canvas]").forEach(button => {
-    button.disabled = busy || !lastResult;
+    button.disabled = busy || !lastResult || (lastResult.geometryOnly && !button.dataset.canvas?.startsWith("diagram-"));
   });
-  downloadCsvButton.disabled = busy || !lastResult;
-  downloadProfileButton.disabled = busy || !lastResult;
+  downloadCsvButton.disabled = busy || !lastResult || lastResult.geometryOnly;
+  downloadProfileButton.disabled = busy || !lastResult || lastResult.geometryOnly;
   document.querySelector('#download-excel-button').disabled = busy || !lastResult?.shapeAnalysis;
   if (downloadComplementaryGeometryButton) {
-    downloadComplementaryGeometryButton.disabled = busy || !lastResult;
+    downloadComplementaryGeometryButton.disabled = busy || !lastResult || lastResult.geometryOnly;
   }
 }
 
@@ -3082,6 +3273,7 @@ function createComputationWorker() {
 }
 
 function runSimulation() {
+  if (document.querySelector('#computationModel')?.value === 'fdk') return runFdkSimulation();
   releaseWorker();
   clearError();
   const params = readParams();
@@ -3103,6 +3295,29 @@ function runSimulation() {
       progress.value = message.value;
       status.textContent = message.label;
       showCalculatingState(message.label);
+    } else if (message.type === "geometry-result") {
+      lastResult = message.result;
+      const title = localizedText("Pitch 0: stationary-table geometry", "Pitch 0: stationary-table geometry");
+      const detail = localizedText("Helical SSPz, interpolation weights and state sweeps are not evaluated.", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
+      setResultPlaceholder("unavailable", title, detail);
+      for (const selector of ["#overview-scope", "#calculation-scope", "#overlay-scope", "#profile-axis-note", "#metric-label", "#overlay-core-heading", "#overlay-core-description", "#profile-model-note"]) {
+        const element = document.querySelector(selector);
+        if (element) element.textContent = detail;
+      }
+      document.querySelector("#overview-scope").textContent = title;
+      const limit = Math.max(lastResult.diagramOff.overviewXLimit, lastResult.diagramOn.overviewXLimit);
+      for (const condition of ["off", "on"]) {
+        const diagram = condition === "on" ? lastResult.diagramOn : lastResult.diagramOff;
+        for (const mode of ["overview", "zoom"]) {
+          const canvas = document.querySelector(`#diagram-${mode}-${condition}`);
+          drawDiagram(canvas, diagram, mode, limit);
+          canvas.dataset.renderState = "ready";
+        }
+      }
+      progress.value = 1;
+      status.textContent = title;
+      setBusy(false);
+      releaseWorker();
     } else if (message.type === "result") {
       lastResult = message.result;
       selectedStateIndex = Math.max(0, Math.min(359, Math.round(lastResult.params.state * 360) % 360));
@@ -3687,7 +3902,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
-  if (mode === "overview") {
+  if (mode === "overview" || diagram.geometryOnly) {
     const countText = localizedText(
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
@@ -6076,6 +6291,7 @@ if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
   if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.", "Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.");
 }
+initializeFdkUi(initial);
 runSimulation();
 
 })();

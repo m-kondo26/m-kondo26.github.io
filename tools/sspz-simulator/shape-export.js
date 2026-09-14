@@ -63,8 +63,11 @@ globalThis.SSPZShape = (() => {
       sheets.push([key+'_States',[['state_index','object_position_fraction','included_in_shape','FWHM_midpoint_mm','coverage'],...ids.map((_,s)=>{const j=a.valid.indexOf(s);return [s,o.states[s],j>=0?1:0,j>=0?a.mid[j]:'',o[key].coverage[s]];})]]);
     }
     const keys=Object.keys(result.sweep[0]??{});sheets.push(['Width_metrics',[keys,...result.sweep.map(r=>keys.map(k=>r[k]))]]);
+    return fromSheets(sheets);
+  }
+  function fromSheets(sheets) {
     const files=[['[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>'],['_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],['xl/workbook.xml','<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sheets.map(([name],i)=>'<sheet name="'+escape(name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('')+'</sheets></workbook>'],['xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('')+'</Relationships>']];
     sheets.forEach(([,rows],i)=>files.push(['xl/worksheets/sheet'+(i+1)+'.xml',sheet(rows)]));return zip(files);
   }
-  return {analyze,workbook};
+  return {analyze,workbook,fromSheets};
 })();

@@ -40,7 +40,7 @@ const MAX_CONFIGURED_SLICE_THICKNESS_MM = 20;
 // narrowest supported detector rows and the widest helical gaps.
 const MAX_INTERNAL_Z_CELLS = 65535;
 
-export function validateParams(input) {
+export function validateParams(input, { allowZeroPitch = false } = {}) {
   const p = {
     rows: Math.round(Number(input.rows)),
     rowWidth: Number(input.rowWidth),
@@ -76,7 +76,7 @@ export function validateParams(input) {
   if (finite.length) throw new Error(`数値として解釈できない入力があります: ${finite.map(([key]) => key).join(", ")}`);
   if (p.rows < 1 || p.rows > 320) throw new Error("検出器列数は1〜320にしてください。");
   if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("1列幅は0より大きく10 mm以下にしてください。");
-  if (p.beamPitch <= 0 || p.beamPitch > 3) throw new Error("ビームピッチは0より大きく3以下にしてください。");
+  if (p.beamPitch < 0 || (!allowZeroPitch && p.beamPitch === 0) || p.beamPitch > 3) throw new Error("ビームピッチは0より大きく3以下にしてください。");
   if (p.sourceRadius <= 0) throw new Error("焦点―回転中心距離は正にしてください。");
   if (p.radius > 250) throw new Error("横断面内位置の回転中心からの距離は0〜250 mmにしてください。");
   if (p.radius >= p.sourceRadius) throw new Error("横断面内位置の回転中心からの距離は、焦点―回転中心距離未満にしてください。");
@@ -2366,7 +2366,7 @@ export function computeProfileModel(rawParams, options = {}) {
 }
 
 export function computeUnwrapped(rawParams, options = {}) {
-  const p = validateParams(rawParams);
+  const p = validateParams(rawParams, { allowZeroPitch: true });
   const requestedState = Number(options.state ?? p.state);
   const state = ((requestedState % 1) + 1) % 1;
   const coneOn = Boolean(options.coneOn);
@@ -2438,7 +2438,7 @@ export function computeUnwrapped(rawParams, options = {}) {
   }
   const displayRows = Array.from({ length: p.rows }, (_, row) => row);
   const rowOffsets = Float64Array.from(displayRows, row => (row + 0.5 - p.rows / 2) * p.rowWidth);
-  const centerTurn = roundHalfEven(z0 / feed);
+  const centerTurn = feed === 0 ? 0 : roundHalfEven(z0 / feed);
   // The ideal helix is infinite.  The reproducible finite display contract is
   // every turn containing a row-wise nearest smaller-z or larger-z candidate in
   // ANY displayed family over the full reference-angle period, plus one
@@ -2449,7 +2449,7 @@ export function computeUnwrapped(rawParams, options = {}) {
   const endpointOffsets = rowOffsets.length > 1
     ? [rowOffsets[0], rowOffsets[rowOffsets.length - 1]]
     : [rowOffsets[0]];
-  for (let viewIndex = 0; viewIndex < acquiredTraceSamples; viewIndex += 1) {
+  for (let viewIndex = 0; feed > 0 && viewIndex < acquiredTraceSamples; viewIndex += 1) {
     const rangeViewIndices = new Set([viewIndex]);
     if (reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI) {
       // The two displayed conditions share one turn window.  Their fan-angle
@@ -2481,8 +2481,8 @@ export function computeUnwrapped(rawParams, options = {}) {
     }
   }
   if (!Number.isFinite(turnMin) || !Number.isFinite(turnMax)) {
-    turnMin = centerTurn - 2;
-    turnMax = centerTurn + 2;
+    turnMin = feed === 0 ? 0 : centerTurn - 2;
+    turnMax = feed === 0 ? 0 : centerTurn + 2;
   }
   const turns = Int32Array.from({ length: turnMax - turnMin + 1 }, (_, index) => turnMin + index);
   const turnOffsetMin = turnMin - centerTurn;
@@ -2498,7 +2498,7 @@ export function computeUnwrapped(rawParams, options = {}) {
   );
   let validViewCount = 0;
   let normalizationErrorMax = 0;
-  for (let i = 0; i < samples; i += 1) {
+  for (let i = 0; feed > 0 && i < samples; i += 1) {
     const mappedViewIndex = Math.min(
       p.viewSamples - 1,
       Math.floor(i * p.viewSamples / samples),
@@ -2562,8 +2562,9 @@ export function computeUnwrapped(rawParams, options = {}) {
   const zoomXLimit = Math.max(baseZoomXLimit, maximumWeightedDistance + Math.max(0.15, p.rowWidth * 0.15));
   const usedTurns = [...new Set(weightedPoints.map(point => point.turnOffset))].sort((a, b) => a - b);
   const usedTurnsOutsideOverview = usedTurns.filter(turn => turn < turnOffsetMin || turn > turnOffsetMax);
-  const complementaryCandidates = computeComplementaryCandidateSeries(p, z0, coneOn);
+  const complementaryCandidates = feed === 0 ? null : computeComplementaryCandidateSeries(p, z0, coneOn);
   return {
+    geometryOnly: feed === 0,
     coneOn,
     reconstructionPath,
     state,

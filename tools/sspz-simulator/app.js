@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web reference build ${MODEL_VERSION} / Diagram display 2026-09-08.3`;
+versionLabel.textContent = `Web build 2026-09-14.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -139,6 +139,7 @@ function readParams() {
     zSamples: Number(data.get("zSamples")),
     stateSamples: 360,
     phase: 0,
+    ...readFdkParams(),
   };
 }
 
@@ -181,6 +182,7 @@ function paramsToUrl(params) {
     nz: params.zSamples,
   };
   for (const [key, value] of Object.entries(compact)) url.searchParams.set(key, value);
+  writeFdkUrl(url, params);
   return url;
 }
 
@@ -220,6 +222,7 @@ function paramsFromUrl() {
       : get("nt", DEFAULT_PARAMS.viewSamples),
     zSamples: get("nz", DEFAULT_PARAMS.zSamples),
     stateSamples: 360,
+    ...fdkParamsFromUrl(query),
   };
 }
 
@@ -227,18 +230,18 @@ function setBusy(busy) {
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
   form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
-  const inspectDisabled = busy || !lastResult;
+  const inspectDisabled = busy || !lastResult || lastResult.geometryOnly;
   if (inspectState) inspectState.disabled = inspectDisabled;
   if (inspectPrev) inspectPrev.disabled = inspectDisabled;
   if (inspectNext) inspectNext.disabled = inspectDisabled;
   document.querySelectorAll("[data-canvas]").forEach(button => {
-    button.disabled = busy || !lastResult;
+    button.disabled = busy || !lastResult || (lastResult.geometryOnly && !button.dataset.canvas?.startsWith("diagram-"));
   });
-  downloadCsvButton.disabled = busy || !lastResult;
-  downloadProfileButton.disabled = busy || !lastResult;
+  downloadCsvButton.disabled = busy || !lastResult || lastResult.geometryOnly;
+  downloadProfileButton.disabled = busy || !lastResult || lastResult.geometryOnly;
   document.querySelector('#download-excel-button').disabled = busy || !lastResult?.shapeAnalysis;
   if (downloadComplementaryGeometryButton) {
-    downloadComplementaryGeometryButton.disabled = busy || !lastResult;
+    downloadComplementaryGeometryButton.disabled = busy || !lastResult || lastResult.geometryOnly;
   }
 }
 
@@ -348,6 +351,7 @@ function createComputationWorker() {
 }
 
 function runSimulation() {
+  if (document.querySelector('#computationModel')?.value === 'fdk') return runFdkSimulation();
   releaseWorker();
   clearError();
   const params = readParams();
@@ -369,6 +373,29 @@ function runSimulation() {
       progress.value = message.value;
       status.textContent = message.label;
       showCalculatingState(message.label);
+    } else if (message.type === "geometry-result") {
+      lastResult = message.result;
+      const title = localizedText("ピッチ0：寝台移動なしの展開図", "Pitch 0: stationary-table geometry");
+      const detail = localizedText("ヘリカルSSPz・補間重み・状態変動は計算対象外です。", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
+      setResultPlaceholder("unavailable", title, detail);
+      for (const selector of ["#overview-scope", "#calculation-scope", "#overlay-scope", "#profile-axis-note", "#metric-label", "#overlay-core-heading", "#overlay-core-description", "#profile-model-note"]) {
+        const element = document.querySelector(selector);
+        if (element) element.textContent = detail;
+      }
+      document.querySelector("#overview-scope").textContent = title;
+      const limit = Math.max(lastResult.diagramOff.overviewXLimit, lastResult.diagramOn.overviewXLimit);
+      for (const condition of ["off", "on"]) {
+        const diagram = condition === "on" ? lastResult.diagramOn : lastResult.diagramOff;
+        for (const mode of ["overview", "zoom"]) {
+          const canvas = document.querySelector(`#diagram-${mode}-${condition}`);
+          drawDiagram(canvas, diagram, mode, limit);
+          canvas.dataset.renderState = "ready";
+        }
+      }
+      progress.value = 1;
+      status.textContent = title;
+      setBusy(false);
+      releaseWorker();
     } else if (message.type === "result") {
       lastResult = message.result;
       selectedStateIndex = Math.max(0, Math.min(359, Math.round(lastResult.params.state * 360) % 360));
@@ -953,7 +980,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
-  if (mode === "overview") {
+  if (mode === "overview" || diagram.geometryOnly) {
     const countText = localizedText(
       `全${diagram.totalRows}列・全${diagram.referenceViewSamples}取得角度／共通の実データ側角度βで表示／Tで除外しない`,
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
@@ -3342,4 +3369,5 @@ if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
   if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("旧URL・保存条件をTaguchiらのフィルタ補間へ移行しました。FWが未指定の場合だけ初期値をTと同じ数値に置いていますが、これは実機に校正した対応ではありません。FWを独立に設定してください。旧版の計算値を流用せず、応答の定義も固定物体に対する再構成面移動へ変更して再計算します。", "Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.");
 }
+initializeFdkUi(initial);
 runSimulation();

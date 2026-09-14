@@ -12,7 +12,7 @@
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "27a6e7f48a562050992108af95e21ed5af70b4919a2604c769862d2a92e09a5e"
+    "sha256": "917b16531d84644bc4d5d6d7aeffcb8ee92c383f6da60f553722a857693773dd"
   },
   "regressionFixture": {
     "fileName": "tests/full-scan-reference.json",
@@ -156,5 +156,27 @@
     "stateMeaning": "fixed-object-position-within-one-table-feed",
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
+  },
+  "webBuildVersion": "2026-09-14.1",
+  "threeDimensionalFbp": {
+    "version": "2026-09-14.1",
+    "core": "fdk-core.js",
+    "sha256": "6defc27a51b9c80b05ccf3123b80ff1ae22f7f46e0abfb601b85caad68daf9e4",
+    "path": "full-turn helical FDK approximation",
+    "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
+    "rows": {
+      "min": 2,
+      "max": 320,
+      "presets": [
+        80,
+        160,
+        320
+      ]
+    },
+    "documentation": "FDK_METHOD.md",
+    "implementationTests": "tests/fdk.mjs",
+    "numericalSensitivity": "tests/fdk-verification.json",
+    "scannerValidation": "not established",
+    "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core."
   }
 }
