@@ -2682,7 +2682,7 @@ const FDK_TAU=2*Math.PI;
 function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
   for(const k of Object.keys(FDK_DEFAULTS)) if(k!=='normalization'&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
-  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,12]])
+  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
     if(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi)throw Error(`${k}: integer ${lo}–${hi} required`);
   for(const [k,lo,hi] of [['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
     if(c[k]<lo||c[k]>hi)throw Error(`${k}: ${lo}–${hi} required`);
@@ -2874,12 +2874,36 @@ async function reconstructFdkSeries(input,hooks={}) {
 // Hsieh et al., Opt Eng 46:067001 (2007), Eqs. 4-6.
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
-const CBA_VERSION='2026-09-15.1';
+const CBA_VERSION='2026-09-15.3';
 const CBA_TAU=2*Math.PI;
 function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');
   const w=[(1-a)**power,a**power,(1-b)**power,b**power],sum=w.reduce((s,v)=>s+v,0);
   return w.map(v=>v/sum);
+}
+// Compact distance weights over acquired row centres only. The four-sample
+// interior is Hsieh Eq. (6); omitting unavailable cells and renormalizing is
+// our explicit boundary extension inspired by their conjugate compensation.
+function cbaAvailableWeights(c,a,b,power=2){
+  const w=[(1-a.delta)**power,a.delta**power,(1-b.delta)**power,b.delta**power];
+  const rows=[a.n,a.n+1,b.n,b.n+1];
+  for(let i=0;i<4;i++)if(rows[i]<0||rows[i]>=c.rows)w[i]=0;
+  const sum=w.reduce((s,v)=>s+v,0);
+  if(!(sum>1e-14))throw Error('CBA_COVERAGE: no acquired row support in the conjugate pair');
+  return w.map(v=>v/sum);
+}
+// Continuous rectangular mean of a piecewise-linear sampled image column.
+// The caller supplies reconstructed padding; no zero extension or clamping.
+function cbaSlabMean(values,dz,width,padding){
+  if(width===0)return Float64Array.from(values);
+  const n=values.length,prefix=new Float64Array(n),out=new Float64Array(n-2*padding);
+  for(let i=1;i<n;i++)prefix[i]=prefix[i-1]+(values[i-1]+values[i])*dz/2;
+  const integral=x=>{if(x<-1e-9||x>n-1+1e-9)throw Error('CBA_DOMAIN: missing reconstructed slab padding');
+    x=Math.max(0,Math.min(n-1,x));const i=Math.min(n-2,Math.floor(x)),f=x-i;
+    return prefix[i]+dz*(values[i]*f+(values[i+1]-values[i])*f*f/2);};
+  const half=width/(2*dz);
+  for(let i=0;i<out.length;i++){const j=i+padding;out[i]=(integral(j+half)-integral(j-half))/width;}
+  return out;
 }
 function cbaCoordinates(c,theta,x,y,z){
   const t=-x*Math.sin(theta)+y*Math.cos(theta),along=x*Math.cos(theta)+y*Math.sin(theta);
@@ -2893,9 +2917,10 @@ function cbaGrid(c,zObject){
   const n=c.xySamples,h=c.xyExtent,db=CBA_TAU/c.viewSamples;
   const x=Float64Array.from({length:n},(_,i)=>c.radius-h+2*h*i/(n-1));
   const y=Float64Array.from({length:n},(_,i)=>-h+2*h*i/(n-1));
-  const z=Float64Array.from({length:c.zSamples},(_,i)=>zObject-c.zExtent+i*c.zStep);
+  const padding=Math.ceil((c.axialAverageMm??0)/(2*c.zStep));
+  const z=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
   const starts=Int32Array.from(z,v=>Math.ceil(((c.feed?CBA_TAU*v/c.feed:0)-Math.PI)/db-1e-12));
-  return {x,y,z,starts,db,first:Math.min(...starts),last:Math.max(...starts)+c.viewSamples};
+  return {x,y,z,starts,db,padding,first:Math.min(...starts),last:Math.max(...starts)+c.viewSamples};
 }
 function cbaRawAt(p,j,k){
   return j<p.j0||j>p.j1||k<p.k0||k>p.k1?0:p.data[(k-p.k0)*p.width+j-p.j0];
@@ -2947,34 +2972,47 @@ function cbaSampleRow(c,p,t,k){
 function cbaCheckPair(c,a,b){
   for(const q of [a,b])if(q.n<0||q.n+1>=c.rows)throw Error('CBA_COVERAGE: both conjugate row brackets are required; reduce pitch or reconstruction extent');
 }
-function cbaResult(c,g,volume,counts,zObject,kind,acquisition){
+function cbaResult(c,g,volume,counts,zObject,kind,acquisition,profileOnly=false){
   const n=c.xySamples,nxy=n*n,roi=[];
   for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if((g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)roi.push(iy*n+ix);
-  const raw=Float64Array.from(g.z,(_,iz)=>roi.reduce((s,j)=>s+volume[iz*nxy+j],0)/roi.length);
+  const paddedRaw=Float64Array.from(g.z,(_,iz)=>roi.reduce((s,j)=>s+volume[iz*nxy+j],0)/roi.length);
+  const raw=cbaSlabMean(paddedRaw,c.zStep,c.axialAverageMm,g.padding);
+  const outputZ=g.z.slice(g.padding,g.z.length-g.padding);
+  const averagedVolume=c.axialAverageMm&&!profileOnly?new Float64Array(nxy*outputZ.length):volume;
+  if(c.axialAverageMm&&!profileOnly)for(let j=0;j<nxy;j++){
+    const col=cbaSlabMean(Float64Array.from(g.z,(_,iz)=>volume[iz*nxy+j]),c.zStep,c.axialAverageMm,g.padding);
+    for(let iz=0;iz<col.length;iz++)averagedVolume[iz*nxy+j]=col[iz];
+  }
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))throw Error('CBA_DOMAIN: no positive reconstructed sphere');
-  const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(g.z,v=>v-zObject);
+  const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(outputZ,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('CBA_DOMAIN: increase z extent to contain width crossings');
-  return {config:c,x:g.x,y:g.y,z,volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,acquisition,
+  return {config:c,x:g.x,y:g.y,z,volume:profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,acquisition,
     model:{version:CBA_VERSION,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'Matched row-to-row interpolation (RRI)',
       reference:'Hsieh et al. 2007; DOI 10.1117/1.2746866; Eqs. 4-6',detector:'same cylindrical sphere projections for RRI and CBA',
       rebinning:'rowwise fan-to-parallel; linear acquired view and channel interpolation; row unchanged',
       filter:'unwindowed discrete parallel Ram-Lak; cone cosine per row; full nonzero input support',
-      interpolation:kind==='cba'?'four conjugate row samples; normalized distance-quadratic weights, Eq. 6':'linear row interpolation per view, then equal conjugate average',
+      interpolation:kind==='cba'?'normalized distance-quadratic acquired-row weights; Eq. 6 in the four-sample interior':'normalized distance-linear acquired-row weights; conventional RRI in the four-sample interior',
       angularWeight:'one paired full turn per slice; no overscan or adaptive cone weighting',object:'finite sphere; no deconvolution',normalization:c.normalization,
-      extraAxialAveraging:false,fullTurnCoverage:true,scientificScope:'paper-based approximate reference; not TCOT or a validated 80/160/320-row scanner'}};
+      edgePolicy:c.edgePolicy,edgeExtension:'unavailable acquired row coefficients are zero; normalize available distance weights; not the full published scanner algorithm',
+      extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',
+      fullTurnCoverage:c.edgePolicy==='strict',pairedAngularCoverage:true,profileOnly,scientificScope:'paper-based approximate reference; not TCOT or a validated commercial scanner'}};
 }
 async function reconstructCba(input={},hooks={}){
-  const c=fdkConfig(input);if(c.viewSamples%2)throw Error('CBA_VIEWS: an even number of views per turn is required');
+  const c=fdkConfig(input);c.edgePolicy=input.edgePolicy??'available';c.axialAverageMm=Number(input.axialAverageMm??0);
+  if(!['strict','available'].includes(c.edgePolicy))throw Error('CBA_EDGE_POLICY');
+  if(!Number.isFinite(c.axialAverageMm)||c.axialAverageMm<0||c.axialAverageMm>10)throw Error('CBA_AVERAGE: width must be between 0 and 10 mm');
+  if(c.viewSamples%2)throw Error('CBA_VIEWS: an even number of views per turn is required');
   const zObject=c.state*c.feed,g=cbaGrid(c,zObject),n=c.xySamples,nxy=n*n,half=c.viewSamples/2;
-  const volume=new Float64Array(nxy*c.zSamples),rriVolume=new Float64Array(volume.length),counts=new Uint16Array(c.zSamples);
+  const volume=new Float64Array(nxy*g.z.length),rriVolume=new Float64Array(volume.length),counts=new Uint16Array(g.z.length);
+  const pixels=[];for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if(!hooks.profileOnly||(g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)pixels.push({ix,iy,x:g.x[ix],y:g.y[iy],j:iy*n+ix});
   const raws=new Map(),patches=new Map();let rawFirst=Infinity,rawLast=-Infinity;
   const rawAt=v=>{
     if(raws.has(v))return raws.get(v);
     const beta=c.phase+v*g.db,R=c.sourceRadius,a=c.sphereDiameter/2,L=Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
     const wc=R*(zObject-c.feed*v/c.viewSamples)/L,wa=(R+Math.abs(wc))*a/(L-a);
-    if(Math.abs(wc)+wa>=c.rows*c.rowWidth/2)throw Error('CBA_COVERAGE: acquired sphere projection is truncated');
+    if(c.edgePolicy==='strict'&&Math.abs(wc)+wa>=c.rows*c.rowWidth/2)throw Error('CBA_COVERAGE: acquired sphere projection is truncated');
     const p=fdkArcProjection(c,beta,zObject);raws.set(v,p);rawFirst=Math.min(rawFirst,v);rawLast=Math.max(rawLast,v);return p;
   };
   const patchAt=v=>{
@@ -2984,24 +3022,33 @@ async function reconstructCba(input={},hooks={}){
     const p=cbaFilteredPatch(c,rawAt,theta,Math.floor(Math.min(...ts)/c.channelWidth-c.uOffset)-1,Math.ceil(Math.max(...ts)/c.channelWidth-c.uOffset)+1);
     patches.set(v,p);return p;
   };
-  const sampleAudit=[];
+  const sampleAudit=[];let boundaryPairs=0,totalVoxelPairs=0;
   for(let v=g.first;v<g.last-half;v++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const theta=c.phase+v*g.db,theta2=theta+Math.PI,p=patchAt(v),p2=patchAt(v+half);
+    const geometry=pixels.map(pixel=>({pixel,a:cbaCoordinates(c,theta,pixel.x,pixel.y,0),b:cbaCoordinates(c,theta2,pixel.x,pixel.y,0)}));
     for(let iz=0;iz<g.z.length;iz++)if(v>=g.starts[iz]&&v<g.starts[iz]+half){
       counts[iz]+=2;
-      for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++){
-        const a=cbaCoordinates(c,theta,g.x[ix],g.y[iy],g.z[iz]),b=cbaCoordinates(c,theta2,g.x[ix],g.y[iy],g.z[iz]);
-        cbaCheckPair(c,a,b);
-        const samples=[cbaSampleRow(c,p,a.t,a.n),cbaSampleRow(c,p,a.t,a.n+1),cbaSampleRow(c,p2,b.t,b.n),cbaSampleRow(c,p2,b.t,b.n+1)];
-        const w=cbaWeights(a.delta,b.delta),wr=cbaWeights(a.delta,b.delta,1),j=iz*nxy+iy*n+ix;
-        volume[j]+=g.db*samples.reduce((s,q,k)=>s+w[k]*q,0);
-        rriVolume[j]+=g.db*samples.reduce((s,q,k)=>s+wr[k]*q,0);
+      for(const geo of geometry){
+        const {pixel}=geo;
+        const {ix,iy}=pixel,a0=geo.a,b0=geo.b;
+        const ar=c.sourceRadius*(g.z[iz]-a0.sourceZ)/a0.L/c.rowWidth+(c.rows-1)/2,br=c.sourceRadius*(g.z[iz]-b0.sourceZ)/b0.L/c.rowWidth+(c.rows-1)/2;
+        const an=Math.floor(ar),bn=Math.floor(br),ad=ar-an,bd=br-bn;
+        const boundary=an<0||an+1>=c.rows||bn<0||bn+1>=c.rows;totalVoxelPairs++;if(boundary)boundaryPairs++;
+        if(boundary&&c.edgePolicy==='strict')throw Error('CBA_COVERAGE: both conjugate row brackets are required');
+        const l0=an>=0&&an<c.rows?1-ad:0,l1=an+1>=0&&an+1<c.rows?ad:0,l2=bn>=0&&bn<c.rows?1-bd:0,l3=bn+1>=0&&bn+1<c.rows?bd:0;
+        const s=l0*l0+l1*l1+l2*l2+l3*l3,sr=l0+l1+l2+l3;
+        if(!(s>1e-14))throw Error('CBA_COVERAGE: no acquired row support in the conjugate pair');
+        const w0=l0*l0/s,w1=l1*l1/s,w2=l2*l2/s,w3=l3*l3/s;
+        const q0=l0?cbaSampleRow(c,p,a0.t,an):0,q1=l1?cbaSampleRow(c,p,a0.t,an+1):0,q2=l2?cbaSampleRow(c,p2,b0.t,bn):0,q3=l3?cbaSampleRow(c,p2,b0.t,bn+1):0,j=iz*nxy+pixel.j;
+        volume[j]+=g.db*(w0*q0+w1*q1+w2*q2+w3*q3);
+        rriVolume[j]+=g.db*(l0/sr*q0+l1/sr*q1+l2/sr*q2+l3/sr*q3);
         if(iz===(g.z.length-1)/2&&ix===(n-1)/2&&iy===(n-1)/2){
+          const a={...a0,n:an,delta:ad},b={...b0,n:bn,delta:bd},w=[w0,w1,w2,w3],wr=[l0/sr,l1/sr,l2/sr,l3/sr];
           const zs=[a.sourceZ+(a.n-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,a.sourceZ+(a.n+1-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,
             b.sourceZ+(b.n-(c.rows-1)/2)*c.rowWidth*b.L/c.sourceRadius,b.sourceZ+(b.n+1-(c.rows-1)/2)*c.rowWidth*b.L/c.sourceRadius].map(z=>z-zObject);
           sampleAudit.push({theta,thetaDeg:theta*180/Math.PI,relativeAngleDeg:(v-g.starts[iz])*360/c.viewSamples,beta:a.beta,betaConjugate:b.beta,
-            t:a.t,directRow:a.n,conjugateRow:b.n,delta:a.delta,deltaConjugate:b.delta,z:zs,weights:w,rriWeights:wr,
+            t:a.t,directRow:a.n,conjugateRow:b.n,delta:a.delta,deltaConjugate:b.delta,z:zs,weights:w,rriWeights:wr,available:[a.n,a.n+1,b.n,b.n+1].map(k=>k>=0&&k<c.rows),
             weightedDistance:zs.reduce((s,z,i)=>s+w[i]*Math.abs(z),0),rriWeightedDistance:zs.reduce((s,z,i)=>s+wr[i]*Math.abs(z),0)});
         }
       }
@@ -3009,15 +3056,15 @@ async function reconstructCba(input={},hooks={}){
     if((v-g.first)%6===0){hooks.progress?.((v-g.first)/(g.last-half-g.first));await new Promise(resolve=>setTimeout(resolve,0));}
   }
   if(!counts.every(v=>v===c.viewSamples))throw Error('CBA_INTERNAL: paired view count mismatch');
-  const acquisition={firstView:rawFirst,lastViewExclusive:rawLast+1,viewsPerSlice:c.viewSamples,rebinnedPairsPerSlice:half,firstRebinnedView:g.first,lastRebinnedViewExclusive:g.last};
-  const r=cbaResult(c,g,volume,counts,zObject,'cba',acquisition),reference=cbaResult(c,g,rriVolume,counts,zObject,'rri',acquisition);
+  const acquisition={firstView:rawFirst,lastViewExclusive:rawLast+1,viewsPerSlice:c.viewSamples,rebinnedPairsPerSlice:half,firstRebinnedView:g.first,lastRebinnedViewExclusive:g.last,boundaryPairs,totalVoxelPairs,paddedReconstructionSlices:g.z.length};
+  const r=cbaResult(c,g,volume,counts,zObject,'cba',acquisition,hooks.profileOnly),reference=cbaResult(c,g,rriVolume,counts,zObject,'rri',acquisition,hooks.profileOnly);
   return {...r,reference,sampleAudit};
 }
 async function reconstructCbaSeries(input,hooks={}){
   const c=fdkConfig(input),profiles=[],referenceProfiles=[];let selected;
   for(let i=0;i<c.phaseCount;i++){
     const phase=c.phase+CBA_TAU*i/c.phaseCount;
-    const r=await reconstructCba({...c,phase},{...hooks,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
+    const r=await reconstructCba({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
     if(!selected)selected=r;
     for(const [target,q] of [[profiles,r],[referenceProfiles,r.reference]])target.push({phase,profile:q.profile,raw:q.raw,fwhm:q.fwhm,fwtm:q.fwtm,baseline:q.baseline});
   }

@@ -158,11 +158,11 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-15.2",
+  "webBuildVersion": "2026-09-15.3",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
-    "sha256": "6defc27a51b9c80b05ccf3123b80ff1ae22f7f46e0abfb601b85caad68daf9e4",
+    "sha256": "5faa4bdc47e2411208ddc2987dc730c0f84f45b63e300a21448db993d67156f2",
     "path": "full-turn helical FDK approximation",
     "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
     "rows": {
@@ -181,18 +181,18 @@
     "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core."
   },
   "conjugateFbp": {
-    "version": "2026-09-15.1",
+    "version": "2026-09-15.3",
     "core": "cba-core.js",
-    "sha256": "0c8f5486557f4c355930ef9b6c5d78e5ba012b699f8a18f0227982c822c7588e",
+    "sha256": "def0de01acf0b422468bef705bdbd50dac43a8c72f8172af874450af3476b537",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
-    "sourceLocation": "Eqs. (4)-(6); quadratic interpolation and matched linear RRI",
+    "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
     "sharedPreprocessingDoi": "10.1155/IJBI/2006/45942",
     "sharedPreprocessingLocation": "Eqs. (2)-(3)",
     "documentation": "CBA_METHOD.md",
-    "implementationTests": "tests/cba.mjs",
+    "implementationTests": "tests/cba.mjs and tests/cba-four-row.mjs",
     "numericalSensitivity": "tests/cba-verification.json",
-    "scope": "Same acquired sphere projections, rebinning and filtering for both methods. Conservative paired full turn with coverage guards. No overscan, adaptive 3D weights or commercial-scanner validation."
+    "scope": "Matched CBA and linear-reference reconstructions; acquired-row conjugate normalization at edges, optional image-domain rectangular average, and strict legacy policy. No commercial validation."
   },
   "diagramLayout": {
     "logicalCanvas": [
@@ -202,5 +202,12 @@
     "plotHeight": 650,
     "legend": "four-row footer below axes; shared screen and PNG layout",
     "dataChange": false
+  },
+  "fourRowCbaExtension": {
+    "version": "2026-09-15.3",
+    "source": "Hsieh 2007 Eqs. 4-6, conjugate compensation on p.067001-6, image-domain smoothing on p.067001-8",
+    "edge": "Explicit acquired-row compact-weight extension; omit unavailable cells and normalize valid coefficients; reject zero support",
+    "averaging": "Dedicated image-domain rectangular mean with reconstructed padding; not scanner-thickness calibration",
+    "originalAxialModel": "retained as a separate model"
   }
 }

@@ -12,7 +12,7 @@ const FDK_TAU=2*Math.PI;
 export function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
   for(const k of Object.keys(FDK_DEFAULTS)) if(k!=='normalization'&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
-  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,12]])
+  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
     if(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi)throw Error(`${k}: integer ${lo}–${hi} required`);
   for(const [k,lo,hi] of [['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
     if(c[k]<lo||c[k]>hi)throw Error(`${k}: ${lo}–${hi} required`);

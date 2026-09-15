@@ -40,7 +40,10 @@ for(const rows of [80,160,320]){
 const series=await reconstructCbaSeries({viewSamples:180,xySamples:5,phaseCount:4});
 assert.ok(Math.max(...series.profiles.map(p=>p.fwhm.width))-Math.min(...series.profiles.map(p=>p.fwhm.width))>1e-5);
 for(const r of [series,series.reference])for(let i=0;i<r.z.length;i++)near(r.meanDifference.reduce((s,v)=>s+v[i],0),0,1e-12);
-await assert.rejects(reconstructCba({beamPitch:2}),/CBA_COVERAGE/);
+// The legacy strict policy rejects incomplete individual brackets. The
+// available-row extension can compensate with the conjugate view at pitch 2.
+await assert.rejects(reconstructCba({beamPitch:2,edgePolicy:'strict'}),/CBA_COVERAGE/);
+await assert.rejects(reconstructCba({beamPitch:3,rows:4,rowWidth:1,radius:102,xySamples:5,viewSamples:90}),/CBA_COVERAGE/);
 await assert.rejects(reconstructCba({viewSamples:361}),/CBA_VIEWS/);
 await assert.rejects(reconstructCba({}, {cancelled:()=>true}),/FDK_CANCELLED/);
 console.log(JSON.stringify({test:'CBA',status:'PASS',denseConvolutionError:maxError,unitAttenuationCenter:center,rowsResults}));
