@@ -56,7 +56,12 @@ globalThis.SSPZShapeDisplay = (() => {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(temp, x((start - .5) * step), b.top, x((stop + .5) * step) - x((start - .5) * step), b.bottom - b.top);
     ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
-    ctx.beginPath(); ctx.moveTo(x(0), b.top); ctx.lineTo(x(0), b.bottom); ctx.stroke(); ctx.restore();
+    // Guides follow the labeled ticks on both axes, including zero. They are
+    // display overlays; histogram values and the adaptive domain are unchanged.
+    ctx.beginPath();
+    for (const v of xt) { ctx.moveTo(x(v), b.top); ctx.lineTo(x(v), b.bottom); }
+    for (const v of yt) { ctx.moveTo(b.left, y(v)); ctx.lineTo(b.right, y(v)); }
+    ctx.stroke(); ctx.restore();
     ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
     ctx.font = '30px Arial'; ctx.fillStyle = '#111';
     for (const v of xt) {
