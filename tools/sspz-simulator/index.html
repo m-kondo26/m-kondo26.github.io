@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-15.4">
+  <link rel="stylesheet" href="styles.css?v=2026-09-15.5">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -366,10 +366,11 @@
 
     <section class="method-card" aria-labelledby="shape-title">
       <h2 id="shape-title">SSPzの平均からの偏差</h2>
-      <p id="shape-description">各曲線のFWHM中点を0 mmに揃え、各位置の平均SSPzを引いた偏差の分布です。0.01 mmの共通格子へ線形補間します。偏差のビン幅は0.002、濃さは各ビンの状態割合の平方根です。平均形状そのものの差や、実測開始角度の確率を表すものではありません。</p>
+      <p id="shape-description">各曲線のFWHM中点を0 mmに揃え、各位置の平均からの偏差を示します。上の両矢印は個々のFWHMの平均です。濃さは各ビンの状態割合（0～100%）に対応し、論文図と同じ0.35乗で表示します。</p>
+      <p class="shape-method-note">共通格子0.01 mm・偏差ビン幅0.002。幅は拡大縮小せず、表示範囲外となる偏差があれば縦軸を拡張します。平均形状の一致や実測開始角度の確率を表す図ではありません。</p>
       <div class="chart-grid two">
-        <article class="chart-card"><canvas id="shape-deviation-off" width="900" height="650" aria-label="Parallel reference SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-off">投稿用PNG（600 dpi）</button></article>
-        <article class="chart-card"><canvas id="shape-deviation-on" width="900" height="650" aria-label="Fan-beam SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-on">投稿用PNG（600 dpi）</button></article>
+        <article class="chart-card"><div class="shape-canvas-wrap" tabindex="0"><canvas id="shape-deviation-off" width="1000" height="760" aria-label="Parallel reference SSPz deviations"></canvas></div><button class="download-link" data-canvas="shape-deviation-off">投稿用PNG（600 dpi）</button></article>
+        <article class="chart-card"><div class="shape-canvas-wrap" tabindex="0"><canvas id="shape-deviation-on" width="1000" height="760" aria-label="Fan-beam SSPz deviations"></canvas></div><button class="download-link" data-canvas="shape-deviation-on">投稿用PNG（600 dpi）</button></article>
       </div>
       <p id="shape-status" aria-live="polite">計算後に表示します。</p>
       <button id="download-excel-button" type="button" class="secondary">全360状態のSSPz・平均・偏差をExcel保存</button>
@@ -475,10 +476,10 @@
 
   <footer>
     <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-15.4 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
+    <p id="version">Web build 2026-09-15.5 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-15.4"></script>
-  <script src="app-bundle.js?v=2026-09-15.4"></script>
+  <script src="worker-source.js?v=2026-09-15.5"></script>
+  <script src="app-bundle.js?v=2026-09-15.5"></script>
 </body>
 </html>

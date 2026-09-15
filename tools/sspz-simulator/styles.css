@@ -396,3 +396,9 @@ footer p { margin: 0.2rem 0; }
 #fdk-panel { margin-top: 28px; }
 #fdk-panel canvas { width: 100%; height: auto; aspect-ratio: auto; }
 #fdk-panel h3 { font-size: 1rem; margin: 0 0 8px; }
+
+/* Share the same density painter with 600-dpi exports. Keep labels legible on
+   narrow screens through keyboard-accessible horizontal scrolling. */
+.shape-card { max-width: 1060px; margin-inline: auto; }
+.shape-canvas-wrap { max-width: 100%; overflow-x: auto; }
+.shape-canvas-wrap canvas, #fdk-panel .shape-canvas-wrap canvas { min-width: 520px; width: 100%; height: auto; aspect-ratio: auto; }

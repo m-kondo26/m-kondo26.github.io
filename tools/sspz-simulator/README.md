@@ -137,7 +137,7 @@ Web画面には、モデル開発時に参照した以下の研究と、本Web�
 
 ## 2026-09-11: mean-centered shape distributions and Excel export
 
-The new paired heatmaps align each complete native SSPz at its bilateral linear FWHM midpoint, interpolate on a shared 0.01-mm grid, and subtract the pointwise mean separately for each reference condition. Fixed deviation bins span -0.06 to +0.06 in steps of 0.002; intensity is sqrt(state fraction), on a common 0–1 scale. Excluded states and out-of-range samples are disclosed. The model calculation is unchanged.
+The new paired heatmaps align each complete native SSPz at its bilateral linear FWHM midpoint, interpolate on a shared 0.01-mm grid, and subtract the pointwise mean separately for each reference condition. The original display used fixed bins from -0.06 to +0.06 and sqrt(state fraction). The 2026-09-15 update below supersedes that display mapping; native numerical results are unchanged. Excluded states and out-of-range samples are disclosed. The model calculation is unchanged.
 
 The Excel button exports all 360 native peak-normalized profiles for both references, aligned profiles, pointwise means, deviations, inclusion flags and centers, sweep metrics, units, parameters, and model/export versions. Native data preserve the worker Float32 values; no display rounding is applied. The workbook uses standard OOXML with ZIP compression, or uncompressed ZIP when browser compression is unavailable. Native, aligned, and deviation sheets support independent replotting. Fractions refer to sampled model states, not measured start-angle probabilities.
 
@@ -146,3 +146,14 @@ Validation: tests/shape-export.mjs; all eight manuscript simulation conditions a
 ### ピッチ0の展開図（2026-09-14）
 
 ビームピッチ0では、寝台移動なしの検出器列中心軌道を表示します。同じ軌道を複数回転分重ねず、1回転分を示します。既存の距離比によるコーン幾何を使用し、ヘリカル補間点・補間重み・SSPz・状態変動は計算対象外とします。正のピッチの計算経路は従来どおりです。日本語・英語のブラウザ表示と既存回帰テストを確認し、zero-pitch.mjsで列数・位置・取得経路・コーン幾何条件を検証しました。これは表示と実装の検証であり、アキシャル再構成の検証ではありません。
+
+
+## 2026-09-15: manuscript-style density display (Web 2026-09-15.5)
+
+`shape-display.js` is the common Canvas2D renderer for the paired axial-model maps and the added CBA/RRI (or FDK) map. It uses fraction^0.35 for every channel, labeled 0/25/50/75/100% lookup tables, numeric z ticks (0.5 mm for the 1-mm view and 1 mm for the 5-mm view), and mean-individual-FWHM arrows above the plotting rectangle. Widths are shown to 0.01 mm and sample SD to 0.001 mm (or SD < 0.001 mm). CBA/FDK is red; the matched linear RRI reference is blue. Axial-model panels retain gray for the parallel reference and red for cone geometry. These are computed sources, not measured TCOT/MUSCOT data.
+
+The added 3D-FBP distribution translates each native FWHM midpoint to zero, without width rescaling, then linearly samples a common 0.01-mm grid and subtracts each method's own pointwise mean. Bins retain width 0.002; their vertical extent starts at +/-0.06 and expands to avoid clipping. This aligned distribution is separate from the retained, sphere-centred native mean-difference curves. Alignment and normalization affect the appearance near the half-height crossings; a shared bin does not establish equality of full profiles or absolute mean shapes. Fraction denominators are included model conditions, not measured start-angle probabilities.
+
+Screen and 600-dpi PNG use the same renderer. Excel additionally includes method-specific aligned-profile and deviation sheets. Numerical cores, native profiles and native width calculations are unchanged. The new shape-display test checks known widths/translation, immutability, zero-mean deviations, histogram mass, expanded ranges and intensity endpoints. An audit using all 2880 manuscript model profiles reproduced the saved shape deviations within floating-point roundoff. Single-angle runs explicitly state that variation cannot be assessed.
+
+The display has at most two active axial maps or one composite FBP map; typed-array histograms are cached with the result. No continuous redraw, animation, new runtime dependency or extra reconstruction is needed. Dense histogram pixels use nearest-neighbor rendering, never smoothing. Narrow screens retain legible chart widths with keyboard-accessible horizontal scrolling; existing URL and numerical-condition persistence are unchanged.

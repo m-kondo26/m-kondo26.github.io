@@ -158,7 +158,7 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-15.4",
+  "webBuildVersion": "2026-09-15.5",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
@@ -209,5 +209,15 @@
     "edge": "Explicit acquired-row compact-weight extension; omit unavailable cells and normalize valid coefficients; reject zero support",
     "averaging": "Dedicated image-domain rectangular mean with reconstructed padding; not scanner-thickness calibration",
     "originalAxialModel": "retained as a separate model"
+  },
+  "shapeDisplay": {
+    "version": "2026-09-15.5",
+    "intensity": "fraction^0.35; shared across channels; fixed 0–100% LUT",
+    "alignment": "Individual native FWHM midpoint translated to zero, no width rescaling; 0.01 mm linear grid; subtract own group mean",
+    "arrows": "Mean individual FWHM; mean and sample SD above plots",
+    "bins": "0.002; minimum extent +/-0.06, expand to contain all deviations",
+    "colors": "CBA or FDK red; RRI blue. Axial reference gray; cone geometry red. No measured data in browser.",
+    "exports": "Same renderer for screen and 600-dpi PNG; aligned arrays and deviations in Excel",
+    "numericalModelChanged": false
   }
 }

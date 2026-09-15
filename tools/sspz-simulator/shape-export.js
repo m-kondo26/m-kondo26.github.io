@@ -1,7 +1,7 @@
 // Presentation/export only: does not alter the acquisition or response model.
 globalThis.SSPZShape = (() => {
   function analyze(overlay, key, step = 0.01) {
-    const {z, zCount:n, stateCount:count} = overlay, c=overlay[key], valid=[], mid=[];
+    const {z, zCount:n, stateCount:count} = overlay, c=overlay[key], valid=[], mid=[], fwhm=[];
     for(let s=0;s<count;s++) {
       if(c.coverage[s]<1-1e-7) continue;
       const y=c.final.subarray(s*n,(s+1)*n);let peak=0;
@@ -11,7 +11,7 @@ globalThis.SSPZShape = (() => {
       if(l===peak||r===peak||y[l]>=level||y[r]>=level)continue;
       const left=z[l]+(level-y[l])*(z[l+1]-z[l])/(y[l+1]-y[l]);
       const right=z[r-1]+(level-y[r-1])*(z[r]-z[r-1])/(y[r]-y[r-1]);
-      valid.push(s);mid.push((left+right)/2);
+      valid.push(s);mid.push((left+right)/2);fwhm.push(right-left);
     }
     if(!valid.length)throw new Error('No complete profiles with valid bilateral FWHM crossings.');
     const start=Math.ceil(Math.max(...mid.map(m=>z[0]-m))/step-1e-9);
@@ -28,9 +28,11 @@ globalThis.SSPZShape = (() => {
     });
     const mean=Float64Array.from(x,(_,i)=>aligned.reduce((sum,y)=>sum+y[i],0)/valid.length);
     const delta=aligned.map(y=>Float64Array.from(y,(v,i)=>v-mean[i]));
-    const bins=60,low=-.06,width=.002, hist=new Float64Array(x.length*bins),outside=new Uint16Array(x.length);
-    delta.forEach(y=>y.forEach((v,i)=>{let b=Math.floor((v-low)/width);if(b===bins&&v<=.06+1e-12)b=bins-1;if(b<0||b>=bins)outside[i]++;else hist[i*bins+b]+=1/valid.length;}));
-    return {x,valid,mid,aligned,mean,delta,hist,outside,bins,low,width,step};
+    let maximum=.06; for(const y of delta)for(const v of y)maximum=Math.max(maximum,Math.abs(v));
+    const limit=Math.ceil((maximum-1e-12)/.02)*.02;
+    const width=.002,low=-limit,bins=Math.round(2*limit/width), hist=new Float64Array(x.length*bins),outside=new Uint16Array(x.length);
+    delta.forEach(y=>y.forEach((v,i)=>{let b=Math.floor((v-low)/width);if(b===bins&&v<=limit+1e-12)b=bins-1;if(b<0||b>=bins)outside[i]++;else hist[i*bins+b]+=1/valid.length;}));
+    return {x,valid,mid,fwhm,aligned,mean,delta,hist,outside,bins,low,width,step};
   }
   const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   function column(i){let s='';for(i++;i;i=Math.floor((i-1)/26))s=String.fromCharCode(65+(i-1)%26)+s;return s;}
@@ -52,8 +54,8 @@ globalThis.SSPZShape = (() => {
   function workbook(result,analyses,version){
     const o=result.overlay,sheets=[];
     sheets.push(['Readme',[
-      ['SSPz simulation export','Value'],['model_version',version],['export_version','2026-09-11.1'],['generated_utc',new Date().toISOString()],
-      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Bins -0.06 to +0.06, width 0.002; intensity sqrt(fraction), fixed 0..1'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
+      ['SSPz simulation export','Value'],['model_version',version],['export_version','2026-09-15.5'],['generated_utc',new Date().toISOString()],
+      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Minimum extent -0.06 to +0.06, expanded to contain all deviations; width 0.002; intensity fraction^0.35, fixed 0..1; arrows show mean individual native FWHM'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
     for(const key of ['off','on']){const a=analyses[key],ids=Array.from({length:o.stateCount},(_,i)=>'state_'+i);
       const nativeRows=Array.from(o.z,(z,i)=>[z,...ids.map((_,s)=>o[key].final[s*o.zCount+i])]);
       sheets.push([key+'_Native',[['z_position_mm',...ids],...nativeRows]]);

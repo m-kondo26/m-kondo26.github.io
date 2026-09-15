@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-15.4 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-15.5 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -2857,20 +2857,9 @@ function renderAll(result) {
 function drawShapeDeviation(canvas, result, key) {
   if(!result.shapeAnalysis) return;
   const a=result.shapeAnalysis[key], span=result.params.sliceThicknessMm<=1?1.5:Math.max(4,result.params.sliceThicknessMm*.8);
-  const plot=axisContext(canvas,{xMin:-span,xMax:span,yMin:-.06,yMax:.06},{x:'',y:'SSPz − mean',xFormatter:v=>String(v),yFormatter:v=>v.toFixed(2),leftMargin:140,topMargin:85,bottomMargin:155});
-  const {ctx,x,y,margin,innerWidth,innerHeight}=plot;
-  drawAxes(plot,[-span,0,span],[-.06,0,.06]);
-  ctx.save();ctx.beginPath();ctx.rect(margin.left,margin.top,innerWidth,innerHeight);ctx.clip();ctx.fillStyle='black';ctx.fillRect(margin.left,margin.top,innerWidth,innerHeight);
-  for(let i=0;i<a.x.length;i++){
-    if(a.x[i]+a.step/2 < -span||a.x[i]-a.step/2>span)continue;
-    for(let b=0;b<a.bins;b++) {const value=Math.round(255*Math.sqrt(a.hist[i*a.bins+b]));if(!value)continue;ctx.fillStyle=key==='on'?`rgb(${value},0,0)`:`rgb(${value},${value},${value})`;ctx.fillRect(x(a.x[i]-a.step/2),y(a.low+(b+1)*a.width),Math.max(.5,x(a.x[i]+a.step/2)-x(a.x[i]-a.step/2)),y(a.low+b*a.width)-y(a.low+(b+1)*a.width)+.1);}
-  }
-  ctx.restore();ctx.fillStyle=INK;ctx.font=`bold 30px ${FIGURE_FONT}`;ctx.textAlign='left';ctx.fillText(key==='on'?'(b)':'(a)',18,35);
-  ctx.font=`26px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(key==='on'?'Fan-beam cone geometry':'Parallel reference',margin.left+innerWidth/2,40);
-  ctx.font=`31px ${FIGURE_FONT}`;ctx.fillText('z position (mm)',margin.left+innerWidth/2,margin.top+innerHeight+68);
-  const barY=plot.height-45;
-  for(let i=0;i<200;i++){const v=Math.round(255*Math.sqrt(i/199));ctx.fillStyle=key==='on'?`rgb(${v},0,0)`:`rgb(${v},${v},${v})`;ctx.fillRect(margin.left+i*innerWidth/200,barY,innerWidth/200+1,15);}
-  ctx.fillStyle=INK;ctx.font=`23px ${FIGURE_FONT}`;ctx.fillText('0',margin.left,barY+36);ctx.fillText('50',margin.left+innerWidth/2,barY+36);ctx.fillText('100',margin.left+innerWidth,barY+36);ctx.fillText('Fraction (%)',margin.left+innerWidth/2,barY-8);
+  SSPZShapeDisplay.draw(canvas,[{name:key==='on'?'Cone geometry':'Parallel reference',rgb:key==='on'?[1,0,0]:[1,1,1],analysis:a}],{
+    title:key==='on'?'Fan-beam cone geometry':'Parallel reference',panel:key==='on'?'(b)':'(a)',span
+  });
   const counts=Object.values(result.shapeAnalysis).map(v=>v.valid.length).join(' / ');
   const outside=Object.values(result.shapeAnalysis).reduce((sum,v)=>sum+v.outside.reduce((n,x)=>n+x,0),0);
   document.querySelector('#shape-status').textContent=localizedText(`採用状態数（左／右）：${counts}。表示偏差範囲外：${outside}点（Excelの偏差には全値を保存）。`,`Included states (left/right): ${counts}. Outside deviation range: ${outside} samples (all deviations retained in Excel).`);

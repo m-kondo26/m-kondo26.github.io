@@ -2672,7 +2672,7 @@ function summarizeSweep(rows, coneOn) {
 // Presentation/export only: does not alter the acquisition or response model.
 globalThis.SSPZShape = (() => {
   function analyze(overlay, key, step = 0.01) {
-    const {z, zCount:n, stateCount:count} = overlay, c=overlay[key], valid=[], mid=[];
+    const {z, zCount:n, stateCount:count} = overlay, c=overlay[key], valid=[], mid=[], fwhm=[];
     for(let s=0;s<count;s++) {
       if(c.coverage[s]<1-1e-7) continue;
       const y=c.final.subarray(s*n,(s+1)*n);let peak=0;
@@ -2682,7 +2682,7 @@ globalThis.SSPZShape = (() => {
       if(l===peak||r===peak||y[l]>=level||y[r]>=level)continue;
       const left=z[l]+(level-y[l])*(z[l+1]-z[l])/(y[l+1]-y[l]);
       const right=z[r-1]+(level-y[r-1])*(z[r]-z[r-1])/(y[r]-y[r-1]);
-      valid.push(s);mid.push((left+right)/2);
+      valid.push(s);mid.push((left+right)/2);fwhm.push(right-left);
     }
     if(!valid.length)throw new Error('No complete profiles with valid bilateral FWHM crossings.');
     const start=Math.ceil(Math.max(...mid.map(m=>z[0]-m))/step-1e-9);
@@ -2699,9 +2699,11 @@ globalThis.SSPZShape = (() => {
     });
     const mean=Float64Array.from(x,(_,i)=>aligned.reduce((sum,y)=>sum+y[i],0)/valid.length);
     const delta=aligned.map(y=>Float64Array.from(y,(v,i)=>v-mean[i]));
-    const bins=60,low=-.06,width=.002, hist=new Float64Array(x.length*bins),outside=new Uint16Array(x.length);
-    delta.forEach(y=>y.forEach((v,i)=>{let b=Math.floor((v-low)/width);if(b===bins&&v<=.06+1e-12)b=bins-1;if(b<0||b>=bins)outside[i]++;else hist[i*bins+b]+=1/valid.length;}));
-    return {x,valid,mid,aligned,mean,delta,hist,outside,bins,low,width,step};
+    let maximum=.06; for(const y of delta)for(const v of y)maximum=Math.max(maximum,Math.abs(v));
+    const limit=Math.ceil((maximum-1e-12)/.02)*.02;
+    const width=.002,low=-limit,bins=Math.round(2*limit/width), hist=new Float64Array(x.length*bins),outside=new Uint16Array(x.length);
+    delta.forEach(y=>y.forEach((v,i)=>{let b=Math.floor((v-low)/width);if(b===bins&&v<=limit+1e-12)b=bins-1;if(b<0||b>=bins)outside[i]++;else hist[i*bins+b]+=1/valid.length;}));
+    return {x,valid,mid,fwhm,aligned,mean,delta,hist,outside,bins,low,width,step};
   }
   const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   function column(i){let s='';for(i++;i;i=Math.floor((i-1)/26))s=String.fromCharCode(65+(i-1)%26)+s;return s;}
@@ -2723,8 +2725,8 @@ globalThis.SSPZShape = (() => {
   function workbook(result,analyses,version){
     const o=result.overlay,sheets=[];
     sheets.push(['Readme',[
-      ['SSPz simulation export','Value'],['model_version',version],['export_version','2026-09-11.1'],['generated_utc',new Date().toISOString()],
-      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Bins -0.06 to +0.06, width 0.002; intensity sqrt(fraction), fixed 0..1'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
+      ['SSPz simulation export','Value'],['model_version',version],['export_version','2026-09-15.5'],['generated_utc',new Date().toISOString()],
+      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Minimum extent -0.06 to +0.06, expanded to contain all deviations; width 0.002; intensity fraction^0.35, fixed 0..1; arrows show mean individual native FWHM'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
     for(const key of ['off','on']){const a=analyses[key],ids=Array.from({length:o.stateCount},(_,i)=>'state_'+i);
       const nativeRows=Array.from(o.z,(z,i)=>[z,...ids.map((_,s)=>o[key].final[s*o.zCount+i])]);
       sheets.push([key+'_Native',[['z_position_mm',...ids],...nativeRows]]);
@@ -2743,11 +2745,121 @@ globalThis.SSPZShape = (() => {
   return {analyze,workbook,fromSheets};
 })();
 
+// Shared manuscript-style density view. Derived display only; native SSP and
+// widths stay in the numerical result. At most two axial panels or one FBP panel.
+globalThis.SSPZShapeDisplay = (() => {
+  const exponent = 0.35;
+  const intensity = fraction => Math.round(255 * Math.max(0, Math.min(1, fraction)) ** exponent);
+  function ticks(lo, hi, target = 6) {
+    const raw = (hi - lo) / target, unit = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map(v => v * unit).find(v => v >= raw - 1e-12);
+    const out = [];
+    for (let i = Math.ceil(lo / step - 1e-9); i <= Math.floor(hi / step + 1e-9); i++) out.push(Number((i * step).toPrecision(12)));
+    return out;
+  }
+  function fromFdk(result) {
+    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [['FDK', result, [1, 0, 0]]];
+    return groups.map(([name, r, rgb]) => {
+      const z = r.z, count = r.profiles.length, values = new Float64Array(z.length * count);
+      r.profiles.forEach((p, i) => values.set(p.profile, i * z.length));
+      const a = SSPZShape.analyze({ z, zCount: z.length, stateCount: count, data: { final: values, coverage: new Float64Array(count).fill(1) } }, 'data');
+      return { name, rgb, analysis: a };
+    });
+  }
+  function draw(canvas, groups, { title = '', panel = '', span = null } = {}) {
+    const ctx = canvas.getContext('2d'), scale = canvas.width / 1000, height = canvas.height / scale;
+    ctx.save(); ctx.scale(scale, scale); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1000, height);
+    const b = { left: 145, right: 965, top: 78 + 63 * groups.length, bottom: height - 218 };
+    const domain = Math.min(...groups.map(g => Math.min(-g.analysis.x[0], g.analysis.x.at(-1))));
+    const maxWidth = Math.max(...groups.flatMap(g => g.analysis.fwhm));
+    const requested = span ?? (maxWidth <= 2 ? 1.5 : Math.max(4, Math.ceil(maxWidth * .8 - 1e-9)));
+    span = Math.min(domain, Math.max(requested, maxWidth * .55));
+    if (!(span > 0)) throw new Error('No bilateral common support for the aligned shape view.');
+    const limit = Math.max(...groups.map(g => -g.analysis.low));
+    const x = v => b.left + (v + span) / (2 * span) * (b.right - b.left);
+    const y = v => b.bottom - (v + limit) / (2 * limit) * (b.bottom - b.top);
+    const xt = ticks(-span, span, span >= 3 ? 8 : 6), yt = ticks(-limit, limit);
+    // Histogram cells are discrete and are never spatially smoothed. Composite
+    // channels use the same fraction mapping and add only different source hues.
+    const step = groups[0].analysis.step, width = groups[0].analysis.width;
+    const start = Math.ceil(Math.max(-span, ...groups.map(g => g.analysis.x[0])) / step - 1e-8);
+    const stop = Math.floor(Math.min(span, ...groups.map(g => g.analysis.x.at(-1))) / step + 1e-8);
+    const nx = stop - start + 1, ny = Math.round(2 * limit / width);
+    const temp = document.createElement('canvas'); temp.width = nx; temp.height = ny;
+    const tc = temp.getContext('2d'), im = tc.createImageData(nx, ny);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      const rgb = [0, 0, 0], z = (start + i) * step, value = -limit + (j + .5) * width;
+      for (const g of groups) {
+        const a = g.analysis, ix = Math.round((z - a.x[0]) / step), iy = Math.floor((value - a.low) / width + 1e-8);
+        if (ix < 0 || ix >= a.x.length || iy < 0 || iy >= a.bins) continue;
+        const v = intensity(a.hist[ix * a.bins + iy]);
+        g.rgb.forEach((c, k) => { rgb[k] += c * v; });
+      }
+      im.data.set([...rgb.map(v => Math.min(255, v)), 255], 4 * ((ny - 1 - j) * nx + i));
+    }
+    tc.putImageData(im, 0, 0);
+    ctx.save(); ctx.beginPath(); ctx.rect(b.left, b.top, b.right - b.left, b.bottom - b.top); ctx.clip();
+    ctx.fillStyle = '#000'; ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(temp, x((start - .5) * step), b.top, x((stop + .5) * step) - x((start - .5) * step), b.bottom - b.top);
+    ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(x(0), b.top); ctx.lineTo(x(0), b.bottom); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.font = '30px Arial'; ctx.fillStyle = '#111';
+    for (const v of xt) {
+      ctx.beginPath(); ctx.moveTo(x(v), b.bottom); ctx.lineTo(x(v), b.bottom + 9); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillText(Math.abs(v) < 1e-9 ? '0' : String(v), x(v), b.bottom + 39);
+    }
+    for (const v of yt) {
+      ctx.beginPath(); ctx.moveTo(b.left - 9, y(v)); ctx.lineTo(b.left, y(v)); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.fillText(Math.abs(v) < 1e-9 ? '0' : v.toFixed(2), b.left - 16, y(v) + 10);
+    }
+    ctx.font = '34px Arial'; ctx.textAlign = 'center'; ctx.fillText('z position (mm)', (b.left + b.right) / 2, b.bottom + 83);
+    ctx.save(); ctx.translate(39, (b.top + b.bottom) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('SSPz − mean', 0, 0); ctx.restore();
+    ctx.font = 'bold 32px Arial'; ctx.textAlign = 'left'; ctx.fillText(panel, 18, 36);
+    ctx.font = '30px Arial'; ctx.textAlign = 'center'; ctx.fillText(title, (b.left + b.right) / 2, 39);
+    groups.forEach((g, i) => {
+      const w = g.analysis.fwhm, mean = w.reduce((s, v) => s + v, 0) / w.length;
+      const sd = w.length > 1 ? Math.sqrt(w.reduce((s, v) => s + (v - mean) ** 2, 0) / (w.length - 1)) : null;
+      const color = g.rgb.every(v => v === 1) ? '#444' : `rgb(${g.rgb.map(v => Math.round(v * 180)).join(',')})`, yy = 106 + 63 * i;
+      ctx.fillStyle = color; ctx.font = '28px Arial'; ctx.textAlign = 'center';
+      const stats = sd === null ? `${mean.toFixed(2)} mm` : sd < .001 ? `${mean.toFixed(2)} mm; SD < 0.001 mm` : `${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
+      ctx.fillText(`${g.name}: FWHM ${stats}`, (b.left + b.right) / 2, yy - 17);
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x(-mean / 2), yy); ctx.lineTo(x(mean / 2), yy);
+      for (const [v, d] of [[-mean / 2, 1], [mean / 2, -1]]) { ctx.moveTo(x(v) + d * 10, yy - 5); ctx.lineTo(x(v), yy); ctx.lineTo(x(v) + d * 10, yy + 5); }
+      ctx.stroke();
+      // Short ticks above the plot align the arrow ends with the z axis without
+      // drawing vertical lines through (or anchoring) the observed distribution.
+      ctx.lineWidth = 1.2;
+      for (const v of [-mean / 2, mean / 2]) { ctx.beginPath(); ctx.moveTo(x(v), b.top - 7); ctx.lineTo(x(v), b.top); ctx.stroke(); }
+      const gap = 75, bw = ((b.right - b.left) - gap * (groups.length - 1)) / groups.length;
+      const bx = b.left + i * (bw + gap), by = height - 82;
+      ctx.font = '28px Arial'; ctx.fillStyle = '#111'; ctx.fillText(g.name, bx + bw / 2, by - 13);
+      const lut = document.createElement('canvas'); lut.width = 256; lut.height = 1;
+      const lc = lut.getContext('2d'), pixels = lc.createImageData(256, 1);
+      for (let k = 0; k < 256; k++) pixels.data.set([...g.rgb.map(c => c * intensity(k / 255)), 255], 4 * k);
+      lc.putImageData(pixels, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(lut, bx, by, bw, 19);
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 19);
+      ctx.font = '24px Arial'; ctx.fillStyle = '#111';
+      for (const v of [0, 25, 50, 75, 100]) ctx.fillText(String(v), bx + bw * v / 100, by + 46);
+    });
+    ctx.fillStyle = '#111'; ctx.font = '26px Arial'; ctx.fillText('Fraction per bin (%)', (b.left + b.right) / 2, height - 12);
+    ctx.restore();
+    canvas.dataset.intensityExponent = String(exponent);
+    canvas.dataset.alignment = 'native-fwhm-midpoint-translation-only';
+    canvas.dataset.xTicks = JSON.stringify(xt); canvas.dataset.yTicks = JSON.stringify(yt);
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `${title}. ${groups.map(g => `${g.name}: ${g.analysis.valid.length} profiles`).join('; ')}. SSPz minus each group mean, native FWHM midpoints aligned to zero. Arrows show mean individual FWHM. Fraction per bin intensity power ${exponent}.`);
+  }
+  return { draw, fromFdk, intensity, ticks, exponent };
+})();
+
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
 const FDK_UI_FIELDS={method:'fdk',edgePolicy:'available',axialAverageMm:0,sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:1,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
+let fdkShapeGroups=null;
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
 const fdkFileStem=r=>r.reference?'Hsieh_CBA_RRI':'FDK';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
@@ -2813,9 +2925,17 @@ function initializeFdkUi(initial){
   <article class="chart-card"><h3>${fdkText('','Axial image through the sphere center')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
   <article class="chart-card"><h3>${fdkText('','Coronal image through the sphere center')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
   </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('','The sphere center is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
+  <div id="fdk-shape-wrap" class="chart-card shape-card" hidden>
+    <h3>${fdkText('','SSPz shape-variation distribution')}</h3>
+    <p>${fdkText('','Align each native FWHM midpoint to zero and overlay deviations from each method’s own mean. Double-headed arrows show the mean of individual FWHMs.')}</p>
+    <div class="shape-canvas-wrap" tabindex="0"><canvas id="fdk-shape" width="1000" height="830"></canvas></div>
+    <p id="fdk-shape-summary"></p>
+    <button type="button" id="fdk-shape-png" class="secondary" disabled>${fdkText('','Save distribution as 600-dpi PNG')}</button>
+    <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
+  </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
   <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. For the Hsieh path, the dedicated averaging width applies a rectangular image-domain mean before normalization; zero disables it. This width is not calibrated to scanner FWHM. It is separate from the axial model T and FW controls.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
-  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Gray: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
+  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
   const axialViewHelp=viewHelp?.textContent;
@@ -2840,16 +2960,25 @@ function initializeFdkUi(initial){
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
     if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and ROI; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; sphere center voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    if(fdkShapeGroups){
+      sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
+      for(const g of fdkShapeGroups){const a=g.analysis;
+        sheets.push([g.name+'_Shape_aligned',[['z_position_mm','mean',...a.valid.map(i=>'aligned_'+i)],...Array.from(a.x,(z,i)=>[z,a.mean[i],...a.aligned.map(p=>p[i])])]]);
+        sheets.push([g.name+'_Shape_deviation',[['z_position_mm',...a.valid.map(i=>'deviation_'+i)],...Array.from(a.x,(z,i)=>[z,...a.delta.map(p=>p[i])])]]);
+      }
+    }
     downloadBlob(fdkFileStem(r)+'_SSPz.xlsx',await SSPZShape.fromSheets(sheets),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   };
+  document.getElementById('fdk-shape-png').onclick=async()=>{if(!fdkShapeGroups)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.83);drawFdkShape(c);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_shape_distribution_600dpi.png',await pngWithResolution(blob,600),'image/png');};
   document.getElementById('fdk-png').onclick=async()=>{if(!fdkResult)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.7);fdkDrawProfile(c,fdkResult);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_SSPz_600dpi.png',await pngWithResolution(blob,600),'image/png');};
 }
-function fdkToggleDownloads(on){for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png'])document.getElementById(id).disabled=!on;}
+function fdkToggleDownloads(on){for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);}
 function runFdkSimulation(){
   const params={...readParams(),...readFdkParams()};
-  releaseWorker();clearError();lastResult=null;fdkResult=null;fdkToggleDownloads(false);setBusy(true);
+  releaseWorker();clearError();lastResult=null;fdkResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('','Computing 3D FBP…');document.getElementById('fdk-result-config').textContent='';
   for(const canvas of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(canvas,'3D FBP',fdkText('','Calculating'));
+  document.getElementById('fdk-shape-wrap').hidden=true;document.getElementById('fdk-shape-summary').textContent='';
   document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
   startedAt=performance.now();progress.value=0;
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
@@ -2877,8 +3006,7 @@ function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=
   const x=v=>b.left+(v-xmin)/(xmax-xmin)*(b.right-b.left),y=v=>b.bottom-(v-ymin)/(ymax-ymin)*(b.bottom-b.top);
   const label=v=>Math.abs(v)<1e-10?'0':Math.abs(v)>=100?v.toFixed(0):Number(v.toFixed(2)).toString();
   ctx.font=`${23*s}px Arial`;
-  for(let i=0;i<=4;i++){
-    const vx=xmin+(xmax-xmin)*i/4;
+  for(const vx of SSPZShapeDisplay.ticks(xmin,xmax)){
     ctx.strokeStyle='#d6d6d6';ctx.lineWidth=s;ctx.beginPath();ctx.moveTo(x(vx),b.top);ctx.lineTo(x(vx),b.bottom);ctx.stroke();
     ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(label(vx),x(vx),b.bottom+32*s);
   }
@@ -2892,17 +3020,17 @@ function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=
 }
 function fdkDrawLines(a,xs,series,color=null){
   const {ctx,s,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  for(const values of series){ctx.strokeStyle=color??(series.length>1?'rgba(213,94,0,.6)':'#d55e00');ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
+  for(const values of series){ctx.strokeStyle=color??(series.length>1?'rgba(209,59,50,.78)':'#d13b32');ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
 }
 function fdkDrawProfile(canvas,r){
   const ymin=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),low=ymin<0?Math.floor(ymin*10)/10:0,a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.03,'z position (mm)','Normalized SSPz','(b)',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],r.reference?128:90);
-  if(r.reference)fdkDrawLines(a,r.z,r.reference.profiles.map(p=>p.profile),'#767676');
+  if(r.reference)fdkDrawLines(a,r.z,r.reference.profiles.map(p=>p.profile),'#0033bb');
   fdkDrawLines(a,r.z,r.profiles.map(p=>p.profile));
   const widths=r.profiles.map(p=>p.fwhm.width),mean=widths.reduce((s,v)=>s+v,0)/widths.length;
   const sd=widths.length>1?Math.sqrt(widths.reduce((s,v)=>s+(v-mean)**2,0)/(widths.length-1)):null;
   a.ctx.font=`${25*a.s}px Arial`;a.ctx.textAlign='center';a.ctx.fillStyle='#000';
-  a.ctx.fillStyle=r.reference?'#d55e00':'#000';a.ctx.fillText(`${r.reference?'CBA: ':''}FWHM ${fdkWidthAnnotation(mean,sd)}`,(a.b.left+a.b.right)/2,61*a.s);
-  if(r.reference){const q=fdkWidthStats(r.reference);a.ctx.fillStyle='#555';a.ctx.fillText(`RRI: FWHM ${fdkWidthAnnotation(q.mean,q.sd)}`,(a.b.left+a.b.right)/2,99*a.s);}
+  a.ctx.fillStyle='#b40000';a.ctx.fillText(`${r.reference?'CBA: ':''}FWHM ${fdkWidthAnnotation(mean,sd)}`,(a.b.left+a.b.right)/2,61*a.s);
+  if(r.reference){const q=fdkWidthStats(r.reference);a.ctx.fillStyle='#0033bb';a.ctx.fillText(`RRI: FWHM ${fdkWidthAnnotation(q.mean,q.sd)}`,(a.b.left+a.b.right)/2,99*a.s);}
   const fw=r.profiles[0].fwhm,yy=a.y(.5);a.ctx.strokeStyle='#000';a.ctx.lineWidth=1.5*a.s;a.ctx.beginPath();a.ctx.moveTo(a.x(fw.left),yy);a.ctx.lineTo(a.x(fw.right),yy);
   for(const [v,d] of [[fw.left,1],[fw.right,-1]]){a.ctx.moveTo(a.x(v)+d*9*a.s,yy-5*a.s);a.ctx.lineTo(a.x(v),yy);a.ctx.lineTo(a.x(v)+d*9*a.s,yy+5*a.s);}a.ctx.stroke();
 }
@@ -2938,24 +3066,30 @@ function fdkDrawImage(canvas,r,coronal){
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
   physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Attenuation: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
+function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(f)'});}
 function renderFdkResult(r){
-  const c=r.config;document.getElementById('fdk-summary').textContent=r.reference?fdkText('','Hsieh comparison complete: CBA and RRI share projections, preprocessing and image grids. Images and the FWHM arrow show CBA at the first start angle.'):fdkText('','Reconstruction complete. Full-turn acquisition coverage was checked for every slice.');
-  document.getElementById('fdk-result-config').textContent=(r.reference?fdkText('','Image averaging width ')+(c.axialAverageMm??0).toFixed(2)+' mm / ':'')+`${c.rows} ${fdkText('','rows')} × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / sphere ${c.sphereDiameter.toFixed(2)} mm / ${r.profiles.length} ${fdkText('','start angles')} / ${fdkText('','first angle: ')}FWTM ${r.fwtm.width.toFixed(2)} mm`+(r.profiles.length>1?fdkText('','. FWHM: mean ± SD of individual widths. Arrow, images and geometry show the first angle.'):'');
+  const c=r.config;document.getElementById('fdk-summary').textContent=r.reference?fdkText('','Hsieh comparison complete: CBA and RRI share projections, preprocessing and image grids. Images and the arrow within the SSPz curves show CBA at the first start angle.'):fdkText('','Reconstruction complete. Full-turn acquisition coverage was checked for every slice.');
+  document.getElementById('fdk-result-config').textContent=(r.reference?fdkText('','Image averaging width ')+(c.axialAverageMm??0).toFixed(2)+' mm / ':'')+`${c.rows} ${fdkText('','rows')} × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / sphere ${c.sphereDiameter.toFixed(2)} mm / ${r.profiles.length} ${fdkText('','start angles')} / ${fdkText('','first angle: ')}FWTM ${r.fwtm.width.toFixed(2)} mm`+(r.profiles.length>1?fdkText('','. FWHM: mean ± SD of individual widths. The arrow within SSPz curves, images and geometry show the first angle.'):'');
   fdkDrawGeometry(document.getElementById('fdk-geometry'),r);fdkDrawProfile(document.getElementById('fdk-profile'),r);fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
   const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=!r.reference;
   if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('','Method')}</th><th>${fdkText('','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd<.001?'&lt; 0.001':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
+  document.getElementById('fdk-shape-wrap').hidden=false;
+  try {
+    fdkShapeGroups=SSPZShapeDisplay.fromFdk(r);drawFdkShape(document.getElementById('fdk-shape'));
+    document.getElementById('fdk-shape-summary').textContent=fdkShapeGroups.map(g=>`${g.name}: ${g.analysis.valid.length} / ${r.profiles.length}`).join(' · ')+fdkText('',' conditions. Intensity: fraction per bin.')+(r.profiles.length===1?fdkText('',' Variation cannot be assessed from one condition; increase the number of start angles.'):'');
+  }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-summary').textContent=error.message;}
   document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
-  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');if(r.reference)fdkDrawLines(a,r.z,r.reference.meanDifference,'#767676');fdkDrawLines(a,r.z,r.meanDifference);if(r.reference){a.ctx.textAlign='center';a.ctx.fillStyle='#000';a.ctx.fillText('Gray: RRI / red: CBA; each minus its own mean',(a.b.left+a.b.right)/2,49*a.s);}}
+  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');if(r.reference)fdkDrawLines(a,r.z,r.reference.meanDifference,'#0033bb');fdkDrawLines(a,r.z,r.meanDifference);if(r.reference){a.ctx.textAlign='center';a.ctx.fillStyle='#000';a.ctx.fillText('Blue: RRI / red: CBA; each minus its own mean',(a.b.left+a.b.right)/2,49*a.s);}}
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
-  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to sphere (mm)','Rebinned angle within pair sweep (°)','(f)');
+  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to sphere (mm)','Rebinned angle within pair sweep (°)','(g)');
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();
   const stride=Math.max(1,Math.ceil(audit.length/45));
   audit.forEach((q,j)=>{if(j%stride)return;for(let i=0;i<4;i++){
-    const yy=a.y(q.relativeAngleDeg);ctx.strokeStyle='#737373';ctx.lineWidth=1.4*s;ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.rriWeights[i]),0,2*Math.PI);ctx.stroke();
-    ctx.fillStyle='rgba(213,94,0,.78)';ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.weights[i]),0,2*Math.PI);ctx.fill();
-  }});ctx.restore();ctx.textAlign='center';ctx.fillStyle='#000';ctx.font=`${22*s}px Arial`;ctx.fillText('Gray outline: RRI / red fill: CBA',(a.b.left+a.b.right)/2,49*s);
+    const yy=a.y(q.relativeAngleDeg);ctx.strokeStyle='#0033bb';ctx.lineWidth=1.4*s;ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.rriWeights[i]),0,2*Math.PI);ctx.stroke();
+    ctx.fillStyle='rgba(209,59,50,.78)';ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.weights[i]),0,2*Math.PI);ctx.fill();
+  }});ctx.restore();ctx.textAlign='center';ctx.fillStyle='#000';ctx.font=`${22*s}px Arial`;ctx.fillText('Blue outline: RRI / red fill: CBA',(a.b.left+a.b.right)/2,49*s);
 }
 
 // Figure palette and typography follow the journal-facing conventions used by
@@ -3030,7 +3164,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-15.4 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-15.5 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -5810,20 +5944,9 @@ function renderAll(result) {
 function drawShapeDeviation(canvas, result, key) {
   if(!result.shapeAnalysis) return;
   const a=result.shapeAnalysis[key], span=result.params.sliceThicknessMm<=1?1.5:Math.max(4,result.params.sliceThicknessMm*.8);
-  const plot=axisContext(canvas,{xMin:-span,xMax:span,yMin:-.06,yMax:.06},{x:'',y:'SSPz − mean',xFormatter:v=>String(v),yFormatter:v=>v.toFixed(2),leftMargin:140,topMargin:85,bottomMargin:155});
-  const {ctx,x,y,margin,innerWidth,innerHeight}=plot;
-  drawAxes(plot,[-span,0,span],[-.06,0,.06]);
-  ctx.save();ctx.beginPath();ctx.rect(margin.left,margin.top,innerWidth,innerHeight);ctx.clip();ctx.fillStyle='black';ctx.fillRect(margin.left,margin.top,innerWidth,innerHeight);
-  for(let i=0;i<a.x.length;i++){
-    if(a.x[i]+a.step/2 < -span||a.x[i]-a.step/2>span)continue;
-    for(let b=0;b<a.bins;b++) {const value=Math.round(255*Math.sqrt(a.hist[i*a.bins+b]));if(!value)continue;ctx.fillStyle=key==='on'?`rgb(${value},0,0)`:`rgb(${value},${value},${value})`;ctx.fillRect(x(a.x[i]-a.step/2),y(a.low+(b+1)*a.width),Math.max(.5,x(a.x[i]+a.step/2)-x(a.x[i]-a.step/2)),y(a.low+b*a.width)-y(a.low+(b+1)*a.width)+.1);}
-  }
-  ctx.restore();ctx.fillStyle=INK;ctx.font=`bold 30px ${FIGURE_FONT}`;ctx.textAlign='left';ctx.fillText(key==='on'?'(b)':'(a)',18,35);
-  ctx.font=`26px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(key==='on'?'Fan-beam cone geometry':'Parallel reference',margin.left+innerWidth/2,40);
-  ctx.font=`31px ${FIGURE_FONT}`;ctx.fillText('z position (mm)',margin.left+innerWidth/2,margin.top+innerHeight+68);
-  const barY=plot.height-45;
-  for(let i=0;i<200;i++){const v=Math.round(255*Math.sqrt(i/199));ctx.fillStyle=key==='on'?`rgb(${v},0,0)`:`rgb(${v},${v},${v})`;ctx.fillRect(margin.left+i*innerWidth/200,barY,innerWidth/200+1,15);}
-  ctx.fillStyle=INK;ctx.font=`23px ${FIGURE_FONT}`;ctx.fillText('0',margin.left,barY+36);ctx.fillText('50',margin.left+innerWidth/2,barY+36);ctx.fillText('100',margin.left+innerWidth,barY+36);ctx.fillText('Fraction (%)',margin.left+innerWidth/2,barY-8);
+  SSPZShapeDisplay.draw(canvas,[{name:key==='on'?'Cone geometry':'Parallel reference',rgb:key==='on'?[1,0,0]:[1,1,1],analysis:a}],{
+    title:key==='on'?'Fan-beam cone geometry':'Parallel reference',panel:key==='on'?'(b)':'(a)',span
+  });
   const counts=Object.values(result.shapeAnalysis).map(v=>v.valid.length).join(' / ');
   const outside=Object.values(result.shapeAnalysis).reduce((sum,v)=>sum+v.outside.reduce((n,x)=>n+x,0),0);
   document.querySelector('#shape-status').textContent=localizedText(`Included states (left/right): ${counts}. Outside deviation range: ${outside} samples (all deviations retained in Excel).`,`Included states (left/right): ${counts}. Outside deviation range: ${outside} samples (all deviations retained in Excel).`);

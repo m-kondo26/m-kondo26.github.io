@@ -9,9 +9,10 @@ const fdk = stripExports(await readFile(new URL("../fdk-core.js", import.meta.ur
 const cba = stripExports(stripImports(await readFile(new URL("../cba-core.js", import.meta.url), "utf8")));
 const worker = stripImports(await readFile(new URL("../worker.js", import.meta.url), "utf8"));
 const shapeExport=await readFile(new URL("../shape-export.js", import.meta.url), "utf8");
+const shapeDisplay=await readFile(new URL("../shape-display.js", import.meta.url), "utf8");
 const fdkUi=await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8");
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
-const app = shapeExport + '\n' + fdkUi + '\n' + mainApp;
+const app = shapeExport + '\n' + shapeDisplay + '\n' + fdkUi + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
 const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${worker}\n`;
@@ -22,7 +23,7 @@ const englishWorker = translateEnglishSource(worker);
 // FDK UI strings have explicit Japanese/English alternatives. Remove only
 // Japanese string literals in the English build; the English branch remains.
 const englishFdkUi=fdkUi.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
-const englishApp = translateEnglishSource(shapeExport+'\n'+englishFdkUi+'\n'+mainApp);
+const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);
 const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${englishWorker}\n`;
 const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${englishApp}\n})();\n`;
 const englishWorkerSource = `globalThis.SSPZ_WORKER_SOURCE = ${JSON.stringify(englishWorkerBundle)};\n`;

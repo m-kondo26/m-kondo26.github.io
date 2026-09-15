@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-15.4">
+  <link rel="stylesheet" href="styles.css?v=2026-09-15.5">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -366,10 +366,11 @@
 
     <section class="method-card" aria-labelledby="shape-title">
       <h2 id="shape-title">SSPz deviations from the mean</h2>
-      <p id="shape-description">Distributions of deviations after aligning each native FWHM midpoint to 0 mm and subtracting the pointwise mean. Profiles use a common 0.01-mm linear grid. Deviation bins have width 0.002; intensity is the square root of the fraction of states in each bin. This does not represent differences between absolute mean shapes or measured start-angle probabilities.</p>
+      <p id="shape-description">Each native FWHM midpoint is aligned to zero before subtracting the pointwise mean. Double-headed arrows show the mean of individual FWHMs. Intensity represents the fraction of states per bin (0–100%) using the same power of 0.35 as the manuscript figure.</p>
+      <p class="shape-method-note">Common grid: 0.01 mm; deviation bin width: 0.002. Widths are not rescaled; the vertical range expands to include all deviations. This view does not indicate agreement of mean shapes or measured start-angle probabilities.</p>
       <div class="chart-grid two">
-        <article class="chart-card"><canvas id="shape-deviation-off" width="900" height="650" aria-label="Parallel reference SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-off">Publication PNG (600 dpi)</button></article>
-        <article class="chart-card"><canvas id="shape-deviation-on" width="900" height="650" aria-label="Fan-beam SSPz deviations"></canvas><button class="download-link" data-canvas="shape-deviation-on">Publication PNG (600 dpi)</button></article>
+        <article class="chart-card"><div class="shape-canvas-wrap" tabindex="0"><canvas id="shape-deviation-off" width="1000" height="760" aria-label="Parallel reference SSPz deviations"></canvas></div><button class="download-link" data-canvas="shape-deviation-off">Publication PNG (600 dpi)</button></article>
+        <article class="chart-card"><div class="shape-canvas-wrap" tabindex="0"><canvas id="shape-deviation-on" width="1000" height="760" aria-label="Fan-beam SSPz deviations"></canvas></div><button class="download-link" data-canvas="shape-deviation-on">Publication PNG (600 dpi)</button></article>
       </div>
       <p id="shape-status" aria-live="polite">Available after calculation.</p>
       <button id="download-excel-button" type="button" class="secondary">Export all 360 SSPz profiles, means and deviations to Excel</button>
@@ -475,10 +476,10 @@
 
   <footer>
     <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-15.4 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
+    <p id="version">Web build 2026-09-15.5 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-15.4"></script>
-  <script src="app-bundle-en.js?v=2026-09-15.4"></script>
+  <script src="worker-source-en.js?v=2026-09-15.5"></script>
+  <script src="app-bundle-en.js?v=2026-09-15.5"></script>
 </body>
 </html>
