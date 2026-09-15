@@ -188,7 +188,7 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 9 / 6.2; backg
 #overlay-base-off, #overlay-base-on, #overlay-final-off, #overlay-final-on { aspect-ratio: 9 / 6.5; }
 #candidate-axial-spread-chart { aspect-ratio: 12 / 7; }
 #profile-chart, #sweep-chart { aspect-ratio: 12 / 6.5; }
-#diagram-overview-off, #diagram-overview-on, #diagram-zoom-off, #diagram-zoom-on { aspect-ratio: 9 / 7; }
+#diagram-overview-off, #diagram-overview-on, #diagram-zoom-off, #diagram-zoom-on { aspect-ratio: 900 / 960; }
 .download-link {
   display: block;
   position: static;

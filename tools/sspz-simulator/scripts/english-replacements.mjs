@@ -1,4 +1,9 @@
 const replacements = [
+  ["目的断面", "Target plane"],
+  ["合計重み w (FW=0)", "Total weight w (FW=0)"],
+  ["同じ取得データの重みを合算。軌道の重なりは混色。", "Weights sum per acquired sample; trace overlaps blend."],
+  ["全${diagram.totalRows}列の候補軌道", "Candidate trajectories: all ${diagram.totalRows} rows"],
+  ["淡色帯：拡大図の表示範囲（設定厚Tとは別）", "Shaded band: zoomed range, independent of thickness T"],
   ["体軸方向モデルの詳しい説明", "Axial model details"],
   ["1440ビュー", "1440 views"],
   ["2400ビュー", "2400 views"],

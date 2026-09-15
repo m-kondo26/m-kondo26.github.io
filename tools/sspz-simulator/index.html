@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-15.1">
+  <link rel="stylesheet" href="styles.css?v=2026-09-15.2">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -175,12 +175,12 @@
       <div class="chart-grid two">
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映しない</h3><details class="reading-details"><summary>詳しい説明</summary><span>平行ビーム180°基準・全N列</span></details></div>
-          <canvas id="diagram-overview-off" width="900" height="700" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を反映しない展開図"></canvas>
+          <canvas id="diagram-overview-off" width="900" height="960" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を反映しない展開図"></canvas>
           <button class="download-link" data-canvas="diagram-overview-off">投稿用PNG（600 dpi）</button>
         </article>
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映する</h3><details class="reading-details"><summary>詳しい説明</summary><span>ファンビーム対向角＋周期的距離変化・全N列</span></details></div>
-          <canvas id="diagram-overview-on" width="900" height="700" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を理想化して反映する展開図"></canvas>
+          <canvas id="diagram-overview-on" width="900" height="960" aria-label="設定厚による候補除外を行わず全検出器列を表示した、評価点までの距離変化を理想化して反映する展開図"></canvas>
           <button class="download-link" data-canvas="diagram-overview-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
@@ -192,12 +192,12 @@
       <div class="chart-grid two">
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映しない</h3><details class="reading-details"><summary>詳しい説明</summary><span>平行ビーム180°基準・全列から選択した端点</span></details></div>
-          <canvas id="diagram-zoom-off" width="900" height="700" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を反映しない拡大図"></canvas>
+          <canvas id="diagram-zoom-off" width="900" height="960" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を反映しない拡大図"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-off">投稿用PNG（600 dpi）</button>
         </article>
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映する</h3><details class="reading-details"><summary>詳しい説明</summary><span>ファンビーム条件・全列から選択した端点</span></details></div>
-          <canvas id="diagram-zoom-on" width="900" height="700" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を理想化して反映する拡大図"></canvas>
+          <canvas id="diagram-zoom-on" width="900" height="960" aria-label="全検出器列候補と、そこから選択した補間端点を示す、評価点までの距離変化を理想化して反映する拡大図"></canvas>
           <button class="download-link" data-canvas="diagram-zoom-on">投稿用PNG（600 dpi）</button>
         </article>
       </div>
@@ -475,10 +475,10 @@
 
   <footer>
     <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-15.1 / axial model 2026-09-08.1 / CBA 2026-09-15.1</p>
+    <p id="version">Web build 2026-09-15.2 / axial model 2026-09-08.1 / CBA 2026-09-15.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-15.1"></script>
-  <script src="app-bundle.js?v=2026-09-15.1"></script>
+  <script src="worker-source.js?v=2026-09-15.2"></script>
+  <script src="app-bundle.js?v=2026-09-15.2"></script>
 </body>
 </html>

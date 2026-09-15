@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-15.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.1`;
+versionLabel.textContent = `Web build 2026-09-15.2 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -573,7 +573,7 @@ function drawAxes(plot, xTicks, yTicks, useYDown = false) {
   const xLabelCenter = margin.left + innerWidth / 2;
   const xLabelWidth = Math.max(1, Math.min(innerWidth, 2 * Math.min(xLabelCenter, width - xLabelCenter)) - 16);
   setFittedFigureFont(ctx, labels.x, style.axisFontPx, 21, xLabelWidth);
-  ctx.fillText(labels.x, xLabelCenter, height - 11);
+  ctx.fillText(labels.x, xLabelCenter, labels.xLabelY ?? (height - 11));
   ctx.save();
   // Keep the rotated y-axis title inside the export canvas at the final
   // 80/180-mm sizes; 31 px allowed glyph overhang to touch the left edge.
@@ -699,8 +699,8 @@ function drawDetectorRowLegend(ctx, diagram, left, y, width) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  ctx.font = `17px ${FIGURE_FONT}`;
-  const label = localizedText("色：検出器列", "Color: detector row");
+  ctx.font = `26px ${FIGURE_FONT}`;
+  const label = localizedText("検出器列", "Detector row");
   ctx.fillText(label, left, y);
   const start = left + ctx.measureText(label).width + 24;
   const cell = (left + width - start) / count;
@@ -735,76 +735,53 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
-  const items = [{
-    label: localizedText("実データ側：実線・○", "Direct data: solid line / circle"),
-    dashed: false,
-  }];
-  if (paired) items.push({
-    label: localizedText("対向データ側：破線・△", "Complementary data: dashed line / triangle"),
-    dashed: true,
-  });
+  const items = [{ label: localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK }];
+  if (paired) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK });
+  items.push({ label: localizedText("目的断面", "Target plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const columnWidth = width / items.length;
   items.forEach((item, index) => {
     const start = left + index * columnWidth;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = 2.4;
     ctx.setLineDash(item.dashed ? [5, 3] : []);
     ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = INK;
-    setFittedFigureFont(ctx, item.label, 18, 13, columnWidth - 44);
+    setFittedFigureFont(ctx, item.label, 26, 22, columnWidth - 44);
     ctx.fillText(item.label, start + 40, y);
   });
   ctx.restore();
 }
 
 function drawWeightLegend(ctx, left, top, width, diagram, countText) {
-  const totalRows = diagram.totalRows;
-  const y0 = top + 6;
   ctx.save();
-  ctx.fillStyle = INK;
-  ctx.font = `20px ${FIGURE_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  const weightLabel = localizedText("選択候補の合計重み w (FW=0)", "Local total weight w (FW=0)");
-  const markerStart = left + Math.max(300, width * 0.48);
-  setFittedFigureFont(ctx, weightLabel, 20, 15, markerStart - left - 18);
-  ctx.fillText(weightLabel, left, y0 + 18);
-  const weights = [0, 0.25, 0.5, 0.75, 1];
-  const markerSpacing = Math.min(70, Math.max(42, (left + width - markerStart - 8) / (weights.length - 1)));
-  weights.forEach((weight, index) => {
-    const markerX = markerStart + index * markerSpacing;
-    drawWeightedMarker(ctx, 0, totalRows, markerX, y0 + 18, 6, weight);
-    ctx.fillStyle = MUTED;
-    ctx.font = `18px ${FIGURE_FONT}`;
-    ctx.textAlign = "center";
-    ctx.fillText(weight.toFixed(weight === 0 || weight === 1 ? 0 : 2), markerX, y0 + 44);
-  });
-  drawDetectorRowLegend(ctx, diagram, left, y0 + 74, width);
-  drawDiagramFamilyLegend(ctx, diagram, left, y0 + 104, width);
-  ctx.textAlign = "left";
-  const acquisitionLabel = localizedText(
-    "濃淡：同じ取得データの寄与を合算　赤線：目的断面",
-    "Fill: summed contributions from the same acquired sample; red: target plane",
-  );
   ctx.fillStyle = INK;
-  setFittedFigureFont(ctx, acquisitionLabel, 18, 13, width);
-  ctx.fillText(acquisitionLabel, left, y0 + 133);
-  const overlapLabel = localizedText(
-    "軌道の重なり：混色",
-    "Overlapping traces: blended colors",
-  );
+  const weightLabel = localizedText("合計重み w (FW=0)", "Total weight w (FW=0)");
+  const markerStart = left + width * 0.43;
+  setFittedFigureFont(ctx, weightLabel, 26, 24, markerStart - left - 20);
+  ctx.fillText(weightLabel, left, top);
+  const weights = [0, 0.25, 0.5, 0.75, 1];
+  const cell = (left + width - markerStart) / weights.length;
+  weights.forEach((weight, index) => {
+    const markerX = markerStart + index * cell;
+    drawWeightedMarker(ctx, 0, diagram.totalRows, markerX, top, 7, weight);
+    ctx.fillStyle = INK;
+    ctx.font = `25px ${FIGURE_FONT}`;
+    ctx.textAlign = "left";
+    ctx.fillText(weight.toFixed(weight === 0 || weight === 1 ? 0 : 2), markerX + 14, top);
+  });
+  drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
+  drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width);
+  ctx.textAlign = "left";
   ctx.fillStyle = MUTED;
-  setFittedFigureFont(ctx, overlapLabel, 16, 12, width);
-  ctx.fillText(overlapLabel, left, y0 + 157);
-  if (countText) {
-    ctx.fillStyle = MUTED;
-    ctx.font = `18px ${FIGURE_FONT}`;
-    drawWrappedLegendText(ctx, countText, left, y0 + 184, width);
-  }
+  const note = localizedText("同じ取得データの重みを合算。軌道の重なりは混色。", "Weights sum per acquired sample; trace overlaps blend.");
+  setFittedFigureFont(ctx, note, 24, 22, width);
+  ctx.fillText(note, left, top + 114);
   ctx.restore();
 }
 
@@ -853,77 +830,22 @@ function drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit) {
 }
 
 function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
-  const legendCount = Math.min(6, diagram.totalRows);
-  const rows = Array.from({ length: legendCount }, (_, index) => (
-    legendCount === 1 ? 0 : Math.round(index * (diagram.totalRows - 1) / (legendCount - 1))
-  ));
   ctx.save();
-  ctx.font = `20px ${FIGURE_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  const rowLabel = "検出器列";
-  ctx.fillText(rowLabel, left, top + 21);
-  const rowLabelWidth = ctx.measureText(rowLabel).width;
-  ctx.font = `18px ${FIGURE_FONT}`;
-  const itemWidths = rows.map(row => 34 + ctx.measureText(`${row + 1}`).width);
-  const itemWidthTotal = itemWidths.reduce((sum, value) => sum + value, 0);
-  const rowLegendStart = left + rowLabelWidth + 24;
-  const remainingGapWidth = Math.max(0, left + width - rowLegendStart - itemWidthTotal);
-  const itemGap = rows.length > 1 ? Math.max(12, Math.min(32, remainingGapWidth / (rows.length - 1))) : 0;
-  let rowLegendX = rowLegendStart;
-  rows.forEach((row, index) => {
-    const x0 = rowLegendX;
-    const y = top + 21;
-    ctx.strokeStyle = rowColor(row, diagram.totalRows);
-    ctx.globalAlpha = 0.9;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + 28, y); ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = MUTED;
-    ctx.font = `18px ${FIGURE_FONT}`;
-    ctx.fillText(`${row + 1}`, x0 + 34, y);
-    rowLegendX += itemWidths[index] + itemGap;
-  });
-  drawDiagramFamilyLegend(ctx, diagram, left, top + 54, width);
-  ctx.font = `18px ${FIGURE_FONT}`;
-  const acquiredLabel = "全列候補軌道（Tで除外しない）";
-  const targetLabel = "目的断面 z₀";
-  const secondRowY = top + 84;
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 2.2;
-  ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(left, secondRowY); ctx.lineTo(left + 42, secondRowY); ctx.stroke();
-  const acquiredTextX = left + 52;
-  ctx.fillStyle = INK; ctx.fillText(acquiredLabel, acquiredTextX, secondRowY);
-  const acquiredTextRight = acquiredTextX + ctx.measureText(acquiredLabel).width;
-  const targetTextWidth = ctx.measureText(targetLabel).width;
-  let targetMarkerX = acquiredTextRight + 24;
-  let targetTextX = targetMarkerX + 12;
-  let targetY = secondRowY;
-  let countY = top + 144;
-  if (targetTextX + targetTextWidth > left + width) {
-    targetMarkerX = left;
-    targetTextX = left + 12;
-    targetY = top + 114;
-    countY = top + 174;
-  }
-  ctx.strokeStyle = RED;
-  ctx.lineWidth = 2.4;
-  ctx.beginPath(); ctx.moveTo(targetMarkerX, targetY - 12); ctx.lineTo(targetMarkerX, targetY + 12); ctx.stroke();
-  ctx.fillStyle = INK; ctx.fillText(targetLabel, targetTextX, targetY);
-  const bandLabel = "淡色帯：2Bの拡大範囲（Tとは別）";
+  const scope = localizedText(`全${diagram.totalRows}列の候補軌道`, `Candidate trajectories: all ${diagram.totalRows} rows`);
+  setFittedFigureFont(ctx, scope, 26, 24, width);
+  ctx.fillText(scope, left, top);
+  drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
+  drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width);
+  ctx.textAlign = "left";
   ctx.fillStyle = MUTED;
-  setFittedFigureFont(ctx, bandLabel, 17, 13, width);
-  ctx.fillText(bandLabel, left, targetY + 30);
-  if (countText) {
-    ctx.fillStyle = MUTED;
-    ctx.font = `18px ${FIGURE_FONT}`;
-    drawWrappedLegendText(ctx, countText, left, countY, width);
-  }
+  const band = localizedText("淡色帯：拡大図の表示範囲（設定厚Tとは別）", "Shaded band: zoomed range, independent of thickness T");
+  setFittedFigureFont(ctx, band, 24, 22, width);
+  ctx.fillText(band, left, top + 114);
   ctx.restore();
 }
-
 
 function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusXLimit = null) {
   const publicationMode = canvas.dataset.publicationMode === "true";
@@ -936,7 +858,8 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     y: localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
-    topMargin: mode === "zoom" ? (publicationMode ? 200 : 258) : (publicationMode ? 148 : 206),
+    topMargin: 32,
+    bottomMargin: 278,
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
   const bandLimit = Math.min(xLimit, mode === "overview"
@@ -979,13 +902,19 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(x(0), margin.top); ctx.lineTo(x(0), margin.top + innerHeight); ctx.stroke();
   ctx.restore();
+  // The key belongs below the axes, in a separate footer. Reserve plot
+  // height in the canvas dimensions rather than squeezing it for the legend.
+  plot.labels.xLabelY = margin.top + innerHeight + 86;
   drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
+  const legendTop = margin.top + innerHeight + 136;
+  ctx.save(); ctx.strokeStyle = GRID; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(margin.left, legendTop - 27); ctx.lineTo(margin.left + innerWidth, legendTop - 27); ctx.stroke(); ctx.restore();
   if (mode === "overview" || diagram.geometryOnly) {
     const countText = localizedText(
       `全${diagram.totalRows}列・全${diagram.referenceViewSamples}取得角度／共通の実データ側角度βで表示／Tで除外しない`,
       `All ${diagram.totalRows} rows / ${diagram.referenceViewSamples} acquired angles / common direct-data reference angle β / no T-based exclusion`,
     );
-    drawOverviewLegend(ctx, diagram, margin.left, 8, innerWidth, publicationMode ? "" : countText);
+    drawOverviewLegend(ctx, diagram, margin.left, legendTop, innerWidth, countText);
   } else {
     const countText = localizedText(
       `点は${diagram.renderedAngleSamples}角度を抜粋／軌道は全取得角度／Tで除外しない`,
@@ -994,7 +923,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     drawWeightLegend(
       ctx,
       margin.left,
-      8,
+      legendTop,
       innerWidth,
       diagram,
       publicationMode ? "" : countText,
@@ -1025,7 +954,10 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
   canvas.dataset.inlineRowLabels = "0";
   canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
-  canvas.dataset.diagramDisplayVersion = "2026-09-08.3";
+  canvas.dataset.diagramDisplayVersion = "2026-09-15.1";
+  canvas.dataset.legendPlacement = "below-axes";
+  canvas.dataset.plotHeight = String(innerHeight);
+  canvas.dataset.legendTop = String(legendTop);
 }
 
 function drawSeriesMarkers(ctx, points, x, y, color, shape = "circle", stride = 1) {

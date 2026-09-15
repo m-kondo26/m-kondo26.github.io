@@ -336,8 +336,8 @@ for (const shape of ["circle", "triangle"]) {
 }
 assert.match(appSource, /point\.traceFamilyId\?\.startsWith\("complementary-"\)\s*\?\s*"triangle"\s*:\s*"circle"/);
 assert.match(appSource, /drawDiagramFamilyLegend\(ctx, diagram,/);
-assert.match(appSource, /Direct data: solid line \/ circle/);
-assert.match(appSource, /Complementary data: dashed line \/ triangle/);
+assert.match(appSource, /Direct ○/);
+assert.match(appSource, /Complementary △/);
 
 console.log(JSON.stringify({
   status: "PASS",

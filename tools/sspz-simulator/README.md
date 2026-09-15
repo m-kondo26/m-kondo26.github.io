@@ -1,3 +1,7 @@
+## Diagram layout (2026-09-15)
+
+Overview and zoom diagrams now place a compact four-row legend below the axes. The 900 × 960 logical canvas preserves a 650-unit-high plotting field on screen and in 600-dpi PNG exports. Candidate coordinates, marker weights, color mapping and model calculations are unchanged.
+
 ## Hsieh conjugate backprojection (2026-09-15)
 
 The 3D FBP controls now include Hsieh CBA with matched RRI. Both use the same finite-sphere projections, rowwise fan-to-parallel rebinning and filtering. Compare SSPz, individual FWHMs, start-angle deviations and central-voxel sample weights; export both methods to Excel, CSV, PNG and volume JSON. See [CBA_METHOD.md](CBA_METHOD.md) for the equations, source papers, numerical sensitivity and scope. The original FDK path remains available. This reference implements the specified interpolation, not every acquisition or adaptive weighting operation in Hsieh's scanner experiments.

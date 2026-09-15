@@ -1,3 +1,7 @@
+## 2026-09-15: diagram legend below the axes
+
+Display version 2026-09-15.1 / web build 2026-09-15.2. The overview and zoom renderers share a four-row legend below the x-axis. The 900 × 960 canvas leaves a 650-unit plotting height; the prior 80-mm zoom export had a 404-unit plotting height. Axis labels, major/minor ticks, detector-row colors, acquired-sample marker identity and summed coefficients remain intact. The 80-mm, 600-dpi export is now 1890 × 2016 pixels. Both Japanese and English layouts were visually inspected; model-regression, diagram-marker-identity and unwrapped-complementary-trajectories tests passed. No computation core changed.
+
 ## 2026-09-15: Hsieh CBA and matched RRI
 
 The integrated worker implements rowwise fan-to-parallel rebinning and Hsieh et al. (2007), Eqs. (4)-(6), with matched linear RRI and quadratic CBA. Both methods share all operations apart from their four-sample row weights. See [CBA_METHOD.md](CBA_METHOD.md) and [tests/cba-verification.json](tests/cba-verification.json).

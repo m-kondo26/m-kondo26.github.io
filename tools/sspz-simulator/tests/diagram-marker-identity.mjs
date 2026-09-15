@@ -187,12 +187,12 @@ function rendererRuntime(restoreUnmergedMarkers = false) {
     localizedText: ja => ja,
     symmetricNiceAxis: limit => ({ xMin: -limit, xMax: limit, step: limit / 3,
       ticks: [-limit, 0, limit], formatter: String }),
-    axisContext: canvas => ({ ctx: canvas.context, canvas, margin: { left: 0, top: 0 },
+    axisContext: canvas => ({ ctx: canvas.context, canvas, labels: {}, margin: { left: 0, top: 0 },
       innerWidth: 1000, innerHeight: 360, x: value => value, yDown: value => value }),
     drawAxes() {}, drawOverviewLegend() {}, drawWeightLegend() {},
     drawDetectorRowLegend() {}, drawCandidateTrace() {},
   });
-  const constants = ["ROW_COLORS", "PALE", "RED", "INK", "MUTED", "FIGURE_FONT"].map(name => {
+  const constants = ["ROW_COLORS", "PALE", "RED", "INK", "MUTED", "GRID", "FIGURE_FONT"].map(name => {
     const match = new RegExp(`^const ${name} = .+;$`, "m").exec(source);
     assert.ok(match, `Application constant ${name} exists`);
     return match[0];
@@ -308,7 +308,7 @@ for (const rows of [4, 160, 320]) {
           "No detector-row digit or other annotation is painted inside the plot");
         assert.equal(axesCalls, 1, "Axes are still drawn exactly once");
         assert.deepEqual(legends, [{ role: mode, rows }], "Compact detector-row key remains part of the corresponding legend");
-        assert.equal(canvas.dataset.diagramDisplayVersion, "2026-09-08.3");
+        assert.equal(canvas.dataset.diagramDisplayVersion, "2026-09-15.1");
         assert.equal(JSON.stringify(diagram), originalDiagram, "Display-only revision preserves every numerical diagram field");
         assert.equal(ctx.events.filter(event => event.type === "fill").length,
           mode === "zoom" ? independentGroups(diagram.weightedPoints).size : 0,
@@ -319,7 +319,7 @@ for (const rows of [4, 160, 320]) {
     }
   }
 }
-assert.match(functionSource("drawOverviewLegend"), /row \+ 1/, "Overview row-number color key remains");
+assert.match(functionSource("drawOverviewLegend"), /drawDetectorRowLegend\(/, "Overview uses the shared row-number color key");
 assert.match(functionSource("drawDetectorRowLegend"), /row \+ 1/, "Zoom row-number color key remains");
 for (const filename of ["app.js", "index.html", "index-en.html", "app-bundle.js", "app-bundle-en.js", "scripts/english-replacements.mjs"]) {
   const text = fs.readFileSync(new URL(`../${filename}`, import.meta.url), "utf8");

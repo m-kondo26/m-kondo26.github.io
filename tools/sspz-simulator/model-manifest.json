@@ -1,7 +1,7 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-09-08.1",
-  "diagramDisplayVersion": "2026-09-08.3",
+  "diagramDisplayVersion": "2026-09-15.1",
   "profileDisplayVersion": "2026-09-08.1",
   "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The unchanged log-tail rule omits values below 0.001, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
   "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
@@ -158,7 +158,7 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-15.1",
+  "webBuildVersion": "2026-09-15.2",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
@@ -193,5 +193,14 @@
     "implementationTests": "tests/cba.mjs",
     "numericalSensitivity": "tests/cba-verification.json",
     "scope": "Same acquired sphere projections, rebinning and filtering for both methods. Conservative paired full turn with coverage guards. No overscan, adaptive 3D weights or commercial-scanner validation."
+  },
+  "diagramLayout": {
+    "logicalCanvas": [
+      900,
+      960
+    ],
+    "plotHeight": 650,
+    "legend": "four-row footer below axes; shared screen and PNG layout",
+    "dataChange": false
   }
 }
