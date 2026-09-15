@@ -1,4 +1,14 @@
 const replacements = [
+  ["体軸方向モデルの詳しい説明", "Axial model details"],
+  ["1440ビュー", "1440 views"],
+  ["2400ビュー", "2400 views"],
+  ["体軸方向モデルの範囲", "Axial model scope"],
+  ["展開図とSSPzを対応させ、取得データの配置と補間方法の影響を比較します。体軸方向モデル、3次元FDK、Hsiehらの対向データ補間（CBA/RRI）を選択できます。", "Compare acquired-data geometry, interpolation and SSPz. Choose the axial model, 3D FDK or Hsieh conjugate interpolation (CBA/RRI)."],
+  ["各文献の下に、このシミュレーションで採用した計算と適用範囲を示します。", "Below each reference, we identify the calculations adopted and their scope."],
+  ["3次元FDK経路は、同報の導入部で説明された断面中心の1回転区間を用いる従来のヘリカルFDK近似を参照しています。同報の新しい正確再構成法や周波数混合法は実装していません。", "The 3D FDK path uses the conventional helical FDK reference with a slice-centred full-turn interval discussed in the introduction. It does not implement the paper's new exact or frequency-mixing methods."],
+  ["検出器列ごとの投影再配列と式（6）の対向4点補間を実装し、同じ投影・前処理でCBAと従来RRIを比較します。対向ペアの重みは展開表示とExcelで確認できます。実機の補正処理、適応的重み付け、オーバースキャンは再現しません。", "Rowwise rebinning and the four-sample conjugate interpolation of Eq. (6) are implemented. CBA and conventional RRI use identical projections and preprocessing. Pair weights are shown in the diagram and Excel. Scanner corrections, adaptive weights and overscan are not reproduced."],
+  ["Hsieh法の共通前処理として、式（2）・（3）の平行座標でのランプフィルタとコーン角の余弦係数を参照しました。同報の適応的3次元重み付けとオーバースキャン拡張は採用していません。", "The shared preprocessing in the Hsieh path uses the parallel-coordinate ramp filter and cone-cosine factor of Eqs. (2)-(3). The paper's adaptive 3D weighting and overscan extension are not implemented."],
+
   ["取得データの配置を展開図で示し、SSPzとの関係を計算します。従来の体軸方向補間モデルに加え、80・160・320列の投影生成と3次元FBP（FDK近似）を選択できます。", "Explore acquired-data geometry and SSPz. Select the axial interpolation reference or 3D FBP (FDK approximation), including projection generation for 80, 160 and 320 detector rows."],
   ["0では寝台移動なしの展開図を表示します。補間点・SSPzは計算しません。", "At 0, stationary-table diagrams are displayed. Interpolation points and SSPz are not calculated."],
   ["ピッチ0：寝台移動なしの展開図", "Pitch 0: stationary-table geometry"],

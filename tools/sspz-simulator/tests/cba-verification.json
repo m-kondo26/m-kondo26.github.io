@@ -1,0 +1,544 @@
+{
+  "model": "2026-09-15.1",
+  "scope": "Numerical sensitivity of ideal finite-sphere model; not scanner validation or a reproduction of measured foil widths.",
+  "results": [
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 360
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 360,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6848411958951879,
+        "FWTM": 1.163952485660523,
+        "peak": 0.14952907679940824
+      },
+      "RRI": {
+        "FWHM": 0.7321726913192312,
+        "FWTM": 1.2692141425900805,
+        "peak": 0.13827765377547518
+      },
+      "pairs": 180
+    },
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 720
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 720,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6549973106907756,
+        "FWTM": 1.160462223613632,
+        "peak": 0.26271558700296554
+      },
+      "RRI": {
+        "FWHM": 0.7133566447589034,
+        "FWTM": 1.263554132439702,
+        "peak": 0.24133085279739744
+      },
+      "pairs": 360
+    },
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 1440
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6575144879523074,
+        "FWTM": 1.162025571231132,
+        "peak": 0.37080518380000504
+      },
+      "RRI": {
+        "FWHM": 0.7153418476728913,
+        "FWTM": 1.2672648326300633,
+        "peak": 0.3406151082787949
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 160,
+        "viewSamples": 360
+      },
+      "config": {
+        "rows": 160,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 360,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 40,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6528262785601515,
+        "FWTM": 1.1599629742277222,
+        "peak": 0.15332534666440606
+      },
+      "RRI": {
+        "FWHM": 0.7136190964589118,
+        "FWTM": 1.264423406713858,
+        "peak": 0.14056889242104617
+      },
+      "pairs": 180
+    },
+    {
+      "input": {
+        "rows": 160,
+        "viewSamples": 720
+      },
+      "config": {
+        "rows": 160,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 720,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 40,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6541913908302588,
+        "FWTM": 1.1531155518239717,
+        "peak": 0.26384146901089245
+      },
+      "RRI": {
+        "FWHM": 0.7141182149466059,
+        "FWTM": 1.2613581693996,
+        "peak": 0.24147268700161048
+      },
+      "pairs": 360
+    },
+    {
+      "input": {
+        "rows": 160,
+        "viewSamples": 1440
+      },
+      "config": {
+        "rows": 160,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 40,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6535503805845939,
+        "FWTM": 1.1589928093765205,
+        "peak": 0.37289145207633084
+      },
+      "RRI": {
+        "FWHM": 0.7148307024543874,
+        "FWTM": 1.2670423471540149,
+        "peak": 0.3407026884062086
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 320,
+        "viewSamples": 360
+      },
+      "config": {
+        "rows": 320,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 360,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 80,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6548187872743455,
+        "FWTM": 1.152929366701577,
+        "peak": 0.15421695263014457
+      },
+      "RRI": {
+        "FWHM": 0.7191998698828088,
+        "FWTM": 1.2649785200404757,
+        "peak": 0.1401346575384547
+      },
+      "pairs": 180
+    },
+    {
+      "input": {
+        "rows": 320,
+        "viewSamples": 720
+      },
+      "config": {
+        "rows": 320,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 720,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 80,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6506532158006424,
+        "FWTM": 1.1507672277000225,
+        "peak": 0.2649017632616172
+      },
+      "RRI": {
+        "FWHM": 0.7150029618301482,
+        "FWTM": 1.2667554890415509,
+        "peak": 0.2410270251862099
+      },
+      "pairs": 360
+    },
+    {
+      "input": {
+        "rows": 320,
+        "viewSamples": 1440
+      },
+      "config": {
+        "rows": 320,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 80,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6518343647385126,
+        "FWTM": 1.1542170515132144,
+        "peak": 0.3737263147366351
+      },
+      "RRI": {
+        "FWHM": 0.7146662899280753,
+        "FWTM": 1.2684160593509721,
+        "peak": 0.3406348517459568
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 1440,
+        "apertureSamples": 16
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 16,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6583257661629156,
+        "FWTM": 1.1637223027077441,
+        "peak": 0.3700561848816991
+      },
+      "RRI": {
+        "FWHM": 0.7161050397216615,
+        "FWTM": 1.2688010238980092,
+        "peak": 0.33998743547458743
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 1440,
+        "zStep": 0.025
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.025,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 241,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6570144449063462,
+        "FWTM": 1.1589180322587735,
+        "peak": 0.37080518380000504
+      },
+      "RRI": {
+        "FWHM": 0.715132849999029,
+        "FWTM": 1.264801466938432,
+        "peak": 0.3406151082787949
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 64,
+        "rowWidth": 0.625,
+        "beamPitch": 0.515625,
+        "radius": 0,
+        "viewSamples": 1440
+      },
+      "config": {
+        "rows": 64,
+        "rowWidth": 0.625,
+        "beamPitch": 0.515625,
+        "sourceRadius": 600,
+        "radius": 0,
+        "viewSamples": 1440,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20.625,
+        "zSamples": 121,
+        "channels": 24,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.7600999842315748,
+        "FWTM": 1.3338984378306318,
+        "peak": 0.45221910471790217
+      },
+      "RRI": {
+        "FWHM": 0.8671801779390449,
+        "FWTM": 1.516900057126267,
+        "peak": 0.39768742431961124
+      },
+      "pairs": 720
+    },
+    {
+      "input": {
+        "rows": 80,
+        "viewSamples": 2400
+      },
+      "config": {
+        "rows": 80,
+        "rowWidth": 0.5,
+        "beamPitch": 0.5,
+        "sourceRadius": 600,
+        "radius": 100,
+        "viewSamples": 2400,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0.65,
+        "channelWidth": 0.25,
+        "apertureSamples": 8,
+        "xyExtent": 1.5,
+        "xySamples": 17,
+        "zExtent": 3,
+        "zStep": 0.05,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "feed": 20,
+        "zSamples": 121,
+        "channels": 828,
+        "uOffset": 0.5,
+        "vOffset": 0.5
+      },
+      "CBA": {
+        "FWHM": 0.6579609741963036,
+        "FWTM": 1.1629494884941307,
+        "peak": 0.4125436362430443
+      },
+      "RRI": {
+        "FWHM": 0.7159069714769715,
+        "FWTM": 1.2684948313764735,
+        "peak": 0.37882780627299806
+      },
+      "pairs": 1200
+    }
+  ]
+}

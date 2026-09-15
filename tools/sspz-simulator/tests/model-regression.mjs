@@ -281,7 +281,9 @@ for (const doi of [
   assert.ok(indexSource.includes(doi));
   assert.ok(manifest.literatureBackground.some(reference => reference.doi === doi));
 }
-assert.match(indexSource, /各論文の再構成アルゴリズムを本Web版が再現している、という意味ではありません/);
+assert.match(indexSource, /各文献の下に、このシミュレーションで採用した計算と適用範囲を示します/);
+assert.match(indexSource, /10\.1117\/1\.2746866/);
+assert.match(indexSource, /式（6）の対向4点補間を実装/);
 assert.match(appSource, /フィルタ補間後の幅を参照値Tで除しています/);
 assert.match(appSource, /FWはTと独立で、FW=TでもFWHM=Tを保証しません/);
 assert.match(appSource, /sweep-taguchi-\$\{metric\.rawKey\}-FW/);

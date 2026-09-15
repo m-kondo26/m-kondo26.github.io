@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-14.1">
+  <link rel="stylesheet" href="styles.css?v=2026-09-15.1">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -26,7 +26,7 @@
         <a class="language-link" href="index.html" data-language-target="index.html" lang="ja">Japanese</a>
       </div>
       <h1>CT Angular-Longitudinal Diagram and SSPz Geometry Reference</h1>
-      <p class="lead">Explore acquired-data geometry and SSPz. Select the axial interpolation reference or 3D FBP (FDK approximation), including projection generation for 80, 160 and 320 detector rows.</p>
+      <p class="lead">Compare acquired-data geometry, interpolation and SSPz. Choose the axial model, 3D FDK or Hsieh conjugate interpolation (CBA/RRI).</p>
     </div>
     <div class="hero-badge" aria-label="Access and model scope">
       <strong>Free to use · No registration required</strong>
@@ -103,6 +103,8 @@
             <option value="360" selected>360 views (standard)</option>
             <option value="720">720 views (fine)</option>
             <option value="1200">1200 views (high precision)</option>
+            <option value="1440">1440 views</option>
+            <option value="2400">2400 views</option>
           </select>
           <small class="field-help">Direct-ray reference views for each SSPz are distributed at equal angular intervals from 0° to less than 360°. In the primary 180LI analysis, the neighboring acquired views in the complementary-ray angular region are also searched for each reference view. This number is distinct from the 360 model states shown below.</small>
         </label>
@@ -374,7 +376,7 @@
     </section>
     <section class="method-card" aria-labelledby="method-title">
       <p class="step">4</p>
-      <h2 id="method-title">Model scope</h2>
+      <h2 id="method-title">Axial model scope</h2>
       <div class="method-columns">
         <div>
           <h3>Implemented</h3>
@@ -411,7 +413,7 @@
     <section class="method-card reference-card" aria-labelledby="reference-title">
       <p class="step">5</p>
       <h2 id="reference-title">Literature basis and implementation boundaries</h2>
-      <p class="reference-intro">The following studies informed development of the angular-longitudinal diagram and SSPz model. Their inclusion does not mean that this website reproduces the reconstruction algorithm in any cited paper. The relationship and implementation boundary are stated below each reference.</p>
+      <p class="reference-intro">Below each reference, we identify the calculations adopted and their scope.</p>
       <ol class="reference-list">
         <li>
           <div class="reference-citation">Wang G, Vannier MW. <a href="https://doi.org/10.1118/1.597199" target="_blank" rel="noopener noreferrer">Spatial variation of section sensitivity profile in spiral computed tomography.</a> <i>Medical Physics.</i> 1994;21:1491–1497.</div>
@@ -427,7 +429,7 @@
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
-          <p>Theoretical basis for considering helical cone-beam reconstruction and data utilization with multi-row detectors. The distance scaling on this website is an idealized geometric display and does not implement the exact or approximate reconstruction algorithms in that paper.</p>
+          <p>The 3D FDK path uses the conventional helical FDK reference with a slice-centred full-turn interval discussed in the introduction. It does not implement the paper's new exact or frequency-mixing methods.</p>
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
@@ -441,8 +443,16 @@
           <div class="reference-citation">Zamyatin AA, Taguchi K, Silver MD. <a href="https://doi.org/10.1118/1.2047784" target="_blank" rel="noopener noreferrer">Helical cone beam CT with an asymmetrical detector.</a> <i>Medical Physics.</i> 2005;32:3117–3127.</div>
           <p>This study was consulted for the geometric relationship between direct and complementary rays and the fan-angle-dependent complementary source angle. In view of the additional limitation that an exactly complementary ray generally does not exist for a three-dimensional cone-beam ray, Section 2C is limited to an idealized acquisition-geometry reference and does not implement the missing-data restoration method described in the paper.</p>
         </li>
+        <li>
+          <div class="reference-citation">Hsieh J, Tang X, Thibault JB, Shaughnessy C, Nilsen RA, Williams E. <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Conjugate cone-beam reconstruction algorithm.</a> <i>Optical Engineering.</i> 2007;46(6):067001.</div>
+          <p>Rowwise rebinning and the four-sample conjugate interpolation of Eq. (6) are implemented. CBA and conventional RRI use identical projections and preprocessing. Pair weights are shown in the diagram and Excel. Scanner corrections, adaptive weights and overscan are not reproduced.</p>
+        </li>
+        <li>
+          <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
+          <p>The shared preprocessing in the Hsieh path uses the parallel-coordinate ramp filter and cone-cosine factor of Eqs. (2)-(3). The paper's adaptive 3D weighting and overscan extension are not implemented.</p>
+        </li>
       </ol>
-      <details class="reading-details"><summary>Details</summary><p class="model-note compact-note"><strong>Implementation boundary:</strong> Local linear interpolation and rectangular filter averaging from the source are used to evaluate the axial response to a fixed thin object. Responses with candidate reselection at each resampling position are combined using linearity. The former width-T post-average of a fixed-plane candidate response is not used for the default SSPz calculation. Acquisition-geometry approximations, equal view weights, and ideal row apertures remain explicit assumptions. This alone does not validate thick-slice reconstruction in a particular scanner.</p>
+      <details class="reading-details"><summary>Axial model details</summary><p class="model-note compact-note"><strong>Implementation boundary:</strong> Local linear interpolation and rectangular filter averaging from the source are used to evaluate the axial response to a fixed thin object. Responses with candidate reselection at each resampling position are combined using linearity. The former width-T post-average of a fixed-plane candidate response is not used for the default SSPz calculation. Acquisition-geometry approximations, equal view weights, and ideal row apertures remain explicit assumptions. This alone does not validate thick-slice reconstruction in a particular scanner.</p>
     </details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -464,11 +474,11 @@
   </main>
 
   <footer>
-    <p>Models: axial filter-interpolation reference, or cylindrical-detector full-turn helical 3D FBP (FDK approximation). Neither reproduces a scanner-specific reconstruction algorithm.</p>
-    <p id="version">Web reference build 2026-09-08.1</p>
+    <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
+    <p id="version">Web build 2026-09-15.1 / axial model 2026-09-08.1 / CBA 2026-09-15.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-14.1"></script>
-  <script src="app-bundle-en.js?v=2026-09-14.1"></script>
+  <script src="worker-source-en.js?v=2026-09-15.1"></script>
+  <script src="app-bundle-en.js?v=2026-09-15.1"></script>
 </body>
 </html>

@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-14.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1`;
+versionLabel.textContent = `Web build 2026-09-15.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

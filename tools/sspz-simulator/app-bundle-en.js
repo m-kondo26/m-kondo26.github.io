@@ -2745,9 +2745,13 @@ globalThis.SSPZShape = (() => {
 
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
-const FDK_UI_FIELDS={sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
+const FDK_UI_FIELDS={method:'fdk',sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:1,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
+const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
+const fdkFileStem=r=>r.reference?'Hsieh_CBA_RRI':'FDK';
+function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
+function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
 function readFdkParams(){
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
@@ -2769,7 +2773,7 @@ function fdkParamsFromUrl(q){
   return out;
 }
 function initializeFdkUi(initial){
-  const pick=document.createElement('label');pick.innerHTML=fdkText('','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('','3D FBP (helical FDK approximation)')}</option></select>`;
+  const pick=document.createElement('label');pick.innerHTML=fdkText('','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('','3D FBP (FDK / Hsieh CBA and RRI)')}</option></select>`;
   form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
@@ -2777,6 +2781,7 @@ function initializeFdkUi(initial){
   controls.innerHTML=`<p class="section-summary">${fdkText('','Rows, row width, pitch, source radius, evaluation radius and views per turn use the shared controls above.')}</p>
   <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('','rows')}</button>`).join('')}<span>${fdkText('','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
   <div class="parameter-grid">
+  ${sel('method','','3D reconstruction method',[['fdk',fdkText('','Original helical FDK reference')],['hsieh',fdkText('','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${num('sphereDiameter','','Sphere diameter (mm)',.1,10,.01)}
   ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${sel('apertureSamples','','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
@@ -2788,13 +2793,13 @@ function initializeFdkUi(initial){
   ${num('phase','','Source angle at z = 0 (rad)',0,6.28318530718,.01)}
   ${num('state','','Object z / table feed per turn',0,1,.01)}
   ${sel('normalization','','Normalization for display and widths', [['minmax',fdkText('','Minimum 0, maximum 1')],['peak',fdkText('','Peak 1 (retain negative values)')]])}
-  </div><p class="model-note">${fdkText('','Each slice uses a contiguous full turn; pitch 0 uses circular FDK. Computation stops if the required projections fall outside the detector; missing data are not extrapolated.')}</p>`;
+  </div><p class="model-note">${fdkText('','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. Computation stops if required projections or conjugate samples fall outside the detector.')}</p>`;
   form.append(controls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('','From acquired geometry to 3D FBP')}</h2></div>
-  <p class="section-summary">${fdkText('','Sphere projections on the cylindrical detector → flat-detector rebinning → cone preweight → transaxial Ram-Lak filtering → 3D backprojection → slice-wise ROI mean.')}</p>
-  <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p>
+  <p class="section-summary">${fdkText('','Reconstruct local 3D images and SSPz from sphere projections. The Hsieh path compares CBA (joint conjugate interpolation) with RRI (row interpolation within each view).')}</p>
+  <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
   <article class="chart-card"><h3>${fdkText('','Sphere-derived SSPz')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
@@ -2802,33 +2807,35 @@ function initializeFdkUi(initial){
   <article class="chart-card"><h3>${fdkText('','Coronal image through the sphere center')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
   </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('','The sphere center is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','This is an approximate FDK-type 3D FBP. It shares the source trajectory and detector-row positions with the existing diagrams, but uses a different reconstruction path from the axial interpolation model. It does not reproduce TCOT or implement exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. Reference thickness T and filter width FW do not apply to this path.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','Equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. Reference thickness T and filter width FW do not apply to this path.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights at the sphere center')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Gray: RRI; red: CBA. Marker area represents normalized weight. The four samples in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
   const axialViewHelp=viewHelp?.textContent;
   function modeChanged(){
     const on=pick.querySelector('select').value==='fdk';controls.hidden=!on;panel.hidden=!on;
-    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell'))s.hidden=on;});
+    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
     for(const k of ['sliceThicknessMm','filterWidthMm','filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
-    if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn; independent of the number of start angles.'):axialViewHelp;
+    if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Small off-centre spheres are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
     if(legacyUrlNote&&on)legacyUrlNote.hidden=true;
     if(!runButton.disabled)status.textContent=fdkText('','Model selected. Check the conditions and calculate.');
   }
   pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   controls.querySelectorAll('[data-fdk-rows]').forEach(b=>b.addEventListener('click',()=>{if(runButton.disabled)return;form.elements.rows.value=b.dataset.fdkRows;form.elements.rowWidth.value=.5;form.elements.beamPitch.value=.5;status.textContent=fdkText('','Preset selected. Press Calculate.');}));
-  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob('FDK_SSPz.csv','\uFEFF'+[['z_position_mm',...r.profiles.flatMap((_,i)=>['raw_'+i,'normalized_'+i])],...Array.from(r.z,(z,i)=>[z,...r.profiles.flatMap(p=>[p.raw[i],p.profile[i]])])].map(row=>row.join(',')).join('\r\n'));};
-  document.getElementById('fdk-json').onclick=()=>{if(fdkResult)downloadBlob('FDK_volume.json',JSON.stringify(fdkResult,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
+  document.getElementById('fdk-json').onclick=()=>{if(fdkResult)downloadBlob(fdkFileStem(fdkResult)+'_volume.json',JSON.stringify(fdkResult,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
     const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config),['coordinate','z relative to sphere center (mm); no FWHM alignment'],['ROI','disk centered on sphere, radius = sphere radius'],['raw_profile','mean reconstructed attenuation in disk ROI'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
-      ['SSPz',[['z_position_mm',...r.profiles.flatMap((_,i)=>['raw_'+i,'normalized_'+i])],...Array.from(r.z,(z,i)=>[z,...r.profiles.flatMap(p=>[p.raw[i],p.profile[i]])])]],
-      ['Mean_difference',[['z_position_mm','mean_normalized',...r.profiles.map((_,i)=>'difference_'+i)],...Array.from(r.z,(z,i)=>[z,r.mean[i],...r.meanDifference.map(p=>p[i])])]],
-      ['Widths',[['start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...r.profiles.map(p=>[p.phase,p.fwhm.width,p.fwtm.width,p.baseline])]]];
-    downloadBlob('FDK_SSPz.xlsx',await SSPZShape.fromSheets(sheets),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      ['SSPz',fdkProfileRows(r)],
+      ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
+      ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
+    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and ROI; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; sphere center voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    downloadBlob(fdkFileStem(r)+'_SSPz.xlsx',await SSPZShape.fromSheets(sheets),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   };
-  document.getElementById('fdk-png').onclick=async()=>{if(!fdkResult)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.7);fdkDrawProfile(c,fdkResult);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob('FDK_SSPz_600dpi.png',await pngWithResolution(blob,600),'image/png');};
+  document.getElementById('fdk-png').onclick=async()=>{if(!fdkResult)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.7);fdkDrawProfile(c,fdkResult);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_SSPz_600dpi.png',await pngWithResolution(blob,600),'image/png');};
 }
 function fdkToggleDownloads(on){for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png'])document.getElementById(id).disabled=!on;}
 function runFdkSimulation(){
@@ -2836,7 +2843,7 @@ function runFdkSimulation(){
   releaseWorker();clearError();lastResult=null;fdkResult=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('','Computing 3D FBP…');document.getElementById('fdk-result-config').textContent='';
   for(const canvas of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(canvas,'3D FBP',fdkText('','Calculating'));
-  document.getElementById('fdk-difference-wrap').hidden=true;
+  document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
   startedAt=performance.now();progress.value=0;
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
   syncLanguageLinks(url.search);worker=createComputationWorker();
@@ -2849,7 +2856,9 @@ function runFdkSimulation(){
     else if(m.type==='error'){
       let text=m.message;
       if(text.startsWith('FDK_COVERAGE'))text=fdkText('',text);
-      if(text.startsWith('FDK_DOMAIN'))text=fdkText('',text);
+      if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('',text);
+      if(text.startsWith('CBA_COVERAGE'))text=fdkText('',text);
+      if(text.startsWith('CBA_VIEWS'))text=fdkText('',text);
       fail(text);
     }
   };worker.onerror=e=>fail(e.message);worker.postMessage({type:'fdk-run',params});
@@ -2874,34 +2883,37 @@ function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null){
   ctx.save();ctx.translate(35*s,(b.top+b.bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText(ylabel,0,0);ctx.restore();
   return {ctx,s,b,x,y};
 }
-function fdkDrawLines(a,xs,series){
+function fdkDrawLines(a,xs,series,color=null){
   const {ctx,s,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  for(const values of series){ctx.strokeStyle=series.length>1?'rgba(213,94,0,.6)':'#d55e00';ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
+  for(const values of series){ctx.strokeStyle=color??(series.length>1?'rgba(213,94,0,.6)':'#d55e00');ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
 }
 function fdkDrawProfile(canvas,r){
-  const ymin=Math.min(0,...r.profiles.map(p=>Math.min(...p.profile))),low=ymin<0?Math.floor(ymin*10)/10:0,a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.2,'z position (mm)','Normalized SSPz','(b)',low<0?[low,0,.5,1]:[0,.5,1]);
+  const ymin=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),low=ymin<0?Math.floor(ymin*10)/10:0,a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,r.reference?1.35:1.2,'z position (mm)','Normalized SSPz','(b)',low<0?[low,0,.5,1]:[0,.5,1]);
+  if(r.reference)fdkDrawLines(a,r.z,r.reference.profiles.map(p=>p.profile),'#767676');
   fdkDrawLines(a,r.z,r.profiles.map(p=>p.profile));
   const widths=r.profiles.map(p=>p.fwhm.width),mean=widths.reduce((s,v)=>s+v,0)/widths.length;
   const sd=widths.length>1?Math.sqrt(widths.reduce((s,v)=>s+(v-mean)**2,0)/(widths.length-1)):null;
   a.ctx.font=`${25*a.s}px Arial`;a.ctx.textAlign='center';a.ctx.fillStyle='#000';
-  a.ctx.fillText(`FWHM ${mean.toFixed(2)}${sd===null?'':' ± '+sd.toFixed(3)} mm`,(a.b.left+a.b.right)/2,a.y(1.08));
+  a.ctx.fillStyle=r.reference?'#d55e00':'#000';a.ctx.fillText(`${r.reference?'CBA: ':''}FWHM ${mean.toFixed(2)}${sd===null?'':' ± '+sd.toFixed(3)} mm`,(a.b.left+a.b.right)/2,a.y(r.reference?1.11:1.08));
+  if(r.reference){const q=fdkWidthStats(r.reference);a.ctx.fillStyle='#555';a.ctx.fillText(`RRI: FWHM ${q.mean.toFixed(2)}${q.sd===null?'':' ± '+q.sd.toFixed(3)} mm`,(a.b.left+a.b.right)/2,a.y(1.24));}
   const fw=r.profiles[0].fwhm,yy=a.y(.5);a.ctx.strokeStyle='#000';a.ctx.lineWidth=1.5*a.s;a.ctx.beginPath();a.ctx.moveTo(a.x(fw.left),yy);a.ctx.lineTo(a.x(fw.right),yy);
   for(const [v,d] of [[fw.left,1],[fw.right,-1]]){a.ctx.moveTo(a.x(v)+d*9*a.s,yy-5*a.s);a.ctx.lineTo(a.x(v),yy);a.ctx.lineTo(a.x(v)+d*9*a.s,yy+5*a.s);}a.ctx.stroke();
 }
 function fdkDrawGeometry(canvas,r){
   const c=r.config,feed=c.feed,step=2*Math.PI/c.viewSamples;
-  const first=Math.ceil(((feed?2*Math.PI*r.zObject/feed:0)-Math.PI)/step-1e-12),beta0=c.phase+first*step;
-  const betas=Array.from({length:c.viewSamples+1},(_,i)=>beta0+i*step),curves=[];let limit=0;
+  const first=r.reference?r.acquisition.firstView:Math.ceil(((feed?2*Math.PI*r.zObject/feed:0)-Math.PI)/step-1e-12),beta0=c.phase+first*step;
+  const viewCount=r.reference?r.acquisition.lastViewExclusive-first-1:c.viewSamples,angleExtent=360*viewCount/c.viewSamples;
+  const betas=Array.from({length:viewCount+1},(_,i)=>beta0+i*step),curves=[];let limit=0;
   for(let row=0;row<c.rows;row++){
     const values=betas.map(beta=>{const L=Math.hypot(c.sourceRadius*Math.cos(beta)-c.radius,c.sourceRadius*Math.sin(beta));return feed*(beta-c.phase)/(2*Math.PI)+(row-(c.rows-1)/2)*c.rowWidth*L/c.sourceRadius-r.zObject;});
     limit=Math.max(limit,...values.map(Math.abs));curves.push(values);
   }
   limit=Math.ceil(limit/5)*5||5;
-  const a=fdkAxes(canvas,-limit,limit,0,360,'Row position relative to sphere (mm)','Acquired angle within turn (°)','(a)');
+  const a=fdkAxes(canvas,-limit,limit,0,angleExtent,'Row position relative to sphere (mm)','Angle from first displayed view (°)','(a)');
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();ctx.lineWidth=Math.max(.6,1.1- c.rows/800)*s;ctx.strokeStyle='#687780';ctx.globalAlpha=Math.max(.22,Math.min(.7,25/c.rows));
   for(const values of curves){ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(a.x(v),a.y(360*i/c.viewSamples)):ctx.moveTo(a.x(v),a.y(0)));ctx.stroke();}
-  ctx.globalAlpha=1;ctx.strokeStyle='#d55e00';ctx.lineWidth=2*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),a.y(0));ctx.lineTo(a.x(0),a.y(360));ctx.stroke();ctx.restore();
-  ctx.font=`${22*s}px Arial`;ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(`${c.rows} rows / central-slice full turn`,(a.b.left+a.b.right)/2,49*s);
+  ctx.globalAlpha=1;ctx.strokeStyle='#d55e00';ctx.lineWidth=2*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),a.y(0));ctx.lineTo(a.x(0),a.y(angleExtent));ctx.stroke();ctx.restore();
+  ctx.font=`${22*s}px Arial`;ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(`${c.rows} rows / ${r.reference?'all acquired views used':'central-slice full turn'}`,(a.b.left+a.b.right)/2,49*s);
 }
 function fdkDrawImage(canvas,r,coronal){
   const n=r.config.xySamples,nz=r.z.length,m=(n-1)/2,iz=(nz-1)/2,values=[];
@@ -2920,11 +2932,23 @@ function fdkDrawImage(canvas,r,coronal){
   physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Attenuation: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
 function renderFdkResult(r){
-  const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('','Reconstruction complete. Full-turn acquisition coverage was checked for every slice.');
+  const c=r.config;document.getElementById('fdk-summary').textContent=r.reference?fdkText('','Hsieh comparison complete: CBA and RRI share projections, preprocessing and image grids. Images and the FWHM arrow show CBA at the first start angle.'):fdkText('','Reconstruction complete. Full-turn acquisition coverage was checked for every slice.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} ${fdkText('','rows')} × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / sphere ${c.sphereDiameter.toFixed(2)} mm / ${r.profiles.length} ${fdkText('','start angles')} / ${fdkText('','first angle: ')}FWTM ${r.fwtm.width.toFixed(2)} mm`+(r.profiles.length>1?fdkText('','. FWHM: mean ± SD of individual widths. Arrow, images and geometry show the first angle.'):'');
   fdkDrawGeometry(document.getElementById('fdk-geometry'),r);fdkDrawProfile(document.getElementById('fdk-profile'),r);fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
+  const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=!r.reference;
+  if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('','Method')}</th><th>${fdkText('','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
   document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
-  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...r.meanDifference.map(p=>Math.max(...p.map(Math.abs))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');fdkDrawLines(a,r.z,r.meanDifference);}
+  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');if(r.reference)fdkDrawLines(a,r.z,r.reference.meanDifference,'#767676');fdkDrawLines(a,r.z,r.meanDifference);if(r.reference){a.ctx.textAlign='center';a.ctx.fillStyle='#000';a.ctx.fillText('Gray: RRI / red: CBA; each minus its own mean',(a.b.left+a.b.right)/2,49*a.s);}}
+}
+function cbaDrawSamples(canvas,r){
+  const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
+  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to sphere (mm)','Rebinned angle within pair sweep (°)','(f)');
+  const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();
+  const stride=Math.max(1,Math.ceil(audit.length/45));
+  audit.forEach((q,j)=>{if(j%stride)return;for(let i=0;i<4;i++){
+    const yy=a.y(q.relativeAngleDeg);ctx.strokeStyle='#737373';ctx.lineWidth=1.4*s;ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.rriWeights[i]),0,2*Math.PI);ctx.stroke();
+    ctx.fillStyle='rgba(213,94,0,.78)';ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.weights[i]),0,2*Math.PI);ctx.fill();
+  }});ctx.restore();ctx.textAlign='center';ctx.fillStyle='#000';ctx.font=`${22*s}px Arial`;ctx.fillText('Gray outline: RRI / red fill: CBA',(a.b.left+a.b.right)/2,49*s);
 }
 
 // Figure palette and typography follow the journal-facing conventions used by
@@ -2999,7 +3023,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-14.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1`;
+versionLabel.textContent = `Web build 2026-09-15.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

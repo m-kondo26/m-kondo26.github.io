@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-14.1">
+  <link rel="stylesheet" href="styles.css?v=2026-09-15.1">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -26,7 +26,7 @@
         <a class="language-link" href="index-en.html" data-language-target="index-en.html" lang="en">English</a>
       </div>
       <h1>CT展開図・SSPz幾何リファレンス</h1>
-      <p class="lead">取得データの配置を展開図で示し、SSPzとの関係を計算します。従来の体軸方向補間モデルに加え、80・160・320列の投影生成と3次元FBP（FDK近似）を選択できます。</p>
+      <p class="lead">展開図とSSPzを対応させ、取得データの配置と補間方法の影響を比較します。体軸方向モデル、3次元FDK、Hsiehらの対向データ補間（CBA/RRI）を選択できます。</p>
     </div>
     <div class="hero-badge" aria-label="利用条件とモデルの位置づけ">
       <strong>無料・登録不要</strong>
@@ -103,6 +103,8 @@
             <option value="360" selected>360ビュー（標準）</option>
             <option value="720">720ビュー（精密）</option>
             <option value="1200">1200ビュー（高精密）</option>
+            <option value="1440">1440ビュー</option>
+            <option value="2400">2400ビュー</option>
           </select>
           <small class="field-help">各SSPzの基準となる実データ側ビューを0°以上360°未満に等角度配置します。180LI主解析では各基準ビューに対応する対向データ側の角度近傍も取得ビュー列から探索します。下の「360状態」とは別の数です。</small>
         </label>
@@ -374,7 +376,7 @@
     </section>
     <section class="method-card" aria-labelledby="method-title">
       <p class="step">4</p>
-      <h2 id="method-title">モデルの範囲</h2>
+      <h2 id="method-title">体軸方向モデルの範囲</h2>
       <div class="method-columns">
         <div>
           <h3>実装しているもの</h3>
@@ -411,7 +413,7 @@
     <section class="method-card reference-card" aria-labelledby="reference-title">
       <p class="step">5</p>
       <h2 id="reference-title">計算モデルの文献的背景</h2>
-      <p class="reference-intro">以下は、展開図とSSPzモデルの開発時に参照した研究です。各論文の再構成アルゴリズムを本Web版が再現している、という意味ではありません。各文献の下段に、本Web版との関係と実装境界を示します。</p>
+      <p class="reference-intro">各文献の下に、このシミュレーションで採用した計算と適用範囲を示します。</p>
       <ol class="reference-list">
         <li>
           <div class="reference-citation">Wang G, Vannier MW. <a href="https://doi.org/10.1118/1.597199" target="_blank" rel="noopener noreferrer">Spatial variation of section sensitivity profile in spiral computed tomography.</a> <i>Medical Physics.</i> 1994;21:1491–1497.</div>
@@ -427,7 +429,7 @@
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
-          <p>多列化に伴うヘリカル・コーンビーム再構成とデータ利用範囲を考えるための理論的背景。本Web版の距離倍率は理想化した幾何表示であり、同報の正確・近似再構成法を実装していません。</p>
+          <p>3次元FDK経路は、同報の導入部で説明された断面中心の1回転区間を用いる従来のヘリカルFDK近似を参照しています。同報の新しい正確再構成法や周波数混合法は実装していません。</p>
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
@@ -441,8 +443,16 @@
           <div class="reference-citation">Zamyatin AA, Taguchi K, Silver MD. <a href="https://doi.org/10.1118/1.2047784" target="_blank" rel="noopener noreferrer">Helical cone beam CT with an asymmetrical detector.</a> <i>Medical Physics.</i> 2005;32:3117–3127.</div>
           <p>実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。三次元コーンビームでは厳密に一致する対向レイが一般に存在しないという境界も踏まえ、本Web版2Cは理想化した取得幾何参照に限定し、同報の欠損データ復元法を実装していません。</p>
         </li>
+        <li>
+          <div class="reference-citation">Hsieh J, Tang X, Thibault JB, Shaughnessy C, Nilsen RA, Williams E. <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Conjugate cone-beam reconstruction algorithm.</a> <i>Optical Engineering.</i> 2007;46(6):067001.</div>
+          <p>検出器列ごとの投影再配列と式（6）の対向4点補間を実装し、同じ投影・前処理でCBAと従来RRIを比較します。対向ペアの重みは展開表示とExcelで確認できます。実機の補正処理、適応的重み付け、オーバースキャンは再現しません。</p>
+        </li>
+        <li>
+          <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
+          <p>Hsieh法の共通前処理として、式（2）・（3）の平行座標でのランプフィルタとコーン角の余弦係数を参照しました。同報の適応的3次元重み付けとオーバースキャン拡張は採用していません。</p>
+        </li>
       </ol>
-      <details class="reading-details"><summary>詳しい説明</summary><p class="model-note compact-note"><strong>実装境界：</strong>原典の局所線形補間と矩形フィルタ平均を用い、固定した薄い物体に対する体軸応答を評価します。各再標本位置で候補を選び直した応答を線形性により合成します。従来の固定断面で作った候補応答に幅Tの矩形平均を加える処理は、既定のSSPz計算には使いません。取得幾何の近似、等しいビュー重み、理想列開口は明示した仮定です。これだけで特定装置の厚いスライス再構成を検証したことにはなりません。</p>
+      <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p class="model-note compact-note"><strong>実装境界：</strong>原典の局所線形補間と矩形フィルタ平均を用い、固定した薄い物体に対する体軸応答を評価します。各再標本位置で候補を選び直した応答を線形性により合成します。従来の固定断面で作った候補応答に幅Tの矩形平均を加える処理は、既定のSSPz計算には使いません。取得幾何の近似、等しいビュー重み、理想列開口は明示した仮定です。これだけで特定装置の厚いスライス再構成を検証したことにはなりません。</p>
     </details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
@@ -464,11 +474,11 @@
   </main>
 
   <footer>
-    <p>Models: axial filter-interpolation reference, or cylindrical-detector full-turn helical 3D FBP (FDK approximation). Neither reproduces a scanner-specific reconstruction algorithm.</p>
-    <p id="version">Web reference build 2026-09-08.1</p>
+    <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
+    <p id="version">Web build 2026-09-15.1 / axial model 2026-09-08.1 / CBA 2026-09-15.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-14.1"></script>
-  <script src="app-bundle.js?v=2026-09-14.1"></script>
+  <script src="worker-source.js?v=2026-09-15.1"></script>
+  <script src="app-bundle.js?v=2026-09-15.1"></script>
 </body>
 </html>

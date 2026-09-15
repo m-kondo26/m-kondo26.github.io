@@ -158,7 +158,7 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-14.1",
+  "webBuildVersion": "2026-09-15.1",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
@@ -179,5 +179,19 @@
     "numericalSensitivity": "tests/fdk-verification.json",
     "scannerValidation": "not established",
     "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core."
+  },
+  "conjugateFbp": {
+    "version": "2026-09-15.1",
+    "core": "cba-core.js",
+    "sha256": "0c8f5486557f4c355930ef9b6c5d78e5ba012b699f8a18f0227982c822c7588e",
+    "sha256Convention": "UTF-8 with LF line endings",
+    "sourceDoi": "10.1117/1.2746866",
+    "sourceLocation": "Eqs. (4)-(6); quadratic interpolation and matched linear RRI",
+    "sharedPreprocessingDoi": "10.1155/IJBI/2006/45942",
+    "sharedPreprocessingLocation": "Eqs. (2)-(3)",
+    "documentation": "CBA_METHOD.md",
+    "implementationTests": "tests/cba.mjs",
+    "numericalSensitivity": "tests/cba-verification.json",
+    "scope": "Same acquired sphere projections, rebinning and filtering for both methods. Conservative paired full turn with coverage guards. No overscan, adaptive 3D weights or commercial-scanner validation."
   }
 }

@@ -9,6 +9,7 @@ import {
   validateParams,
 } from "./sim-core.js";
 import { reconstructFdkSeries } from "./fdk-core.js";
+import { reconstructCbaSeries } from "./cba-core.js";
 
 let cancelled = false;
 let activeContext = null;
@@ -106,7 +107,8 @@ self.onmessage = async event => {
   if (message.type === 'fdk-run') {
     cancelled = false;
     try {
-      const result = await reconstructFdkSeries(message.params, {
+      const reconstruct = message.params.method === 'hsieh' ? reconstructCbaSeries : reconstructFdkSeries;
+      const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
         progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.round(value*100)}%`}),
       });

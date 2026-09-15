@@ -1,3 +1,11 @@
+## 2026-09-15: Hsieh CBA and matched RRI
+
+The integrated worker implements rowwise fan-to-parallel rebinning and Hsieh et al. (2007), Eqs. (4)-(6), with matched linear RRI and quadratic CBA. Both methods share all operations apart from their four-sample row weights. See [CBA_METHOD.md](CBA_METHOD.md) and [tests/cba-verification.json](tests/cba-verification.json).
+
+The complete existing test suite and new CBA tests passed: independent Cartesian geometry, affine-field rebinning, dense convolution comparison, constant-preserving weights, linear RRI special case, unit-sphere attenuation, 80/160/320-row volumes, start-angle dependence and coverage rejection. Dense convolution agreed within 6 × 10⁻¹⁷; central attenuation of a 4-mm sphere in the circular check was 0.9997 for an input of 1. These are implementation checks, not independent validation of the clinical helical response.
+
+Browser checks at 80 × 0.5 mm, pitch 0.5, radius 100 mm and 1440 views covered four start angles, both profiles, mean differences, sample weights, Excel, CSV, PNG and JSON. Spreadsheet and CSV values matched exported JSON without display rounding. The PNG was 4252 × 2976 pixels with 600-dpi metadata. View/aperture/grid sensitivity was recorded separately; raw amplitude was not declared converged.
+
 ## 2026-09-14: integrated 3D FBP path
 
 The live application now offers the original axial model and a separate calculation path for full-turn helical FDK with cylindrical detector acquisition. Both are integrated in the same public UI and worker bundle. See [FDK_METHOD.md](FDK_METHOD.md) and [tests/fdk-verification.json](tests/fdk-verification.json). The numerical checks cover 80, 160 and 320 rows; they do not establish scanner-specific or exact wide-cone validity. Excel, CSV, 600-dpi PNG and first-angle 3D volume JSON are available.

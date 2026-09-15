@@ -1,3 +1,7 @@
+## Hsieh conjugate backprojection (2026-09-15)
+
+The 3D FBP controls now include Hsieh CBA with matched RRI. Both use the same finite-sphere projections, rowwise fan-to-parallel rebinning and filtering. Compare SSPz, individual FWHMs, start-angle deviations and central-voxel sample weights; export both methods to Excel, CSV, PNG and volume JSON. See [CBA_METHOD.md](CBA_METHOD.md) for the equations, source papers, numerical sensitivity and scope. The original FDK path remains available. This reference implements the specified interpolation, not every acquisition or adaptive weighting operation in Hsieh's scanner experiments.
+
 ## 3D FBP browser path (2026-09-14)
 
 The public simulator now includes an integrated cylindrical-detector, full-turn helical FDK approximation for up to 320 rows, with 80/160/320-row presets. Select **3D FBP** in the shared calculation-model control. This browser path generates sphere projections, reconstructs a local 3D image, displays sphere-derived SSPz and start-angle deviations, and exports Excel, CSV, PNG and volume JSON. See [FDK_METHOD.md](FDK_METHOD.md) for equations, applicability and numerical checks. It is not TCOT or an exact wide-cone reconstruction. The earlier Python `reconstruction3d` prototype is development material, not the public app.
