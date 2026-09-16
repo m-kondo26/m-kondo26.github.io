@@ -236,6 +236,12 @@ th:first-child, td:first-child { text-align: left; }
 .reference-citation { color: var(--ink); line-height: 1.6; }
 .reference-citation a { color: var(--blue); font-weight: 700; text-underline-offset: 0.16em; }
 .model-note { margin: 0 0 1rem; padding: 0.9rem 1rem; border-left: 4px solid var(--blue); border-radius: 8px; background: #eef6fb; color: var(--ink); line-height: 1.7; }
+.reconstruction-method-guide { margin: 0 0 1rem; padding: .8rem 1rem; background: var(--soft); border-radius: 8px; font-size: .9rem; line-height: 1.65; }
+.reconstruction-method-guide dl { margin: 0; }
+.reconstruction-method-guide dt { font-weight: 600; }
+.reconstruction-method-guide dd { margin: 0 0 .65rem; }
+.reconstruction-method-guide p { margin: .5rem 0 0; }
+.reconstruction-method-guide .method-source { font-size: .85rem; }
 .compact-note { margin-top: 0.65rem; font-size: 0.86rem; }
 .feedback-intro { clear: both; padding-top: 0.8rem; line-height: 1.7; }
 .feedback-list { margin: 0.55rem 0 1rem; padding-left: 1.4rem; line-height: 1.7; }

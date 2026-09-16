@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.2",
+  "webBuildVersion": "2026-09-17.3",
   "threeDimensionalFbp": {
     "version": "2026-09-17.2",
     "core": "fdk-core.js",
@@ -269,5 +269,13 @@
     "paperFiguresRegenerated": false,
     "sphereDiameterUsed": false,
     "apertureQuadratureUsed": false
+  },
+  "reconstructionTerminology": {
+    "version": "2026-09-17.3",
+    "CBA": "Conjugate backprojection algorithm",
+    "RRI": "Row-to-row interpolation",
+    "source": "Hsieh et al. 2007, printed pp. 067001-2 and 067001-3",
+    "placement": "Visible definitions before reconstruction method selection; bilingual; linked from results and retained in Excel",
+    "numericalChange": false
   }
 }

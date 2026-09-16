@@ -2920,7 +2920,8 @@ function selectFdkState(index,immediate=false){
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
-  document.getElementById('fdk-primary-weight-title').textContent=r.reference?'CBA':'FDK';
+  document.getElementById('fdk-primary-weight-title').textContent=r.reference?fdkText('CBA：対向データを利用','CBA: conjugate data'):'FDK';
+  document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('RRI：列間の線形補間','RRI: linear row interpolation');
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-cba'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
@@ -3090,14 +3091,24 @@ function fdkParamsFromUrl(q){
   return out;
 }
 function initializeFdkUi(initial){
-  const pick=document.createElement('label');pick.innerHTML=fdkText('計算モデル','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('展開図・体軸方向の補間モデル','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('3次元FBP（FDK・Hsieh CBA/RRI）','3D FBP (FDK / Hsieh CBA and RRI)')}</option></select>`;
+  const pick=document.createElement('label');pick.innerHTML=fdkText('計算モデル','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('展開図・体軸方向の補間モデル','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('3次元フィルタ逆投影（FBP）','3D filtered backprojection (FBP)')}</option></select>`;
   form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step,help='')=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"${help?` aria-describedby="fdk-${k}-help"`:''}>${help?`<small class="field-help" id="fdk-${k}-help">${help}</small>`:''}</label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
   controls.innerHTML=`<p class="section-summary">${fdkText('上の共通条件を使用し、球径を含まない理想的な点への応答を計算します。','Shared controls apply. The object is an ideal point, with no finite sphere diameter.')}</p>
+  <div id="reconstruction-method-guide" class="reconstruction-method-guide">
+    <dl>
+      <dt><span lang="en">Conjugate backprojection algorithm</span> (CBA)</dt>
+      <dd>${fdkText('対向データを用いる逆投影法。対向する投影の検出器列データをまとめて重み付けします。','Jointly weights detector-row samples from conjugate projections during backprojection.')}</dd>
+      <dt><span lang="en">Row-to-row interpolation</span> (RRI)</dt>
+      <dd>${fdkText('検出器列間の線形補間。各投影で隣り合う2列のデータを線形補間します。','Linearly interpolates data from two adjacent detector rows within each projection.')}</dd>
+    </dl>
+    <p>${fdkText('このサイトでは、両者とも3次元逆投影に用います。同じ投影・前処理から、CBAの二乗重みとRRI相当の線形重みを比較します。','Both are used within 3D backprojection here. Identical projections and preprocessing are used to compare squared CBA weights with a linear-weight RRI reference.')}</p>
+    <p class="method-source"><a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a> · <a href="CBA_METHOD.md">${fdkText('数式・検出器端の処理','Equations and detector-edge treatment')}</a></p>
+  </div>
   <div class="parameter-grid">
-  ${sel('method','3次元再構成法','3D reconstruction method',[['fdk',fdkText('従来のヘリカルFDK近似','Original helical FDK reference')],['hsieh',fdkText('Hsiehらの対向データ補間（CBAとRRIを比較）','Hsieh conjugate interpolation (CBA vs RRI)')]])}
+  ${sel('method','3次元再構成法','3D reconstruction method',[['fdk',fdkText('従来のヘリカルFDK近似','Original helical FDK reference')],['hsieh',fdkText('Hsieh法：CBA / RRI 比較','Hsieh: CBA / RRI comparison')]])}
   ${sel('edgePolicy','Hsieh法の検出器端処理','Hsieh detector-edge treatment',[['available',fdkText('取得済みの列で正規化','Normalize acquired rows')],['strict',fdkText('4点が揃う場合のみ','Require all four row samples')]])}
   </div>
   <details class="reading-details"><summary>${fdkText('3次元計算・画像表示の詳細設定','3D numerical and image-display settings')}</summary>
@@ -3119,6 +3130,7 @@ function initializeFdkUi(initial){
     note.textContent=fdkText('旧条件を読み込みました。今回から球径を含まない点応答を計算します。以前の有限球の結果とは異なります。','Older settings loaded. Calculations now use an ideal point, without sphere diameter. Results differ from the former finite-sphere response.');controls.prepend(note);
   }
   const syncHsiehControls=syncFdkMethodControls;
+  document.getElementById('fdk-method').setAttribute('aria-describedby','reconstruction-method-guide');
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
   document.getElementById('fdk-objectModel').value='point';
@@ -3126,7 +3138,7 @@ function initializeFdkUi(initial){
   syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('展開図から3次元FBPへ','From acquired geometry to 3D FBP')}</h2></div>
-  <p class="section-summary">${fdkText('点の投影データから局所3次元画像とモデルSSPzを計算します。Hsieh法では、CBAの二次重みと、線形重みの参照結果を比較します。4点が揃う内部では、線形重みは従来RRIと一致します。検出器端の扱いは両者で共通です。','Reconstruct local 3D images and model SSPz from ideal-point projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
+  <p class="section-summary">${fdkText('点の投影データから局所3次元画像とモデルSSPzを計算します。Hsieh法では、CBAの二乗重みと、線形重みの参照結果を比較します。4点が揃う内部では、線形重みは従来RRIと一致します。検出器端の扱いは両者で共通です。','Reconstruct local 3D images and model SSPz from ideal-point projections. The Hsieh path compares squared CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')} <a href="#reconstruction-method-guide">${fdkText('CBA・RRIの意味','CBA and RRI definitions')}</a></p>
   <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('取得列の展開図','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
@@ -3168,7 +3180,7 @@ function initializeFdkUi(initial){
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
-    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    if(r.reference){sheets[0][1].push(['CBA','Conjugate backprojection algorithm: jointly weighted conjugate detector-row samples'],['RRI','Row-to-row interpolation: linear interpolation between adjacent detector rows; matched reference with shared edge extension'],['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
       for(const g of fdkShapeGroups){const a=g.analysis;
@@ -3383,7 +3395,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.2 / axial model ${MODEL_VERSION} / FDK 2026-09-17.2 / CBA 2026-09-17.2`;
+versionLabel.textContent = `Web build 2026-09-17.3 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.2`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

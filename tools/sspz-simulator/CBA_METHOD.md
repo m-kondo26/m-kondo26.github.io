@@ -1,4 +1,18 @@
-# Hsieh conjugate backprojection and matched RRI
+# Hsieh conjugate backprojection and row-to-row interpolation
+
+**CBA** means **conjugate backprojection algorithm**: conjugate projections
+are combined during backprojection and their detector-row samples are
+weighted jointly. **RRI** means **row-to-row interpolation**: neighboring
+detector rows in each projection are interpolated linearly. Hsieh et al.
+(2007) define RRI on printed p. 067001-2 and introduce CBA on p. 067001-3.
+Both are used within three-dimensional backprojection in this simulator;
+these labels do not mean 3D versus 2D reconstruction.
+
+The implemented comparison uses identical projections and preprocessing,
+with the paper's quadratic weights for CBA and linear weights for its RRI
+special case. The linear result matches conventional RRI where both rows
+of both conjugate brackets are acquired. The optional detector-edge
+extension described below is shared by both results.
 
 Version 2026-09-17.2. Select **3D FBP**, then **Hsieh conjugate interpolation (CBA vs RRI)**. Both results are computed from the same ideal-point projections in the browser. The acquired-row boundary option adds the four-row, pitch-0.875 manuscript configuration. The 64-, 80-, 160- and 320-row configurations and the original FDK path remain available.
 

@@ -11,7 +11,7 @@ const replacements = [
   ["1440ビュー", "1440 views"],
   ["2400ビュー", "2400 views"],
   ["体軸方向モデルの範囲", "Axial model scope"],
-  ["展開図とSSPzを対応させ、取得データの配置と補間方法の影響を比較します。体軸方向モデル、3次元FDK、Hsiehらの対向データ補間（CBA/RRI）を選択できます。", "Compare acquired-data geometry, interpolation and SSPz. Choose the axial model, 3D FDK or Hsieh conjugate interpolation (CBA/RRI)."],
+  ["展開図とSSPzを対応させ、取得データの配置と補間方法の影響を比較します。体軸方向の補間モデルと、3次元フィルタ逆投影による応答を比較できます。", "Compare acquired-data geometry, interpolation and SSPz. Explore responses from axial interpolation and three-dimensional filtered backprojection."],
   ["各文献の下に、このシミュレーションで採用した計算と適用範囲を示します。", "Below each reference, we identify the calculations adopted and their scope."],
   ["3次元FDK経路は、同報の導入部で説明された断面中心の1回転区間を用いる従来のヘリカルFDK近似を参照しています。同報の新しい正確再構成法や周波数混合法は実装していません。", "The 3D FDK path uses the conventional helical FDK reference with a slice-centred full-turn interval discussed in the introduction. It does not implement the paper's new exact or frequency-mixing methods."],
   ["検出器列ごとの投影再配列と式（6）の対向4点補間を実装し、同じ投影・前処理で二乗重みと線形重みを比較します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。", "Rowwise rebinning and the four-sample conjugate interpolation of Eq. (6) compare quadratic and linear weights using the same projections and preprocessing. A declared boundary extension normalizes weights over acquired rows. Rectangular image-domain z averaging uses configured thickness T as its width. These extensions do not calibrate scanner slice thickness."],

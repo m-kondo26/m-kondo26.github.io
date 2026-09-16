@@ -58,7 +58,8 @@ function selectFdkState(index,immediate=false){
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
-  document.getElementById('fdk-primary-weight-title').textContent=r.reference?'CBA':'FDK';
+  document.getElementById('fdk-primary-weight-title').textContent=r.reference?fdkText('CBA：対向データを利用','CBA: conjugate data'):'FDK';
+  document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('RRI：列間の線形補間','RRI: linear row interpolation');
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-cba'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
