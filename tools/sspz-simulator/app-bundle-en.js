@@ -3090,26 +3090,28 @@ function initializeFdkUi(initial){
   const pick=document.createElement('label');pick.innerHTML=fdkText('','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('','3D FBP (FDK / Hsieh CBA and RRI)')}</option></select>`;
   form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
-  const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
+  const num=(k,ja,en,min,max,step,help='')=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"${help?` aria-describedby="fdk-${k}-help"`:''}>${help?`<small class="field-help" id="fdk-${k}-help">${help}</small>`:''}</label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('','The shared controls above, including configured thickness T, apply to every model.')}</p>
-  <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('','rows')}</button>`).join('')}<span>${fdkText('','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
+  controls.innerHTML=`<p class="section-summary">${fdkText('','The shared controls above apply. Additional settings below define the 3D FBP response to a finite sphere.')}</p>
   <div class="parameter-grid">
   ${sel('method','','3D reconstruction method',[['fdk',fdkText('','Original helical FDK reference')],['hsieh',fdkText('','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','','Hsieh detector-edge treatment',[['available',fdkText('','Normalize acquired rows')],['strict',fdkText('','Require all four row samples')]])}
+  </div>
+  <details class="reading-details"><summary>${fdkText('','Finite-sphere model and numerical settings')}</summary>
+  <div class="parameter-grid">
   <input id="fdk-axialAverageMm" type="hidden" value="1">
-  ${num('sphereDiameter','','Sphere diameter (mm)',.1,10,.01)}
+  ${num('sphereDiameter','','Projected sphere diameter (mm)',.1,10,.01,fdkText('','Sets the object size for projections and the ROI size for profile extraction.'))}
   ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${sel('apertureSamples','','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
   ${num('zStep','','Reconstruction z spacing (mm)',.01,.2,.01)}
-  ${num('zExtent','','Reconstruction z half-range (mm)',1,20,.5)}
+  ${num('zExtent','','SSPz calculation half-range (mm)',1,20,.5,fdkText('','A value of 3 covers −3 to +3 mm. This is the profile interval, including its tails, rather than slice thickness.'))}
   ${num('xyExtent','','Local image half-range (mm)',.5,10,.5)}
   ${sel('xySamples','','Local image matrix',[[17,'17 × 17'],[33,'33 × 33'],[65,'65 × 65']])}
   <input type="hidden" id="fdk-phaseCount" value="360"><p>${fdkText('','Start angles: automatically calculate all 360 conditions at 1° increments')}</p>
   ${num('phase','','Source angle at z = 0 (rad)',0,6.28318530718,.01)}
   ${num('state','','Object z / table feed per turn',0,1,.01)}
   ${sel('normalization','','Normalization for display and widths', [['minmax',fdkText('','Minimum 0, maximum 1')],['peak',fdkText('','Peak 1 (retain negative values)')]])}
-  </div><p class="model-note">${fdkText('','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p>`;
+  </div><p class="model-note">${fdkText('','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
   form.append(controls);
   const syncHsiehControls=syncFdkMethodControls;
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
@@ -3152,7 +3154,6 @@ function initializeFdkUi(initial){
   }
   pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
-  controls.querySelectorAll('[data-fdk-rows]').forEach(b=>b.addEventListener('click',()=>{if(runButton.disabled)return;form.elements.rows.value=b.dataset.fdkRows;form.elements.rowWidth.value=.5;form.elements.beamPitch.value=.5;status.textContent=fdkText('','Preset selected. Press Calculate.');}));
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
@@ -3376,7 +3377,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.5 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-17.1 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

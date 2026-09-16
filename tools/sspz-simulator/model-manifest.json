@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-16.5",
+  "webBuildVersion": "2026-09-17.1",
   "threeDimensionalFbp": {
     "version": "2026-09-16.1",
     "core": "fdk-core.js",

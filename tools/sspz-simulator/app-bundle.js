@@ -3090,26 +3090,28 @@ function initializeFdkUi(initial){
   const pick=document.createElement('label');pick.innerHTML=fdkText('計算モデル','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('展開図・体軸方向の補間モデル','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('3次元FBP（FDK・Hsieh CBA/RRI）','3D FBP (FDK / Hsieh CBA and RRI)')}</option></select>`;
   form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
-  const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
+  const num=(k,ja,en,min,max,step,help='')=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"${help?` aria-describedby="fdk-${k}-help"`:''}>${help?`<small class="field-help" id="fdk-${k}-help">${help}</small>`:''}</label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('設定スライス厚Tを含め、上の共通条件を使用します。以下は3次元FBP用の条件です。','The shared controls above, including configured thickness T, apply to every model.')}</p>
-  <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('列','rows')}</button>`).join('')}<span>${fdkText('プリセット：列幅0.5 mm・ピッチ0.5（装置仕様ではありません）','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
+  controls.innerHTML=`<p class="section-summary">${fdkText('上の共通条件を使用します。以下は、有限球の画像応答を求める3次元FBPの追加条件です。','The shared controls above apply. Additional settings below define the 3D FBP response to a finite sphere.')}</p>
   <div class="parameter-grid">
   ${sel('method','3次元再構成法','3D reconstruction method',[['fdk',fdkText('従来のヘリカルFDK近似','Original helical FDK reference')],['hsieh',fdkText('Hsiehらの対向データ補間（CBAとRRIを比較）','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','Hsieh法の検出器端処理','Hsieh detector-edge treatment',[['available',fdkText('取得済みの列で正規化','Normalize acquired rows')],['strict',fdkText('4点が揃う場合のみ','Require all four row samples')]])}
+  </div>
+  <details class="reading-details"><summary>${fdkText('有限球モデル・数値計算の詳細設定','Finite-sphere model and numerical settings')}</summary>
+  <div class="parameter-grid">
   <input id="fdk-axialAverageMm" type="hidden" value="1">
-  ${num('sphereDiameter','球の直径 (mm)','Sphere diameter (mm)',.1,10,.01)}
+  ${num('sphereDiameter','投影する球の直径 (mm)','Projected sphere diameter (mm)',.1,10,.01,fdkText('球の投影データと、SSPzを取り出すROIの大きさに用います。','Sets the object size for projections and the ROI size for profile extraction.'))}
   ${num('channelWidth','面内チャネル幅：回転中心換算 (mm)','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${sel('apertureSamples','開口積分：各方向の分割数','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
   ${num('zStep','再構成z間隔 (mm)','Reconstruction z spacing (mm)',.01,.2,.01)}
-  ${num('zExtent','再構成z範囲：中心から± (mm)','Reconstruction z half-range (mm)',1,20,.5)}
+  ${num('zExtent','SSPzの計算範囲：中心から± (mm)','SSPz calculation half-range (mm)',1,20,.5,fdkText('3なら−3～+3 mmを計算します。厚みではなく、SSPzの裾まで含める計算区間です。','A value of 3 covers −3 to +3 mm. This is the profile interval, including its tails, rather than slice thickness.'))}
   ${num('xyExtent','局所画像範囲：中心から± (mm)','Local image half-range (mm)',.5,10,.5)}
   ${sel('xySamples','局所画像の行列数','Local image matrix',[[17,'17 × 17'],[33,'33 × 33'],[65,'65 × 65']])}
   <input type="hidden" id="fdk-phaseCount" value="360"><p>${fdkText('回転開始角度：1°間隔・全360条件を自動計算','Start angles: automatically calculate all 360 conditions at 1° increments')}</p>
   ${num('phase','z = 0でのX線源角度 (rad)','Source angle at z = 0 (rad)',0,6.28318530718,.01)}
   ${num('state','物体のz位置／1回転寝台移動量','Object z / table feed per turn',0,1,.01)}
   ${sel('normalization','表示と幅測定の正規化','Normalization for display and widths', [['minmax',fdkText('最小値0・最大値1','Minimum 0, maximum 1')],['peak',fdkText('最大値1（負値を保持）','Peak 1 (retain negative values)')]])}
-  </div><p class="model-note">${fdkText('各断面に1回転分を使用します。Hsieh法は同じ前処理・同じ投影からCBAとRRIを計算します。取得ビュー数は偶数にしてください。取得済みの列で正規化する設定では、検出器外の列を除いて対向データと重みを正規化します。両方向とも支持を失う場合は停止します。','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p>`;
+  </div><p class="model-note">${fdkText('各断面に1回転分を使用します。Hsieh法は同じ前処理・同じ投影からCBAとRRIを計算します。取得ビュー数は偶数にしてください。取得済みの列で正規化する設定では、検出器外の列を除いて対向データと重みを正規化します。両方向とも支持を失う場合は停止します。','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
   form.append(controls);
   const syncHsiehControls=syncFdkMethodControls;
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
@@ -3152,7 +3154,6 @@ function initializeFdkUi(initial){
   }
   pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
-  controls.querySelectorAll('[data-fdk-rows]').forEach(b=>b.addEventListener('click',()=>{if(runButton.disabled)return;form.elements.rows.value=b.dataset.fdkRows;form.elements.rowWidth.value=.5;form.elements.beamPitch.value=.5;status.textContent=fdkText('プリセットを設定しました。計算するを押してください。','Preset selected. Press Calculate.');}));
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
@@ -3198,7 +3199,7 @@ function runFdkSimulation(){
     else if(m.type==='error'){
       let text=m.message;
       if(text.startsWith('FDK_COVERAGE'))text=fdkText('この条件では、球の投影または局所画像に必要な連続360°のデータが検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。展開図・体軸方向モデルは引き続き選択できます。',text);
-      if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('幅を求める交点が表示範囲内にありません。再構成z範囲を広げてください。',text);
+      if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('幅を求める交点が計算範囲内にありません。SSPzの計算範囲を広げてください。',text);
       if(text.startsWith('CBA_COVERAGE'))text=fdkText('Hsieh法に必要な投影または対向する列のサンプルが、検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。',text);
       if(text.startsWith('CBA_VIEWS'))text=fdkText('Hsieh法では、1回転の取得ビュー数を偶数にしてください。',text);
       fail(text);
@@ -3376,7 +3377,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.5 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-17.1 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
