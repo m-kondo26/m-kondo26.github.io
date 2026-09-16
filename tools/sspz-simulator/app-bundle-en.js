@@ -57,11 +57,12 @@ function validateParams(input, { allowZeroPitch = false } = {}) {
     // It no longer means that the computed FWHM is fitted to this value.
     sliceThicknessMm: Number(input.sliceThicknessMm ?? input.targetFwhm),
     // FW is a reconstruction-filter parameter, NOT a prescribed SSP FWHM.
-    // A missing legacy FW is initialized from T only once. Callers retain the
-    // explicit returned FW when T is subsequently changed.
-    filterWidthMm: Number(input.filterWidthMm ?? input.sliceThicknessMm ?? input.targetFwhm),
+    // Public browser callers explicitly map FW=T. The independent-width API
+    // retains historical behavior for reproducibility and filter validation.
+    thicknessMapping: input.thicknessMapping === 'configured-rectangular' ? 'configured-rectangular' : 'independent-reference',
+    filterWidthMm: Number(input.thicknessMapping === 'configured-rectangular' ? (input.sliceThicknessMm ?? input.targetFwhm) : (input.filterWidthMm ?? input.sliceThicknessMm ?? input.targetFwhm)),
     filterSamples: Number(input.filterSamples ?? 129),
-    filterWidthInitialization: input.filterWidthInitialization
+    filterWidthInitialization: input.thicknessMapping === 'configured-rectangular' ? 'configured-thickness-as-rectangular-width' : input.filterWidthInitialization
       ?? (input.filterWidthMm == null ? "legacy-T-initialization-uncalibrated" : "explicit-independent-FW"),
     profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     reconstructionPath: Object.values(RECONSTRUCTION_PATHS).includes(input.reconstructionPath)
@@ -2170,7 +2171,7 @@ function computeTaguchiSsp(rawParams, options = {}) {
   if (!Object.values(RECONSTRUCTION_PATHS).includes(reconstructionPath)) {
     throw new Error(`Unsupported acquisition-geometry model: ${reconstructionPath}`);
   }
-  const filterWidthMm = Number(options.filterWidthMm ?? p.filterWidthMm);
+  const filterWidthMm = Number(p.thicknessMapping === 'configured-rectangular' ? p.sliceThicknessMm : (options.filterWidthMm ?? p.filterWidthMm));
   const filterSamples = Number(options.filterSamples ?? p.filterSamples);
   if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
     || !Number.isInteger(filterSamples) || filterSamples < 33 || filterSamples > 2049
@@ -2315,7 +2316,7 @@ function createProfileAssumptions(rawParams) {
     filterSamples: p.filterSamples,
     filterWidthInitialization: p.filterWidthInitialization,
     filterWidthIsPrescribedFwhm: false,
-    mapping: "independent-filter-width-not-fitted-to-configured-thickness",
+    mapping: p.thicknessMapping === 'configured-rectangular' ? 'configured-thickness-as-rectangular-width-not-prescribed-fwhm' : "independent-filter-width-not-fitted-to-configured-thickness",
     geometryIndicator: "reference-plane-FW0-candidate-weighted-rms-not-forward-response-sigma",
     bracketAuditIndicator: p.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
       ? "angularly-weighted-180li-branch-bracketing-gap-over-configured-thickness"
@@ -2327,7 +2328,7 @@ function createProfileAssumptions(rawParams) {
 function computeProfileModel(rawParams, options = {}) {
   const p = validateParams(rawParams);
   const assumptions = options.assumptions ?? createProfileAssumptions(p);
-  const filterWidthMm = Number(options.filterWidthMm ?? assumptions.filterWidthMm ?? p.filterWidthMm);
+  const filterWidthMm = Number(p.thicknessMapping === 'configured-rectangular' ? p.sliceThicknessMm : (options.filterWidthMm ?? assumptions.filterWidthMm ?? p.filterWidthMm));
   const requestedFilterSamples = Number(options.filterSamples ?? assumptions.filterSamples ?? p.filterSamples);
   if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
     || !Number.isInteger(requestedFilterSamples) || requestedFilterSamples < 33
@@ -2892,7 +2893,7 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
   document.getElementById('fdk-width-metric').value=['fwhm','fwtm'].includes(metricSelect.value)?metricSelect.value:'fwhm';
   document.getElementById('fdk-width-metric').onchange=e=>{metricSelect.value=e.target.value;if(fdkResult){drawFdkSweep(document.getElementById('fdk-sweep'));const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);}};
-  document.getElementById('fdk-width-csv').onclick=()=>{if(!fdkResult)return;const rows=[['method','start_index','start_angle_rad','FWHM_mm','FWTM_mm'],...fdkGroups(fdkResult).flatMap(([name,g])=>g.profiles.map((p,i)=>[name,i,p.phase,p.fwhm.width,p.fwtm.width]))];downloadBlob(fdkFileStem(fdkResult)+'_360_angles_widths.csv','\uFEFF'+rows.map(r=>r.join(',')).join('\r\n'));};
+  document.getElementById('fdk-width-csv').onclick=()=>{if(!fdkResult)return;const rows=[['method','start_index','start_angle_rad','FWHM_mm','FWTM_mm','configured_thickness_mm','axial_average_mm'],...fdkGroups(fdkResult).flatMap(([name,g])=>g.profiles.map((p,i)=>[name,i,p.phase,p.fwhm.width,p.fwtm.width,fdkResult.config.sliceThicknessMm,fdkResult.config.axialAverageMm]))];downloadBlob(fdkFileStem(fdkResult)+'_360_angles_widths.csv','\uFEFF'+rows.map(r=>r.join(',')).join('\r\n'));};
   document.getElementById('fdk-sweep').onclick=e=>{if(!fdkResult)return;const box=e.currentTarget.getBoundingClientRect(),x=(e.clientX-box.left)/box.width;selectFdkState(Math.max(0,Math.min(359,Math.round((x-.13)/.835*360))),true);};
   for(const id of ['fdk-geometry','fdk-weights-cba','fdk-weights-rri','fdk-selected-profile','fdk-tail','fdk-sweep','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
@@ -2928,7 +2929,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-weight-scope').textContent=fdkText('','Weights apply to filtered data at the transverse sphere centre, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Geometry, weights, SSPz and images now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
-  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / axial mean ${(c.axialAverageMm??0).toFixed(2)} mm`;
+  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
@@ -3013,7 +3014,7 @@ function drawFdkSweep(canvas){
 }
 function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
-  sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','JSON contains selected angle volume, x fastest'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the image-average window at the inspected angle']);
+  sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','JSON contains selected angle volume, x fastest'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the image-average window at the inspected angle']);
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm','weight','reference_weight','geometric_weight','filtered_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,q.referenceWeight,q.geometricWeight??1,q.filteredValue])]]);
@@ -3036,26 +3037,27 @@ const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,sphe
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
-const fdkFileStem=r=>r.reference?'Hsieh_CBA_RRI':'FDK';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
-function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy','axialAverageMm'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='hsieh';}
+function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='hsieh';}
 function readFdkParams(){
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   if(out.computationModel!=='fdk')return out;
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
   }
-  if(out.method!=='hsieh')out.axialAverageMm=0;
+  out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
+  out.thicknessMapping='configured-rectangular';
   out.phaseCount=360;
   return out;
 }
 function writeFdkUrl(url,p){
   if(p.computationModel!=='fdk')return;
   url.searchParams.set('model','fdk');
-  for(const [k,v] of Object.entries(FDK_UI_FIELDS))url.searchParams.set('fdk_'+k,p[k]??v);
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS))if(k!=='axialAverageMm')url.searchParams.set('fdk_'+k,p[k]??v);
 }
 function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='fdk'?'fdk':'axial'};
@@ -3070,12 +3072,12 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('','Rows, row width, pitch, source radius, evaluation radius and views per turn use the shared controls above.')}</p>
+  controls.innerHTML=`<p class="section-summary">${fdkText('','The shared controls above, including configured thickness T, apply to every model.')}</p>
   <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('','rows')}</button>`).join('')}<span>${fdkText('','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
   <div class="parameter-grid">
   ${sel('method','','3D reconstruction method',[['fdk',fdkText('','Original helical FDK reference')],['hsieh',fdkText('','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','','Hsieh detector-edge treatment',[['available',fdkText('','Normalize acquired rows')],['strict',fdkText('','Require all four row samples')]])}
-  ${num('axialAverageMm','','Hsieh image-domain axial averaging width (mm)',0,10,.1)}
+  <input id="fdk-axialAverageMm" type="hidden" value="1">
   ${num('sphereDiameter','','Sphere diameter (mm)',.1,10,.01)}
   ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${sel('apertureSamples','','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
@@ -3093,7 +3095,7 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
   document.getElementById('fdk-phaseCount').value=360;
-  syncHsiehControls();
+  syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('','From acquired geometry to 3D FBP')}</h2></div>
   <p class="section-summary">${fdkText('','Reconstruct local 3D images and SSPz from sphere projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
@@ -3113,7 +3115,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. For the Hsieh path, the dedicated averaging width applies a rectangular image-domain mean before normalization; zero disables it. This width is not calibrated to scanner FWHM. It is separate from the axial model T and FW controls.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -3122,10 +3124,10 @@ function initializeFdkUi(initial){
   function modeChanged(){
     const on=pick.querySelector('select').value==='fdk';controls.hidden=!on;panel.hidden=!on;
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
-    for(const k of ['sliceThicknessMm','filterWidthMm','filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
+    for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Small off-centre spheres are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
-    if(legacyUrlNote&&on)legacyUrlNote.hidden=true;
+
     if(!runButton.disabled)status.textContent=fdkText('','Model selected. Check the conditions and calculate.');
   }
   pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();
@@ -3354,7 +3356,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.3 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-16.4 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3408,7 +3410,8 @@ function readParams() {
     zReference: 0,
     state: selectedStateIndex / 360,
     sliceThicknessMm: Number(data.get("sliceThicknessMm")),
-    filterWidthMm: Number(data.get("filterWidthMm")),
+    filterWidthMm: Number(data.get("sliceThicknessMm")),
+    thicknessMapping: "configured-rectangular",
     filterSamples: Number(data.get("filterSamples")),
     profileMode: String(data.get("profileMode") || DEFAULT_PARAMS.profileMode),
     reconstructionPath: String(data.get("reconstructionPath") || DEFAULT_PARAMS.reconstructionPath),
@@ -3429,6 +3432,9 @@ function writeParams(params) {
 }
 
 function updateInputDecorations() {
+  const thickness=Number(form.elements.namedItem('sliceThicknessMm').value);
+  form.elements.namedItem('filterWidthMm').value=thickness;
+  const average=document.getElementById('fdk-axialAverageMm');if(average)average.value=thickness;
   const radius = Number(form.elements.namedItem("radius").value);
   document.querySelectorAll("[data-radius]").forEach(button => {
     button.classList.toggle("active", Number(button.dataset.radius) === radius);
@@ -3442,7 +3448,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 7,
+    v: 8,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -3450,7 +3456,6 @@ function paramsToUrl(params) {
     r: params.radius,
     vs: selectedStateIndex,
     st: params.sliceThicknessMm,
-    fw: params.filterWidthMm,
     nf: params.filterSamples,
     pm: params.profileMode,
     rp: reconstructionPathUrlValue(params.reconstructionPath),
@@ -3471,7 +3476,7 @@ function paramsFromUrl() {
   const hasNewThickness = query.has("st");
   const hasLegacyThickness = !hasNewThickness && query.has("t");
   const hasLegacyState = query.has("s") && !query.has("vs");
-  legacyInputMigrated = hasLegacyThickness || hasLegacyState || !query.has("fw") || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
+  legacyInputMigrated = get("v", 0) < 8 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
   selectedStateIndex = query.has("vs")
     ? Math.max(0, Math.min(359, Math.round(get("vs", 0))))
     : hasLegacyState
@@ -3490,7 +3495,8 @@ function paramsFromUrl() {
     sliceThicknessMm: hasNewThickness
       ? get("st", DEFAULT_PARAMS.sliceThicknessMm)
       : get("t", DEFAULT_PARAMS.sliceThicknessMm),
-    filterWidthMm: get("fw", hasNewThickness ? get("st", DEFAULT_PARAMS.sliceThicknessMm) : get("t", DEFAULT_PARAMS.sliceThicknessMm)),
+    filterWidthMm: hasNewThickness ? get("st", DEFAULT_PARAMS.sliceThicknessMm) : get("t", DEFAULT_PARAMS.sliceThicknessMm),
+    thicknessMapping: "configured-rectangular",
     filterSamples: get("nf", DEFAULT_PARAMS.filterSamples),
     profileMode: "taguchi-filter",
     reconstructionPath: reconstructionPathFromUrl(getText("rp", "")),
@@ -5105,7 +5111,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
 }
 
 function filterParameterLabel(params, actualSamples = params.filterSamples) {
-  return `FW=${fmt(params.filterWidthMm, 2)} mm; K=${actualSamples}; T=${fmt(params.sliceThicknessMm, 1)} mm`;
+  return `T = FW = ${fmt(params.sliceThicknessMm, 2)} mm; K=${actualSamples}`;
 }
 
 function selectedMetric(result) {
@@ -5226,7 +5232,7 @@ function drawSweep(canvas, result) {
   canvas.dataset.axisRule = "natural-1-2-5-with-consistent-decimals";
   if (sweepInterpretation) {
     sweepInterpretation.hidden = false;
-    sweepInterpretation.textContent = localizedText("Widths after Taguchi-style filter interpolation are divided by reference thickness T. FW is independent of T; FW=T does not guarantee FWHM=T. Check convergence as filter resampling count K increases, together with FWTM, sigma, and the full profile shape.", "Widths after Taguchi-style filter interpolation are divided by reference thickness T. FW is independent of T; FW=T does not guarantee FWHM=T. Check convergence as filter resampling count K increases, together with FWTM, sigma, and the full profile shape.");
+    sweepInterpretation.textContent = localizedText("Configured thickness T defines rectangular averaging width FW. The resulting width is divided by T; FWHM is an output, not fitted to T.", "Configured thickness T defines rectangular averaging width FW. The resulting width is divided by T; FWHM is an output, not fitted to T.");
   }
 }
 
@@ -6563,10 +6569,11 @@ const initial = paramsFromUrl() ?? (() => {
   }
   catch { return DEFAULT_PARAMS; }
 })();
-writeParams({ ...DEFAULT_PARAMS, ...initial });
+if(initial.thicknessMapping!=='configured-rectangular' && initial!==DEFAULT_PARAMS)legacyInputMigrated=true;
+writeParams({ ...DEFAULT_PARAMS, ...initial, filterWidthMm:initial.sliceThicknessMm??DEFAULT_PARAMS.sliceThicknessMm, thicknessMapping:'configured-rectangular' });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.", "Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.");
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.", "The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.");
 }
 initializeFdkUi(initial);
 runSimulation();

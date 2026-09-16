@@ -1,3 +1,15 @@
+## 2026-09-16: configured thickness drives rectangular averaging
+
+Web build **2026-09-16.4**, URL schema **v8**, FDK core **2026-09-16.1**. The public Japanese and English interfaces use one configured slice-thickness input T. The axial interpolation path uses FW=T in its finite rectangular-weight filter; FDK, CBA and RRI use T as the normalized rectangular image-domain z-average width after reconstruction and before profile normalization. FWHM is measured from each resulting profile, never fitted to T. This is an explicit model convention, not a scanner-specific thickness calibration.
+
+The FDK path now reconstructs the additional slices needed for both ends of the averaging window, integrates piecewise-linear image columns, and crops to the requested output range. It does not zero-pad unsupported rays or relax the full-turn coverage guard. Selected volumes, ROI profiles and centre-pixel weight audits use the same average. Older independent FW or image-average URL settings are replaced by T with a visible migration notice; previously saved results can therefore differ. The low-level numerical API retains explicit independent-width/zero-average operation for historical reproduction.
+
+All 17 suites in `npm test` passed. The new `tests/configured-thickness.mjs` compares raw FDK values and image columns with an independently coded segment integral of separately reconstructed, expanded, zero-average volumes at widths 0.63, 1 and 5 mm (maximum raw discrepancy below 5 × 10⁻¹⁶). It also checks affine-field preservation, axial/CBA/RRI mapping, stale-width overrides, selected/batch agreement, averaged centre-pixel reconstruction from weights and unsupported-coverage rejection. These are implementation checks, not clinical scanner validation.
+
+Browser checks completed all 360 start angles for CBA/RRI at 4 × 1 mm, pitch 0.875, radius 102 mm, and FDK at 80 × 0.5 mm, pitch 0.3, radius 100 mm, with T=1 and 5 mm. Both used 180 views, 4 × 4 aperture quadrature and 0.2-mm z spacing for interface verification; these are not study-quality convergence claims. The selected 90-degree profile matched the corresponding series profile exactly. A separate axial-browser T=5 check confirmed FW=5. JSON and Excel retained T=5 and the mapping definition; SSPz values in Excel/CSV matched JSON without display rounding. The weight-diagram PNG retained 1890 × 2016 pixels and 600-dpi metadata. Existing figure colors, opacity and layout were retained.
+
+The dated statements below describe their respective releases. The current definitions above and in `FDK_METHOD.md`, `CBA_METHOD.md` and `model-manifest.json` supersede earlier independent-T/FW input semantics. This application update does not regenerate a research manuscript or measured study data.
+
 ## 2026-09-15: diagram legend below the axes
 
 Display version 2026-09-15.1 / web build 2026-09-15.2. The overview and zoom renderers share a four-row legend below the x-axis. The 900 × 960 canvas leaves a 650-unit plotting height; the prior 80-mm zoom export had a 404-unit plotting height. Axis labels, major/minor ticks, detector-row colors, acquired-sample marker identity and summed coefficients remain intact. The 80-mm, 600-dpi export is now 1890 × 2016 pixels. Both Japanese and English layouts were visually inspected; model-regression, diagram-marker-identity and unwrapped-complementary-trajectories tests passed. No computation core changed.
@@ -39,12 +51,12 @@ The optimized implementation first combines piecewise-linear local responses by 
 
 ## Inputs and accuracy limits
 
-- FW (`fw` in shared URLs): independent filter width, 0–20 mm. FW=0 disables the filter average.
-- T (`st`): reference thickness for width/T ratios, not an imposed FWHM or a broadening operator.
+- FW: derived from T in public v8 URLs. The low-level numerical API retains independent widths, including FW=0, for historical reproduction and filter tests.
+- T (`st`): configured rectangular averaging width and denominator for width/T ratios; it does not prescribe the measured FWHM. The public v8 browser sets FW=T.
 - K (`nf`): requested minimum odd resampling count, 33–2049; default 129. It is not the acquired-view count.
 - Actual K is increased until `FW/K <= rowWidth*(1-radius/sourceRadius)/8`. The same conservative aperture bound is used for both cone conditions. Required K>2049 produces an explicit precision-limit error with no SSPz output.
 - This sampling rule is a numerical safeguard, not a new physical weighting law or a universal convergence bound. Users should examine K sensitivity for their conditions.
-- Legacy URLs without FW initialize it numerically to T with an explicit uncalibrated-migration notice. FW=T is not a scanner-specific thickness calibration and does not guarantee FWHM=T.
+- Legacy URLs and saved independent widths are replaced by T with a visible migration notice. This changes calculations when the former FW or image-domain average differed from T. FW=T is not a scanner-specific thickness calibration and does not guarantee FWHM=T.
 
 The complete computed longitudinal grid is retained in each curve. All 360 states are retained. Curves are individually peak-normalized after the view, angular-branch, and filter sums; there is no additional peak or centroid alignment. The center display uses the 10% level to set its range; the separate logarithmic tail display shows amplitudes at or above 0.1%. These are display choices, not physical absence below a threshold or cutoffs in the numerical calculation.
 
@@ -65,9 +77,9 @@ npm run build
 npm test
 ```
 
-The nine test suites cover the numerical model manifest, explicit historical fixtures, independent row/turn enumeration, angular-neighbor geometry, all-row spread, complementary-trajectory provenance, the independent finite Taguchi-filter response, SSPz drawing order, and physical-sample marker identity and summed coefficients. Historical two-point-kernel fixtures are tested through the explicitly named legacy adapter; their agreement is not a validation target for the new response.
+The axial-model test suites cover the numerical model manifest, explicit historical fixtures, independent row/turn enumeration, angular-neighbor geometry, all-row spread, complementary-trajectory provenance, the independent finite Taguchi-filter response, SSPz drawing order, and physical-sample marker identity and summed coefficients. Historical two-point-kernel fixtures are tested through the explicitly named legacy adapter; their agreement is not a validation target for the new response.
 
-The Taguchi oracle independently enumerates acquired rows/turns and evaluates each filter position. It does not call production geometry, interpolation, aperture, or normalization helpers. It checks raw responses before normalization, zero FW, reference-T invariance, isocenter behavior, finite K, convergence toward independent segment integration, and the sampling-limit guard.
+The Taguchi oracle independently enumerates acquired rows/turns and evaluates each filter position. It does not call production geometry, interpolation, aperture, or normalization helpers. It checks raw responses before normalization, zero FW and reference-T invariance in the independent-width legacy API, isocenter behavior, finite K, convergence toward independent segment integration, and the sampling-limit guard.
 
 The numerical tests do not require a journal PDF or access to a private research folder. An optional `SSPZ_TAGUCHI_SOURCE_PDF` environment variable can identify a legitimately obtained source PDF for provenance checking. The PDF itself is not distributed. Test reports are generated under ignored `output/` directories.
 
@@ -95,7 +107,7 @@ Browser checks for this revision use HTTP, including real published pages after 
 
 ## Scientific boundary
 
-The model includes ideal row apertures and stated angular/cone-geometry assumptions. It excludes complete filtered backprojection, scanner-specific detector-channel interpolation, redundancy and cone-beam weights, optimized-pitch selection, finite bead diameter, noise, and proprietary nominal-thickness calibration.
+The axial interpolation model includes ideal row apertures and stated angular/cone-geometry assumptions. It excludes complete filtered backprojection, scanner-specific detector-channel interpolation, redundancy and cone-beam weights, optimized-pitch selection, finite bead diameter, noise, and proprietary nominal-thickness calibration.
 
 A broad rectangular filter can still produce FWHM near its filter width. This does not demonstrate invariant acquisition geometry or agreement with measured thick-slice SSPz. FWTM, the full response, numerical convergence, and the measurement definition must be considered separately. Data used to calibrate FW or another parameter cannot also be called independent validation data.
 

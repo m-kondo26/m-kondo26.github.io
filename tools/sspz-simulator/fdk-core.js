@@ -1,20 +1,24 @@
 // Full-turn FDK on a helix, with acquired cylindrical detector data rebinned
 // to a virtual flat detector. Sources and assumptions: FDK_METHOD.md.
-// No scanner-specific algorithm, fitted width, z boxcar, or 180LI is used here.
-export const FDK_VERSION = '2026-09-14.1';
+// A declared image-domain rectangular average follows FBP; no target-width fit or scanner-specific thickness kernel.
+export const FDK_VERSION = '2026-09-16.1';
 export const FDK_DEFAULTS = Object.freeze({
   rows:80,rowWidth:.5,beamPitch:.5,sourceRadius:600,radius:100,
   viewSamples:360,phase:0,state:0,sphereDiameter:.65,channelWidth:.25,
   apertureSamples:8,xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,
-  phaseCount:1,normalization:'minmax',
+  phaseCount:1,normalization:'minmax',axialAverageMm:0,
 });
 const FDK_TAU=2*Math.PI;
 export function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
+  if(c.thicknessMapping==='configured-rectangular'){
+    if(!Number.isFinite(c.sliceThicknessMm)||c.sliceThicknessMm<=0||c.sliceThicknessMm>20)throw Error('THICKNESS: configured thickness must be > 0 and <= 20 mm');
+    c.axialAverageMm=c.sliceThicknessMm;
+  }
   for(const k of Object.keys(FDK_DEFAULTS)) if(k!=='normalization'&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
   for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
     if(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi)throw Error(`${k}: integer ${lo}–${hi} required`);
-  for(const [k,lo,hi] of [['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
+  for(const [k,lo,hi] of [['axialAverageMm',0,20],['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
     if(c[k]<lo||c[k]>hi)throw Error(`${k}: ${lo}–${hi} required`);
   if(c.xySamples%2!==1)throw Error('xySamples must be odd');
   if(c.radius+Math.SQRT2*c.xyExtent>=c.sourceRadius||c.xyExtent<c.sphereDiameter/2)throw Error('Local volume must contain the sphere and remain inside the source orbit');
@@ -123,13 +127,39 @@ function fdkSamplePatch(c,p,u,v){
   const fu=u/c.channelWidth-c.uOffset,fv=v/c.rowWidth-c.vOffset,i=Math.floor(fu),j=Math.floor(fv),a=fu-i,b=fv-j;
   return (1-b)*((1-a)*fdkPatchAt(p,i,j)+a*fdkPatchAt(p,i+1,j))+b*((1-a)*fdkPatchAt(p,i,j+1)+a*fdkPatchAt(p,i+1,j+1));
 }
+// Continuous rectangular mean of a piecewise-linear sampled image column.
+// The caller supplies reconstructed padding; no zero extension or clamping.
+export function fdkSlabMean(values,dz,width,padding){
+  if(width===0)return Float64Array.from(values);
+  const n=values.length,prefix=new Float64Array(n),out=new Float64Array(n-2*padding);
+  for(let i=1;i<n;i++)prefix[i]=prefix[i-1]+(values[i-1]+values[i])*dz/2;
+  const integral=x=>{if(x<-1e-9||x>n-1+1e-9)throw Error('FDK_DOMAIN: missing reconstructed slab padding');
+    x=Math.max(0,Math.min(n-1,x));const i=Math.min(n-2,Math.floor(x)),f=x-i;
+    return prefix[i]+dz*(values[i]*f+(values[i+1]-values[i])*f*f/2);};
+  const half=width/(2*dz);
+  for(let i=0;i<out.length;i++){const j=i+padding;out[i]=(integral(j+half)-integral(j-half))/width;}
+  return out;
+}
+// Exact coefficients of the same piecewise-linear rectangular integral.
+// These are used only to trace the centre image sample, not to reconstruct it.
+export function fdkSlabCoefficients(length,dz,width){
+  const out=new Float64Array(length),mid=(length-1)/2;
+  if(width===0){out[mid]=1;return out;}
+  const lo=mid-width/(2*dz),hi=mid+width/(2*dz);
+  for(let i=Math.floor(lo);i<Math.ceil(hi);i++){
+    const a=Math.max(0,lo-i),b=Math.min(1,hi-i),right=(b*b-a*a)/2;
+    out[i]+=dz*(b-a-right)/width;out[i+1]+=dz*right/width;
+  }
+  return out;
+}
 function fdkVolumeGeometry(c,zObject) {
   const n=c.xySamples,half=c.xyExtent;
   const x=Float64Array.from({length:n},(_,i)=>c.radius-half+2*half*i/(n-1));
   const y=Float64Array.from({length:n},(_,i)=>-half+2*half*i/(n-1));
-  const z=Float64Array.from({length:c.zSamples},(_,i)=>zObject-c.zExtent+i*c.zStep);
+  const padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
+  const z=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
   const db=FDK_TAU/c.viewSamples,starts=Int32Array.from(z,v=>Math.ceil(((c.feed?FDK_TAU*v/c.feed:0)-Math.PI)/db-1e-12));
-  return {x,y,z,starts,first:Math.min(...starts),last:Math.max(...starts)+c.viewSamples,db};
+  return {x,y,z,starts,padding,first:Math.min(...starts),last:Math.max(...starts)+c.viewSamples,db};
 }
 export function fdkCheckCoverage(c,g,zObject) {
   // Backprojection and the intermediate flat-grid interpolation need valid
@@ -154,9 +184,9 @@ export function fdkCheckCoverage(c,g,zObject) {
 export async function reconstructFdk(input={},hooks={}) {
   const c=fdkConfig(input),zObject=c.state*c.feed,g=fdkVolumeGeometry(c,zObject);
   fdkCheckCoverage(c,g,zObject);
-  const n=c.xySamples,nxy=n*n,volume=new Float64Array(nxy*c.zSamples),counts=new Uint16Array(c.zSamples);
+  const n=c.xySamples,nxy=n*n,volume=new Float64Array(nxy*g.z.length),counts=new Uint16Array(g.z.length);
   const activePixels=[];for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if(!hooks.profileOnly||(g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)activePixels.push(iy*n+ix);
-  const auditSamples=[];let lastYield=performance.now();
+  const weightMap=new Map(),slab=fdkSlabCoefficients(g.z.length,c.zStep,c.axialAverageMm);let lastYield=performance.now();
   for(let view=g.first;view<g.last;view++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const beta=c.phase+view*g.db,cb=Math.cos(beta),sb=Math.sin(beta),R=c.sourceRadius;
@@ -169,12 +199,16 @@ export async function reconstructFdk(input={},hooks={}) {
     }
     const raw=fdkArcProjection(c,beta,zObject);
     const patch=fdkFilteredPatch(c,raw,Math.floor(uMin/c.channelWidth-c.uOffset)-1,Math.ceil(uMax/c.channelWidth-c.uOffset)+1);
-    for(let iz=0;iz<c.zSamples;iz++)if(view>=g.starts[iz]&&view<g.starts[iz]+c.viewSamples){
+    for(let iz=0;iz<g.z.length;iz++)if(view>=g.starts[iz]&&view<g.starts[iz]+c.viewSamples){
       const dz=g.z[iz]-c.feed*(beta-c.phase)/FDK_TAU;counts[iz]++;
       for(const j of activePixels)volume[iz*nxy+j]+=fdkSamplePatch(c,patch,us[j],dz*scales[j])*weights[j]*g.db/2;
-      if(!hooks.profileOnly&&iz===(c.zSamples-1)/2){
+      if(!hooks.profileOnly&&slab[iz]>0){
         const j=(nxy-1)/2,fu=us[j]/c.channelWidth-c.uOffset,i=Math.floor(fu),a=fu-i,fv=dz*scales[j]/c.rowWidth-c.vOffset,k=Math.floor(fv),b=fv-k;
-        for(const [row,weight] of [[k,1-b],[k+1,b]])if(weight>0)auditSamples.push({view,row,theta:beta,beta,z:c.feed*view/c.viewSamples+(row+c.vOffset)*c.rowWidth/scales[j]-zObject,weight,referenceWeight:0,geometricWeight:weights[j],filteredValue:(1-a)*fdkPatchAt(patch,i,row)+a*fdkPatchAt(patch,i+1,row)});
+        for(const [row,w] of [[k,1-b],[k+1,b]])if(w>0){
+          const weight=w*slab[iz],key=view+':'+row,previous=weightMap.get(key);
+          if(previous)previous.weight+=weight;
+          else weightMap.set(key,{view,row,theta:beta,beta,z:c.feed*view/c.viewSamples+(row+c.vOffset)*c.rowWidth/scales[j]-zObject,weight,referenceWeight:0,geometricWeight:weights[j],filteredValue:(1-a)*fdkPatchAt(patch,i,row)+a*fdkPatchAt(patch,i+1,row)});
+        }
       }
     }
     if((view-g.first)%12===0&&performance.now()-lastYield>=32){hooks.progress?.((view-g.first)/(g.last-g.first));await new Promise(resolve=>setTimeout(resolve,0));lastYield=performance.now();}
@@ -182,19 +216,25 @@ export async function reconstructFdk(input={},hooks={}) {
   if(!counts.every(v=>v===c.viewSamples))throw Error('Internal full-turn view-count mismatch');
   const roi=[];
   for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if((g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)roi.push(iy*n+ix);
-  const raw=Float64Array.from(g.z,(_,iz)=>roi.reduce((s,j)=>s+volume[iz*nxy+j],0)/roi.length);
+  const paddedRaw=Float64Array.from(g.z,(_,iz)=>roi.reduce((s,j)=>s+volume[iz*nxy+j],0)/roi.length);
+  const raw=fdkSlabMean(paddedRaw,c.zStep,c.axialAverageMm,g.padding),outputZ=g.z.slice(g.padding,g.z.length-g.padding);
+  const averagedVolume=c.axialAverageMm&&!hooks.profileOnly?new Float64Array(nxy*outputZ.length):volume;
+  if(c.axialAverageMm&&!hooks.profileOnly)for(let j=0;j<nxy;j++){
+    const col=fdkSlabMean(Float64Array.from(g.z,(_,iz)=>volume[iz*nxy+j]),c.zStep,c.axialAverageMm,g.padding);
+    for(let iz=0;iz<col.length;iz++)averagedVolume[iz*nxy+j]=col[iz];
+  }
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))throw Error('No positive reconstructed sphere signal');
-  const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(g.z,v=>v-zObject);
+  const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(outputZ,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('FDK_DOMAIN: increase z extent to enclose both width thresholds');
-  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the sphere-centre voxel; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,centerValue:volume[((c.zSamples-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:auditSamples};
-  return {config:c,x:g.x,y:g.y,z,volume:hooks.profileOnly?null:volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,weightAudit,
-    acquisition:{firstView:g.first,lastViewExclusive:g.last,viewsPerSlice:c.viewSamples},
+  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the transverse sphere centre, integrated over the image-domain axial averaging window; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,axialAverageMm:c.axialAverageMm,centerValue:averagedVolume[((outputZ.length-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:[...weightMap.values()]};
+  return {config:c,x:g.x,y:g.y,z,volume:hooks.profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,weightAudit,
+    acquisition:{firstView:g.first,lastViewExclusive:g.last,viewsPerSlice:c.viewSamples,paddedReconstructionSlices:g.z.length},
     model:{version:FDK_VERSION,algorithm:'full-turn helical FDK approximation',detector:'source-centered cylindrical; bilinear rebin to virtual flat detector',
       object:'unit-attenuation finite sphere; no deconvolution',filter:'unwindowed discrete Ram-Lak; full nonzero input support',
       interpolation:'bilinear rebin and backprojection; native linear width crossings',normalization:c.normalization,
-      extraAxialAveraging:false,fullTurnCoverage:true,scientificScope:'reference implementation; not a validated scanner-specific reconstruction or exact wide-cone inversion'}};
+      extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,thicknessMapping:c.thicknessMapping??'explicit-average-width',axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',fullTurnCoverage:true,scientificScope:'reference implementation; not a validated scanner-specific reconstruction or exact wide-cone inversion'}};
 }
 export async function reconstructFdkSeries(input,hooks={}) {
   const c=fdkConfig(input),profiles=[];let selected;

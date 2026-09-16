@@ -55,11 +55,12 @@ export function validateParams(input, { allowZeroPitch = false } = {}) {
     // It no longer means that the computed FWHM is fitted to this value.
     sliceThicknessMm: Number(input.sliceThicknessMm ?? input.targetFwhm),
     // FW is a reconstruction-filter parameter, NOT a prescribed SSP FWHM.
-    // A missing legacy FW is initialized from T only once. Callers retain the
-    // explicit returned FW when T is subsequently changed.
-    filterWidthMm: Number(input.filterWidthMm ?? input.sliceThicknessMm ?? input.targetFwhm),
+    // Public browser callers explicitly map FW=T. The independent-width API
+    // retains historical behavior for reproducibility and filter validation.
+    thicknessMapping: input.thicknessMapping === 'configured-rectangular' ? 'configured-rectangular' : 'independent-reference',
+    filterWidthMm: Number(input.thicknessMapping === 'configured-rectangular' ? (input.sliceThicknessMm ?? input.targetFwhm) : (input.filterWidthMm ?? input.sliceThicknessMm ?? input.targetFwhm)),
     filterSamples: Number(input.filterSamples ?? 129),
-    filterWidthInitialization: input.filterWidthInitialization
+    filterWidthInitialization: input.thicknessMapping === 'configured-rectangular' ? 'configured-thickness-as-rectangular-width' : input.filterWidthInitialization
       ?? (input.filterWidthMm == null ? "legacy-T-initialization-uncalibrated" : "explicit-independent-FW"),
     profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     reconstructionPath: Object.values(RECONSTRUCTION_PATHS).includes(input.reconstructionPath)
@@ -2168,7 +2169,7 @@ export function computeTaguchiSsp(rawParams, options = {}) {
   if (!Object.values(RECONSTRUCTION_PATHS).includes(reconstructionPath)) {
     throw new Error(`未対応の取得幾何モデルです: ${reconstructionPath}`);
   }
-  const filterWidthMm = Number(options.filterWidthMm ?? p.filterWidthMm);
+  const filterWidthMm = Number(p.thicknessMapping === 'configured-rectangular' ? p.sliceThicknessMm : (options.filterWidthMm ?? p.filterWidthMm));
   const filterSamples = Number(options.filterSamples ?? p.filterSamples);
   if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
     || !Number.isInteger(filterSamples) || filterSamples < 33 || filterSamples > 2049
@@ -2313,7 +2314,7 @@ export function createProfileAssumptions(rawParams) {
     filterSamples: p.filterSamples,
     filterWidthInitialization: p.filterWidthInitialization,
     filterWidthIsPrescribedFwhm: false,
-    mapping: "independent-filter-width-not-fitted-to-configured-thickness",
+    mapping: p.thicknessMapping === 'configured-rectangular' ? 'configured-thickness-as-rectangular-width-not-prescribed-fwhm' : "independent-filter-width-not-fitted-to-configured-thickness",
     geometryIndicator: "reference-plane-FW0-candidate-weighted-rms-not-forward-response-sigma",
     bracketAuditIndicator: p.reconstructionPath === RECONSTRUCTION_PATHS.FAN_BEAM_180LI
       ? "angularly-weighted-180li-branch-bracketing-gap-over-configured-thickness"
@@ -2325,7 +2326,7 @@ export function createProfileAssumptions(rawParams) {
 export function computeProfileModel(rawParams, options = {}) {
   const p = validateParams(rawParams);
   const assumptions = options.assumptions ?? createProfileAssumptions(p);
-  const filterWidthMm = Number(options.filterWidthMm ?? assumptions.filterWidthMm ?? p.filterWidthMm);
+  const filterWidthMm = Number(p.thicknessMapping === 'configured-rectangular' ? p.sliceThicknessMm : (options.filterWidthMm ?? assumptions.filterWidthMm ?? p.filterWidthMm));
   const requestedFilterSamples = Number(options.filterSamples ?? assumptions.filterSamples ?? p.filterSamples);
   if (!Number.isFinite(filterWidthMm) || filterWidthMm < 0 || filterWidthMm > 20
     || !Number.isInteger(requestedFilterSamples) || requestedFilterSamples < 33

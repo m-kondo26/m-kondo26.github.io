@@ -1,7 +1,7 @@
 // Hsieh et al., Opt Eng 46:067001 (2007), Eqs. 4-6.
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
-import {fdkConfig,fdkArcProjection,fdkRamp,fdkWidth} from './fdk-core.js';
+import {fdkConfig,fdkArcProjection,fdkRamp,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
 export const CBA_VERSION='2026-09-15.3';
 const CBA_TAU=2*Math.PI;
 export function cbaWeights(a,b,power=2){
@@ -20,31 +20,9 @@ export function cbaAvailableWeights(c,a,b,power=2){
   if(!(sum>1e-14))throw Error('CBA_COVERAGE: no acquired row support in the conjugate pair');
   return w.map(v=>v/sum);
 }
-// Continuous rectangular mean of a piecewise-linear sampled image column.
-// The caller supplies reconstructed padding; no zero extension or clamping.
-export function cbaSlabMean(values,dz,width,padding){
-  if(width===0)return Float64Array.from(values);
-  const n=values.length,prefix=new Float64Array(n),out=new Float64Array(n-2*padding);
-  for(let i=1;i<n;i++)prefix[i]=prefix[i-1]+(values[i-1]+values[i])*dz/2;
-  const integral=x=>{if(x<-1e-9||x>n-1+1e-9)throw Error('CBA_DOMAIN: missing reconstructed slab padding');
-    x=Math.max(0,Math.min(n-1,x));const i=Math.min(n-2,Math.floor(x)),f=x-i;
-    return prefix[i]+dz*(values[i]*f+(values[i+1]-values[i])*f*f/2);};
-  const half=width/(2*dz);
-  for(let i=0;i<out.length;i++){const j=i+padding;out[i]=(integral(j+half)-integral(j-half))/width;}
-  return out;
-}
-// Exact coefficients of the same piecewise-linear rectangular integral.
-// These are used only to trace the centre image sample, not to reconstruct it.
-export function cbaSlabCoefficients(length,dz,width){
-  const out=new Float64Array(length),mid=(length-1)/2;
-  if(width===0){out[mid]=1;return out;}
-  const lo=mid-width/(2*dz),hi=mid+width/(2*dz);
-  for(let i=Math.floor(lo);i<Math.ceil(hi);i++){
-    const a=Math.max(0,lo-i),b=Math.min(1,hi-i),right=(b*b-a*a)/2;
-    out[i]+=dz*(b-a-right)/width;out[i+1]+=dz*right/width;
-  }
-  return out;
-}
+// Compatibility exports use the shared image-domain rectangular integral.
+export function cbaSlabMean(values,dz,width,padding){return fdkSlabMean(values,dz,width,padding);}
+export function cbaSlabCoefficients(length,dz,width){return fdkSlabCoefficients(length,dz,width);}
 export function cbaCoordinates(c,theta,x,y,z){
   const t=-x*Math.sin(theta)+y*Math.cos(theta),along=x*Math.cos(theta)+y*Math.sin(theta);
   const gamma=Math.asin(t/c.sourceRadius),beta=theta+gamma;
@@ -136,13 +114,12 @@ function cbaResult(c,g,volume,counts,zObject,kind,acquisition,profileOnly=false)
       interpolation:kind==='cba'?'normalized distance-quadratic acquired-row weights; Eq. 6 in the four-sample interior':'normalized distance-linear acquired-row weights; conventional RRI in the four-sample interior',
       angularWeight:'one paired full turn per slice; no overscan or adaptive cone weighting',object:'finite sphere; no deconvolution',normalization:c.normalization,
       edgePolicy:c.edgePolicy,edgeExtension:'unavailable acquired row coefficients are zero; normalize available distance weights; not the full published scanner algorithm',
-      extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',
+      extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,thicknessMapping:c.thicknessMapping??'explicit-average-width',axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',
       fullTurnCoverage:c.edgePolicy==='strict',pairedAngularCoverage:true,profileOnly,scientificScope:'paper-based approximate reference; not TCOT or a validated commercial scanner'}};
 }
 export async function reconstructCba(input={},hooks={}){
-  const c=fdkConfig(input);c.edgePolicy=input.edgePolicy??'available';c.axialAverageMm=Number(input.axialAverageMm??0);
+  const c=fdkConfig(input);c.edgePolicy=input.edgePolicy??'available';
   if(!['strict','available'].includes(c.edgePolicy))throw Error('CBA_EDGE_POLICY');
-  if(!Number.isFinite(c.axialAverageMm)||c.axialAverageMm<0||c.axialAverageMm>10)throw Error('CBA_AVERAGE: width must be between 0 and 10 mm');
   if(c.viewSamples%2)throw Error('CBA_VIEWS: an even number of views per turn is required');
   const zObject=c.state*c.feed,g=cbaGrid(c,zObject),n=c.xySamples,nxy=n*n,half=c.viewSamples/2;
   const volume=new Float64Array(nxy*g.z.length),rriVolume=new Float64Array(volume.length),counts=new Uint16Array(g.z.length);

@@ -5,26 +5,27 @@ const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,sphe
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
-const fdkFileStem=r=>r.reference?'Hsieh_CBA_RRI':'FDK';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
-function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy','axialAverageMm'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='hsieh';}
+function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='hsieh';}
 function readFdkParams(){
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   if(out.computationModel!=='fdk')return out;
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
   }
-  if(out.method!=='hsieh')out.axialAverageMm=0;
+  out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
+  out.thicknessMapping='configured-rectangular';
   out.phaseCount=360;
   return out;
 }
 function writeFdkUrl(url,p){
   if(p.computationModel!=='fdk')return;
   url.searchParams.set('model','fdk');
-  for(const [k,v] of Object.entries(FDK_UI_FIELDS))url.searchParams.set('fdk_'+k,p[k]??v);
+  for(const [k,v] of Object.entries(FDK_UI_FIELDS))if(k!=='axialAverageMm')url.searchParams.set('fdk_'+k,p[k]??v);
 }
 function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='fdk'?'fdk':'axial'};
@@ -39,12 +40,12 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step)=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"></label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('列数・列幅・ピッチ・焦点距離・評価位置・取得ビュー数は上の共通条件を使用します。以下は3次元FBP用の条件です。','Rows, row width, pitch, source radius, evaluation radius and views per turn use the shared controls above.')}</p>
+  controls.innerHTML=`<p class="section-summary">${fdkText('設定スライス厚Tを含め、上の共通条件を使用します。以下は3次元FBP用の条件です。','The shared controls above, including configured thickness T, apply to every model.')}</p>
   <div class="preset-row">${[80,160,320].map(n=>`<button class="chip" type="button" data-fdk-rows="${n}">${n} ${fdkText('列','rows')}</button>`).join('')}<span>${fdkText('プリセット：列幅0.5 mm・ピッチ0.5（装置仕様ではありません）','Presets: 0.5-mm rows, pitch 0.5 (not scanner specifications)')}</span></div>
   <div class="parameter-grid">
   ${sel('method','3次元再構成法','3D reconstruction method',[['fdk',fdkText('従来のヘリカルFDK近似','Original helical FDK reference')],['hsieh',fdkText('Hsiehらの対向データ補間（CBAとRRIを比較）','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','Hsieh法の検出器端処理','Hsieh detector-edge treatment',[['available',fdkText('取得済みの列で正規化','Normalize acquired rows')],['strict',fdkText('4点が揃う場合のみ','Require all four row samples')]])}
-  ${num('axialAverageMm','Hsieh法：画像の体軸方向平均化幅 (mm)','Hsieh image-domain axial averaging width (mm)',0,10,.1)}
+  <input id="fdk-axialAverageMm" type="hidden" value="1">
   ${num('sphereDiameter','球の直径 (mm)','Sphere diameter (mm)',.1,10,.01)}
   ${num('channelWidth','面内チャネル幅：回転中心換算 (mm)','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${sel('apertureSamples','開口積分：各方向の分割数','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
@@ -62,7 +63,7 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
   document.getElementById('fdk-phaseCount').value=360;
-  syncHsiehControls();
+  syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('展開図から3次元FBPへ','From acquired geometry to 3D FBP')}</h2></div>
   <p class="section-summary">${fdkText('球の投影データから局所3次元画像とSSPzを計算します。Hsieh法では、CBAの二次重みと、線形重みの参照結果を比較します。4点が揃う内部では、線形重みは従来RRIと一致します。検出器端の扱いは両者で共通です。','Reconstruct local 3D images and SSPz from sphere projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
@@ -82,7 +83,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：CBA（単独計算ではFDK）、青：RRI。紫は同じ位置・偏差のビンに両者が存在することを表します。曲線全体や平均形状の一致ではありません。0.01 mm格子への線形補間、偏差ビン幅0.002、濃さは各ビンの割合の0.35乗で、色間で共通です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('3次元画像・条件をJSON保存','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('近似3次元FBPです。従来FDKと、投影を再配列して対向データを補間するHsieh法を選択できます。両者は焦点軌道・検出器列位置を共有します。TCOTの再現や厳密な広角コーンビーム逆変換ではありません。','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('対象は有限径の一様な球です。像中心に置いた、球の投影半径と等しい円形ROIの平均を各断面で求めます。ビーズ径の補正、ノイズ、焦点サイズ、隔壁、装置固有の重みは含みません。Hsieh法では、専用の平均化幅を画像領域に適用できます。0は平均化なしです。この幅を装置の実効スライス厚に一致させる校正は行っていません。従来の体軸方向モデルのT・FWとは別の設定です。','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. For the Hsieh path, the dedicated averaging width applies a rectangular image-domain mean before normalization; zero disables it. This width is not calibrated to scanner FWHM. It is separate from the axial model T and FW controls.')}</p><p>${fdkText('表示は計算点を直線で結びます。最小値0・最大値1の正規化では、FBP由来の負の応答も基線移動されます。元のROI値はExcelに保持し、最大値のみで正規化する表示も選べます。FWHMとFWTMは選択した正規化曲線から求めます。画像の濃淡は負値を黒にし、全画像共通の最大値まで表示します。','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('80～320列は計算可能な検出器構成です。列数だけで実機への妥当性を保証しません。ビュー数・開口分割数・チャネル幅・画像格子を変えて数値依存性を確認してください。','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('FDK：数式・座標・検証記録','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('近似3次元FBPです。従来FDKと、投影を再配列して対向データを補間するHsieh法を選択できます。両者は焦点軌道・検出器列位置を共有します。TCOTの再現や厳密な広角コーンビーム逆変換ではありません。','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('対象は有限径の一様な球です。像中心に置いた、球の投影半径と等しい円形ROIの平均を各断面で求めます。ビーズ径の補正、ノイズ、焦点サイズ、隔壁、装置固有の重みは含みません。FDK・CBA・RRIのいずれも、設定スライス厚Tを幅とする矩形平均化を再構成画像に適用し、その後にSSPzを正規化します。平均化には必要な周辺断面も再構成して用います。FWHMをTに一致させる調整や実機のスライス厚の校正は行いません。','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('表示は計算点を直線で結びます。最小値0・最大値1の正規化では、FBP由来の負の応答も基線移動されます。元のROI値はExcelに保持し、最大値のみで正規化する表示も選べます。FWHMとFWTMは選択した正規化曲線から求めます。画像の濃淡は負値を黒にし、全画像共通の最大値まで表示します。','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('80～320列は計算可能な検出器構成です。列数だけで実機への妥当性を保証しません。ビュー数・開口分割数・チャネル幅・画像格子を変えて数値依存性を確認してください。','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('FDK：数式・座標・検証記録','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：球の中心位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は球の中心からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('Hsieh法：計算方法と適用範囲','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -91,10 +92,10 @@ function initializeFdkUi(initial){
   function modeChanged(){
     const on=pick.querySelector('select').value==='fdk';controls.hidden=!on;panel.hidden=!on;
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
-    for(const k of ['sliceThicknessMm','filterWidthMm','filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
+    for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の小さな球はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Small off-centre spheres are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
-    if(legacyUrlNote&&on)legacyUrlNote.hidden=true;
+
     if(!runButton.disabled)status.textContent=fdkText('計算モデルを選択しました。条件を確認して計算してください。','Model selected. Check the conditions and calculate.');
   }
   pick.querySelector('select').addEventListener('change',modeChanged);modeChanged();

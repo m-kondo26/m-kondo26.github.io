@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.3 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-16.4 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -131,7 +131,8 @@ function readParams() {
     zReference: 0,
     state: selectedStateIndex / 360,
     sliceThicknessMm: Number(data.get("sliceThicknessMm")),
-    filterWidthMm: Number(data.get("filterWidthMm")),
+    filterWidthMm: Number(data.get("sliceThicknessMm")),
+    thicknessMapping: "configured-rectangular",
     filterSamples: Number(data.get("filterSamples")),
     profileMode: String(data.get("profileMode") || DEFAULT_PARAMS.profileMode),
     reconstructionPath: String(data.get("reconstructionPath") || DEFAULT_PARAMS.reconstructionPath),
@@ -152,6 +153,9 @@ function writeParams(params) {
 }
 
 function updateInputDecorations() {
+  const thickness=Number(form.elements.namedItem('sliceThicknessMm').value);
+  form.elements.namedItem('filterWidthMm').value=thickness;
+  const average=document.getElementById('fdk-axialAverageMm');if(average)average.value=thickness;
   const radius = Number(form.elements.namedItem("radius").value);
   document.querySelectorAll("[data-radius]").forEach(button => {
     button.classList.toggle("active", Number(button.dataset.radius) === radius);
@@ -165,7 +169,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 7,
+    v: 8,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -173,7 +177,6 @@ function paramsToUrl(params) {
     r: params.radius,
     vs: selectedStateIndex,
     st: params.sliceThicknessMm,
-    fw: params.filterWidthMm,
     nf: params.filterSamples,
     pm: params.profileMode,
     rp: reconstructionPathUrlValue(params.reconstructionPath),
@@ -194,7 +197,7 @@ function paramsFromUrl() {
   const hasNewThickness = query.has("st");
   const hasLegacyThickness = !hasNewThickness && query.has("t");
   const hasLegacyState = query.has("s") && !query.has("vs");
-  legacyInputMigrated = hasLegacyThickness || hasLegacyState || !query.has("fw") || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
+  legacyInputMigrated = get("v", 0) < 8 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
   selectedStateIndex = query.has("vs")
     ? Math.max(0, Math.min(359, Math.round(get("vs", 0))))
     : hasLegacyState
@@ -213,7 +216,8 @@ function paramsFromUrl() {
     sliceThicknessMm: hasNewThickness
       ? get("st", DEFAULT_PARAMS.sliceThicknessMm)
       : get("t", DEFAULT_PARAMS.sliceThicknessMm),
-    filterWidthMm: get("fw", hasNewThickness ? get("st", DEFAULT_PARAMS.sliceThicknessMm) : get("t", DEFAULT_PARAMS.sliceThicknessMm)),
+    filterWidthMm: hasNewThickness ? get("st", DEFAULT_PARAMS.sliceThicknessMm) : get("t", DEFAULT_PARAMS.sliceThicknessMm),
+    thicknessMapping: "configured-rectangular",
     filterSamples: get("nf", DEFAULT_PARAMS.filterSamples),
     profileMode: "taguchi-filter",
     reconstructionPath: reconstructionPathFromUrl(getText("rp", "")),
@@ -1828,7 +1832,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
 }
 
 function filterParameterLabel(params, actualSamples = params.filterSamples) {
-  return `FW=${fmt(params.filterWidthMm, 2)} mm; K=${actualSamples}; T=${fmt(params.sliceThicknessMm, 1)} mm`;
+  return `T = FW = ${fmt(params.sliceThicknessMm, 2)} mm; K=${actualSamples}`;
 }
 
 function selectedMetric(result) {
@@ -1949,7 +1953,7 @@ function drawSweep(canvas, result) {
   canvas.dataset.axisRule = "natural-1-2-5-with-consistent-decimals";
   if (sweepInterpretation) {
     sweepInterpretation.hidden = false;
-    sweepInterpretation.textContent = localizedText("Taguchiらのフィルタ補間後の幅を参照値Tで除しています。FWはTと独立で、FW=TでもFWHM=Tを保証しません。フィルタ再標本点数Kを増やした収束と、FWTM・σ・形状全体を併せて確認してください。", "Widths after Taguchi-style filter interpolation are divided by reference thickness T. FW is independent of T; FW=T does not guarantee FWHM=T. Check convergence as filter resampling count K increases, together with FWTM, sigma, and the full profile shape.");
+    sweepInterpretation.textContent = localizedText("設定厚Tを矩形平均化幅FWとして計算し、得られた幅をTで除しています。FWHMは出力値であり、Tと一致するよう調整していません。", "Configured thickness T defines rectangular averaging width FW. The resulting width is divided by T; FWHM is an output, not fitted to T.");
   }
 }
 
@@ -3286,10 +3290,11 @@ const initial = paramsFromUrl() ?? (() => {
   }
   catch { return DEFAULT_PARAMS; }
 })();
-writeParams({ ...DEFAULT_PARAMS, ...initial });
+if(initial.thicknessMapping!=='configured-rectangular' && initial!==DEFAULT_PARAMS)legacyInputMigrated=true;
+writeParams({ ...DEFAULT_PARAMS, ...initial, filterWidthMm:initial.sliceThicknessMm??DEFAULT_PARAMS.sliceThicknessMm, thicknessMapping:'configured-rectangular' });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("旧URL・保存条件をTaguchiらのフィルタ補間へ移行しました。FWが未指定の場合だけ初期値をTと同じ数値に置いていますが、これは実機に校正した対応ではありません。FWを独立に設定してください。旧版の計算値を流用せず、応答の定義も固定物体に対する再構成面移動へ変更して再計算します。", "Legacy URL or saved settings were migrated to Taguchi-style filter interpolation. Only when FW was unspecified, its initial numerical value was set equal to T; this is not a scanner-calibrated correspondence. Set FW independently. Old results are not reused; the response is recalculated for a reconstruction plane moving past a fixed object.");
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("設定厚Tを平均化幅に使う仕様へ更新しました。旧条件の独立したFW・画像平均化幅は使用せず、Tの値で再計算します。", "The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.");
 }
 initializeFdkUi(initial);
 runSimulation();

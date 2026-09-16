@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-16.3">
+  <link rel="stylesheet" href="styles.css?v=2026-09-16.4">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -73,12 +73,9 @@
         </label>
         <label>Configured slice thickness <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
-          <small class="field-help">Reference value for width/T ratios. It is independent of filter width FW and is not a target FWHM.</small>
+          <small class="field-help">The entered T is the axial rectangular averaging width. FWHM is measured from the calculated response.</small>
         </label>
-        <label>Longitudinal filter width <span class="symbol">FW</span> <span class="unit">mm</span>
-          <input id="filterWidthMm" name="filterWidthMm" type="number" min="0" max="20" step="0.1" value="1.0">
-          <small class="field-help">Width of the rectangular filter in Taguchi-style filter interpolation. FW=0 disables filtering. The FW-to-T relationship is not scanner-calibrated.</small>
-        </label>
+        <input id="filterWidthMm" name="filterWidthMm" type="hidden" value="1.0">
         <label>Minimum resampling count
           <select id="filterSamples" name="filterSamples">
             <option value="33">33</option><option value="65">65</option><option value="129" selected>129</option><option value="257">257</option><option value="513">513</option><option value="1025">1025</option><option value="2049">2049</option>
@@ -239,7 +236,7 @@
         <div><p class="step">3</p><h2 id="response-title">Inspect complete SSPz shapes and variation</h2></div>
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
-      <details class="reading-details"><summary>Details</summary><p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. FW is independent of T and is not calibrated to scanner nominal thickness.</p>
+      <details class="reading-details"><summary>Details</summary><p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. Configured thickness T defines rectangular averaging width FW. It is not calibrated to scanner nominal thickness; FWHM is measured from the calculated response.</p>
       </details><details class="reading-details"><summary>Details</summary><p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 0.1% in logarithmic coordinates.</p>
 
       </details><div class="subsection-heading">
@@ -446,7 +443,7 @@
         </li>
         <li>
           <div class="reference-citation">Hsieh J, Tang X, Thibault JB, Shaughnessy C, Nilsen RA, Williams E. <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Conjugate cone-beam reconstruction algorithm.</a> <i>Optical Engineering.</i> 2007;46(6):067001.</div>
-          <p>Rowwise rebinning and the four-sample conjugate interpolation of Eq. (6) compare quadratic and linear weights using the same projections and preprocessing. A declared boundary extension normalizes weights over acquired rows. Optional rectangular image-domain z averaging is also available. These extensions do not calibrate scanner slice thickness.</p>
+          <p>Rowwise rebinning and the four-sample conjugate interpolation of Eq. (6) compare quadratic and linear weights using the same projections and preprocessing. A declared boundary extension normalizes weights over acquired rows. Rectangular image-domain z averaging uses configured thickness T as its width. These extensions do not calibrate scanner slice thickness.</p>
         </li>
         <li>
           <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
@@ -476,10 +473,10 @@
 
   <footer>
     <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-16.3 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
+    <p id="version">Web build 2026-09-16.4 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-16.3"></script>
-  <script src="app-bundle-en.js?v=2026-09-16.3"></script>
+  <script src="worker-source-en.js?v=2026-09-16.4"></script>
+  <script src="app-bundle-en.js?v=2026-09-16.4"></script>
 </body>
 </html>

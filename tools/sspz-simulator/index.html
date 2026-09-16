@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-16.3">
+  <link rel="stylesheet" href="styles.css?v=2026-09-16.4">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -73,12 +73,9 @@
         </label>
         <label>設定スライス厚 <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
-          <small class="field-help">幅指標をTで除すための参照値です。フィルタ幅FWとは独立で、FWHMの目標値ではありません。</small>
+          <small class="field-help">入力したTを体軸方向の矩形平均化幅として使います。FWHMは計算結果から求める値です。</small>
         </label>
-        <label>体軸方向フィルタ幅 <span class="symbol">FW</span> <span class="unit">mm</span>
-          <input id="filterWidthMm" name="filterWidthMm" type="number" min="0" max="20" step="0.1" value="1.0">
-          <small class="field-help">Taguchiらの矩形フィルタ補間の幅です。FW=0はフィルタなし。FWと設定厚Tの対応は実機に校正していません。</small>
-        </label>
+        <input id="filterWidthMm" name="filterWidthMm" type="hidden" value="1.0">
         <label>再標本点数（最小）
           <select id="filterSamples" name="filterSamples">
             <option value="33">33</option><option value="65">65</option><option value="129" selected>129</option><option value="257">257</option><option value="513">513</option><option value="1025">1025</option><option value="2049">2049</option>
@@ -239,7 +236,7 @@
         <div><p class="step">3</p><h2 id="response-title">SSPz全形状と変動を見る</h2></div>
         <p class="section-note">幅だけでなく、裾・非対称性・形状全体を同時に確認します。</p>
       </div>
-      <details class="reading-details"><summary>詳しい説明</summary><p id="profile-model-note" class="model-note">Taguchiらの式（6）に基づく矩形重みのフィルタ補間を適用します。固定した薄い物体に対して再構成面を動かした応答を求めます。FWはTと独立で、装置の設定厚との対応は校正していません。</p>
+      <details class="reading-details"><summary>詳しい説明</summary><p id="profile-model-note" class="model-note">Taguchiらの式（6）に基づく矩形重みのフィルタ補間を適用します。固定した薄い物体に対して再構成面を動かした応答を求めます。設定厚Tを矩形平均化幅FWとして使います。装置の設定厚との対応は校正しておらず、FWHMは計算結果から求めます。</p>
       </details><details class="reading-details"><summary>詳しい説明</summary><p id="profile-display-note" class="model-note compact-note">SSPzは計算済みの隣接点を直線で結びます。スプライン補間・平滑化・点の間引きは行いません。画面と600 dpi保存で同じ描画方法を使います。低振幅裾は0.1%以上の点を対数座標で結びます。</p>
 
       </details><div class="subsection-heading">
@@ -446,7 +443,7 @@
         </li>
         <li>
           <div class="reference-citation">Hsieh J, Tang X, Thibault JB, Shaughnessy C, Nilsen RA, Williams E. <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Conjugate cone-beam reconstruction algorithm.</a> <i>Optical Engineering.</i> 2007;46(6):067001.</div>
-          <p>検出器列ごとの投影再配列と式（6）の対向4点補間を実装し、同じ投影・前処理で二乗重みと線形重みを比較します。検出器端では取得できた列の重みを正規化する拡張を用います。画像の体軸方向の矩形平均化も選択できます。これらの追加定義は実機のスライス厚を校正するものではありません。</p>
+          <p>検出器列ごとの投影再配列と式（6）の対向4点補間を実装し、同じ投影・前処理で二乗重みと線形重みを比較します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。</p>
         </li>
         <li>
           <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
@@ -476,10 +473,10 @@
 
   <footer>
     <p>Models: axial filter interpolation, helical FDK, and Hsieh CBA with matched RRI. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-16.3 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
+    <p id="version">Web build 2026-09-16.4 / axial model 2026-09-08.1 / CBA 2026-09-15.3</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-16.3"></script>
-  <script src="app-bundle.js?v=2026-09-16.3"></script>
+  <script src="worker-source.js?v=2026-09-16.4"></script>
+  <script src="app-bundle.js?v=2026-09-16.4"></script>
 </body>
 </html>

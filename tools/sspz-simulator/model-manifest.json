@@ -12,7 +12,7 @@
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "9e0ad206dc4c772142a89ddff6e1505c2bdef5d5ce933dc2ead405da24c785e3",
+    "sha256": "f63126c5515401cea6fe0ade31f2d19e308320232f73d9d0fa294541b68bafb6",
     "sha256Convention": "UTF-8 bytes with LF line endings, matching the published GitHub Pages source"
   },
   "regressionFixture": {
@@ -155,14 +155,14 @@
     "responseDefinition": "fixed-thin-object-moving-reconstruction-plane",
     "responseCoordinate": "z_reconstruction-z_object (mm)",
     "stateMeaning": "fixed-object-position-within-one-table-feed",
-    "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
-    "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
+    "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
+    "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-16.3",
+  "webBuildVersion": "2026-09-16.4",
   "threeDimensionalFbp": {
-    "version": "2026-09-14.1",
+    "version": "2026-09-16.1",
     "core": "fdk-core.js",
-    "sha256": "9d62f04f5cd1060b75fc9c93346150ea94bed62113a9e1fb33d767fbc4ec989a",
+    "sha256": "086f7d8d813252aaec4f549e266c7cda6682ca0d2ddd627f8eb4342b6308bb14",
     "path": "full-turn helical FDK approximation",
     "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
     "rows": {
@@ -178,12 +178,13 @@
     "implementationTests": "tests/fdk.mjs",
     "numericalSensitivity": "tests/fdk-verification.json",
     "scannerValidation": "not established",
-    "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core."
+    "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core.",
+    "axialAveraging": "Post-backprojection normalized rectangular image-domain mean of width T, before profile normalization; reconstruct required padding and retain coverage checks."
   },
   "conjugateFbp": {
     "version": "2026-09-15.3",
     "core": "cba-core.js",
-    "sha256": "71ecc7fd5fda8c58a1c442d6d6954ae7c235d056b82d0f0d61c7d7a2dccb2b95",
+    "sha256": "c318a13553416f73fc42048cbca75d2c326b08c70ee532318b3fcdaa5e4d123c",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
     "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
@@ -233,5 +234,19 @@
     "overlay": "Native linear segments, opacity 0.13, width 1.1 logical pixels; selected curve width 4; log-tail display 0.001 to 1; CBA/FDK red and RRI blue match the accepted density-map channels",
     "coordinateBoundary": "Each 3D sample is shown at its own acquisition/rebinned angle; original direct-reference complementary folding and glyphs are not falsely assigned to these scenes. Physical CBA rows and FDK virtual-flat rows are labeled distinctly.",
     "visualChecks": "Japanese CBA four-row full user configuration; English FDK 80 rows; screen and actual 600-dpi PNG inspection; existing marker/profile renderer checks; unchanged reconstruction and shape-map source hashes"
+  },
+  "configuredThickness": {
+    "version": "2026-09-16.1",
+    "urlVersion": 8,
+    "input": "sliceThicknessMm / st",
+    "mapping": "configured-rectangular",
+    "browserRangeMm": [
+      0.1,
+      20
+    ],
+    "FDK_CBA_RRI": "axialAverageMm=T",
+    "axial": "filterWidthMm=T",
+    "output": "FWHM from final normalized SSPz; never fitted to T",
+    "test": "tests/configured-thickness.mjs"
   }
 }

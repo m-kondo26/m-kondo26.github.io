@@ -1,6 +1,6 @@
 # Integrated three-dimensional FBP reference
 
-Version 2026-09-14.1. This is an additional calculation path in the existing
+Version 2026-09-16.1. This is an additional calculation path in the existing
 public SSPz simulator, executed locally in the same browser Web Worker. The
 original axial filter-interpolation model remains available. No server or
 Python installation is needed for the public path.
@@ -57,7 +57,7 @@ At the evaluation-point longitudinal line, with horizontal source-to-point
 distance L(beta), the row center is z_source + w_k L(beta)/R. **This is the
 same distance-scaled row geometry as the original unwrapped diagrams.**
 The displayed FDK diagram uses the actual full-turn acquisition interval
-selected for the central reconstructed slice. Its orange dashed line is
+selected for the central reconstructed slice. Its red solid line is
 the object's z position; the row trajectories are geometry, not FBP weights.
 Only actual acquired rows are shown; a separate conjugate family is not
 introduced into this FDK path.
@@ -133,9 +133,23 @@ A true local 3D image array is reconstructed (z,y,x; x fastest). Each SSPz
 sample is the mean of a disk ROI centered on the sphere in one axial slice,
 with radius equal to the sphere radius. Therefore this is a **finite-sphere
 derived SSPz**, not a deconvolved ideal point response. The radius and number
-of contributing pixels are recorded. No additional axial box average or
-target FWHM fitting is applied. T and FW from the original axial model are
-not used in this path.
+of contributing pixels are recorded. In the browser, the single configured
+slice-thickness input T is the width of an image-domain rectangular mean:
+
+    f_T(x,y,z) = (1/T) integral[-T/2,+T/2] f(x,y,z+u) du.
+
+This average is applied after FDK backprojection and before SSPz normalization.
+The padded image is reconstructed to cover the complete averaging window at
+each requested output position. The integral is exact for piecewise-linear
+image columns; missing slices are not filled with zeros. The same operation
+is applied to the displayed/exported volume and the raw ROI profile. ROI-only
+batch calculations commute these two linear averages and match the full-volume
+result. The acquisition-coverage check includes the padding and still rejects
+unsupported conditions. FWHM is measured from the resulting SSPz; it is not
+adjusted to equal T. This is an explicit model definition, not a calibrated
+commercial-scanner thickness kernel. The low-level numerical API retains an
+explicit zero-average mode for reproducibility; the browser sends
+thicknessMapping = configured-rectangular and uses T throughout.
 
 The display offers min–max normalization (default, minimum 0 and maximum 1)
 and peak-only normalization (negative lobes retained). Min–max normalization
@@ -178,4 +192,4 @@ integrated cylindrical-detector implementation.
 
 ## Linked 360-angle workflow
 
-The browser now automatically evaluates 360 start angles at one-degree increments. It links the inspected angle to acquired-row geometry, virtual-flat filtered row weights, the native SSPz, the width cursor and reconstructed images. Later batch angles compute the same ROI voxels without unused surrounding pixels; full images are recalculated when inspected. Tests confirm identical raw ROI values. Virtual-flat weights are not labeled as original cylindrical detector rows. Their channel-interpolated filtered values, row coefficients, FDK geometric factor and angular factor reproduce the central voxel. All profiles remain available in Excel/CSV; the selected volume and audit are exported in JSON. See tests/fdk-workflow.mjs. Reconstruction equations and coverage checks are unchanged.
+The browser now automatically evaluates 360 start angles at one-degree increments. It links the inspected angle to acquired-row geometry, virtual-flat filtered row weights, the native SSPz, the width cursor and reconstructed images. Later batch angles compute the same ROI voxels without unused surrounding pixels; full images are recalculated when inspected. Tests confirm identical raw ROI values. Virtual-flat weights are not labeled as original cylindrical detector rows. Coefficients are aggregated over the complete image-averaging window for each unwrapped view and virtual row. Their channel-interpolated filtered values, aggregated row coefficients, FDK geometric factor and angular factor reproduce the averaged central voxel. All profiles remain available in Excel/CSV; the selected volume and audit are exported in JSON. See tests/fdk-workflow.mjs. The native FDK backprojection is unchanged; the added rectangular image average and its padding are explicit. See tests/configured-thickness.mjs for independent segment-integration, volume/profile and weight-audit checks.
