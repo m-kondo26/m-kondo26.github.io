@@ -1,7 +1,7 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-09-08.1",
-  "diagramDisplayVersion": "2026-09-15.1",
+  "diagramDisplayVersion": "2026-09-16.1",
   "profileDisplayVersion": "2026-09-08.1",
   "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The unchanged log-tail rule omits values below 0.001, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
   "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-16.4",
+  "webBuildVersion": "2026-09-16.5",
   "threeDimensionalFbp": {
     "version": "2026-09-16.1",
     "core": "fdk-core.js",
@@ -233,7 +233,13 @@
     "drawing": "Shared original drawDiagram, axisContext, drawAxes, row palette, fixed-radius weight-fill markers and native-sample strokes; 900x960 diagrams with 650-unit data height and footer key; 80-mm 600-dpi diagram export",
     "overlay": "Native linear segments, opacity 0.13, width 1.1 logical pixels; selected curve width 4; log-tail display 0.001 to 1; CBA/FDK red and RRI blue match the accepted density-map channels",
     "coordinateBoundary": "Each 3D sample is shown at its own acquisition/rebinned angle; original direct-reference complementary folding and glyphs are not falsely assigned to these scenes. Physical CBA rows and FDK virtual-flat rows are labeled distinctly.",
-    "visualChecks": "Japanese CBA four-row full user configuration; English FDK 80 rows; screen and actual 600-dpi PNG inspection; existing marker/profile renderer checks; unchanged reconstruction and shape-map source hashes"
+    "visualChecks": "Japanese CBA four-row full user configuration; English FDK 80 rows; screen and actual 600-dpi PNG inspection; existing marker/profile renderer checks; unchanged reconstruction and shape-map source hashes",
+    "backgroundTrajectories": {
+      "version": "2026-09-16.1",
+      "scope": "Complete geometric turns clipped at the existing axes, independent of selected-weight support; no additional acquired samples",
+      "unchanged": "Reconstruction, selected sample identities, positions, weights, axes, palette and marker opacity",
+      "test": "tests/fdk-diagram-trajectories.mjs"
+    }
   },
   "configuredThickness": {
     "version": "2026-09-16.1",

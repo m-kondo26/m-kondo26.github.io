@@ -308,7 +308,7 @@ for (const rows of [4, 160, 320]) {
           "No detector-row digit or other annotation is painted inside the plot");
         assert.equal(axesCalls, 1, "Axes are still drawn exactly once");
         assert.deepEqual(legends, [{ role: mode, rows }], "Compact detector-row key remains part of the corresponding legend");
-        assert.equal(canvas.dataset.diagramDisplayVersion, "2026-09-15.1");
+        assert.equal(canvas.dataset.diagramDisplayVersion, "2026-09-16.1");
         assert.equal(JSON.stringify(diagram), originalDiagram, "Display-only revision preserves every numerical diagram field");
         assert.equal(ctx.events.filter(event => event.type === "fill").length,
           mode === "zoom" ? independentGroups(diagram.weightedPoints).size : 0,

@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.4 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-16.5 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -959,7 +959,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
   canvas.dataset.inlineRowLabels = "0";
   canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
-  canvas.dataset.diagramDisplayVersion = "2026-09-15.1";
+  canvas.dataset.diagramDisplayVersion = "2026-09-16.1";
   canvas.dataset.legendPlacement = "below-axes";
   canvas.dataset.plotHeight = String(innerHeight);
   canvas.dataset.legendTop = String(legendTop);

@@ -2944,26 +2944,42 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   const rowMax=r.reference||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
   const rows=rowMax-rowMin+1,angles=[],axial=[],scales=[];
   const fold=v=>((v-base)%c.viewSamples+c.viewSamples)%c.viewSamples*360/c.viewSamples;
-  for(let v=first;v<=last;v++){
+  const geometryAt=v=>{
     const angle=c.phase+v*step;
-    angles.push(v===last&&fold(v)===0?360:fold(v));
     if(r.reference){
       const t=-c.radius*Math.sin(angle),gamma=Math.asin(t/c.sourceRadius);
-      axial.push(c.feed*(angle+gamma-c.phase)/(2*Math.PI));
-      scales.push((Math.sqrt(c.sourceRadius**2-t*t)-c.radius*Math.cos(angle))/c.sourceRadius);
-    }else{
-      axial.push(c.feed*v/c.viewSamples);
-      scales.push(physical?Math.hypot(c.sourceRadius*Math.cos(angle)-c.radius,c.sourceRadius*Math.sin(angle))/c.sourceRadius:(c.sourceRadius-c.radius*Math.cos(angle))/c.sourceRadius);
+      return [c.feed*(angle+gamma-c.phase)/(2*Math.PI),(Math.sqrt(c.sourceRadius**2-t*t)-c.radius*Math.cos(angle))/c.sourceRadius];
+    }
+    return [c.feed*v/c.viewSamples,physical?Math.hypot(c.sourceRadius*Math.cos(angle)-c.radius,c.sourceRadius*Math.sin(angle))/c.sourceRadius:(c.sourceRadius-c.radius*Math.cos(angle))/c.sourceRadius];
+  };
+  const rowOffsets=Array.from({length:rows},(_,i)=>(r.reference||physical?i-(c.rows-1)/2:rowMin+i+c.vOffset)*c.rowWidth);
+  // Preserve the established axis range, which follows the selected audit.
+  let extent=0;
+  for(let v=first;v<=last;v++){
+    const [z,scale]=geometryAt(v);
+    for(const row of [0,rows-1])extent=Math.max(extent,Math.abs(z+scale*rowOffsets[row]-r.zObject));
+  }
+  const zoomLimit=Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12;
+  // Background curves describe geometry, not the support of selected weights.
+  // Draw complete turns and clip them at the axes; never join folded endpoints.
+  let minCentral=Infinity,maxCentral=-Infinity;
+  for(let i=0;i<=c.viewSamples;i++){
+    const [z,scale]=geometryAt(base+i);
+    angles.push(i*360/c.viewSamples);axial.push(z);scales.push(scale);
+    for(const row of [0,rows-1]){
+      const delta=z+scale*rowOffsets[row]-r.zObject;
+      minCentral=Math.min(minCentral,delta);maxCentral=Math.max(maxCentral,delta);
     }
   }
-  const rowOffsets=Array.from({length:rows},(_,i)=>(r.reference||physical?i-(c.rows-1)/2:rowMin+i+c.vOffset)*c.rowWidth);
-  let extent=0;for(let i=0;i<angles.length;i++)for(const row of [0,rows-1])extent=Math.max(extent,Math.abs(axial[i]+scales[i]*rowOffsets[row]-r.zObject));
-  const zoomLimit=Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12;
+  const xLimit=symmetricNiceAxis(zoom?zoomLimit:extent,3).xMax;
+  const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
+  const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
+  const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
   const stride=Math.max(1,Math.ceil(c.viewSamples/72));
   const trace={id:'acquired',family:'direct',angles,axial,scales};
   const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
-    traceGeometry:{...trace,rowOffsets,feed:c.feed,turns:[0]},traceFamilies:[trace],
+    traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies:[trace],
     weightedPoints:zoom?samples.filter(q=>((q.view-base)%stride+stride)%stride===0).map(q=>({
       x:q.z,y:fold(q.view),row:q.row-rowMin,weight:reference?q.referenceWeight:q.weight,
       referenceViewIndex:q.view,absoluteViewIndex:q.view,traceFamilyId:'acquired',dataKind:'filtered-data'
@@ -2972,9 +2988,11 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     xAxisLabel:fdkText('候補列中心  zᵢ − z₀  (mm)','Candidate row centre  zᵢ − z₀  (mm)'),
     yAxisLabel:r.reference?fdkText('再配列後の角度差  θ  (°)','Rebinned angle offset  θ  (°)'):fdkText('線源角度差  β  (°)','Source angle offset  β  (°)'),
     directLegendLabel:r.reference?fdkText('再配列データ ○','Rebinned data ○'):fdkText('取得データ ○','Acquired data ○'),
+    overviewLegendLabel:fdkText('全{rows}列の幾何軌跡','Geometric trajectories: all {rows} rows').replace('{rows}',c.rows),
     weightLegendLabel:fdkText('合計重み w','Total weight w'),
     angleCoordinate:r.reference?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
+  if(!zoom)diagram.directLegendLabel=r.reference?fdkText('再配列後の列軌跡','Rebinned row trajectories'):fdkText('検出器列の軌跡','Detector-row trajectories');
   if(!r.reference&&zoom){
     diagram.rowLegendLabel=fdkText('仮想平面列','Virtual row');
     diagram.rowLabels=Array.from({length:rows},(_,i)=>rowMin+i);
@@ -2990,6 +3008,8 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
   canvas.dataset.markerEncoding='fixed-radius;row-colour;weight-fill';
   canvas.dataset.familyEncoding='each sample at its own acquired angle; no direct-reference folding';
+  canvas.dataset.backgroundTraceScope='geometric-context-independent-of-selected-weight-support';
+  canvas.dataset.backgroundTurns=turns.join(',');
 }
 function fdkArrow(a,fw,level,color){const {ctx,s}=a,yy=a.y(level);ctx.strokeStyle=color;ctx.lineWidth=2*s;ctx.setLineDash([5*s,5*s]);for(const v of [fw.left,fw.right]){ctx.beginPath();ctx.moveTo(a.x(v),a.b.bottom);ctx.lineTo(a.x(v),yy);ctx.stroke();}ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(a.x(fw.left),yy);ctx.lineTo(a.x(fw.right),yy);for(const [v,d] of [[fw.left,1],[fw.right,-1]]){ctx.moveTo(a.x(v)+d*9*s,yy-6*s);ctx.lineTo(a.x(v),yy);ctx.lineTo(a.x(v)+d*9*s,yy+6*s);}ctx.stroke();}
 function drawFdkSelectedProfile(canvas){
@@ -3356,7 +3376,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-16.4 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-16.5 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4238,7 +4258,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
   canvas.dataset.inlineRowLabels = "0";
   canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
-  canvas.dataset.diagramDisplayVersion = "2026-09-15.1";
+  canvas.dataset.diagramDisplayVersion = "2026-09-16.1";
   canvas.dataset.legendPlacement = "below-axes";
   canvas.dataset.plotHeight = String(innerHeight);
   canvas.dataset.legendTop = String(legendTop);
