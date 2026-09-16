@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-15.6 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-16.1 / axial model ${MODEL_VERSION} / FDK 2026-09-14.1 / CBA 2026-09-15.3`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -230,6 +230,7 @@ function setBusy(busy) {
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
   form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
+  syncFdkMethodControls();
   const inspectDisabled = busy || !lastResult || lastResult.geometryOnly;
   if (inspectState) inspectState.disabled = inspectDisabled;
   if (inspectPrev) inspectPrev.disabled = inspectDisabled;

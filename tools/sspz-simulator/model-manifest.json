@@ -158,11 +158,11 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-15.6",
+  "webBuildVersion": "2026-09-16.1",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
-    "sha256": "5faa4bdc47e2411208ddc2987dc730c0f84f45b63e300a21448db993d67156f2",
+    "sha256": "9d62f04f5cd1060b75fc9c93346150ea94bed62113a9e1fb33d767fbc4ec989a",
     "path": "full-turn helical FDK approximation",
     "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
     "rows": {
@@ -183,7 +183,7 @@
   "conjugateFbp": {
     "version": "2026-09-15.3",
     "core": "cba-core.js",
-    "sha256": "def0de01acf0b422468bef705bdbd50dac43a8c72f8172af874450af3476b537",
+    "sha256": "71ecc7fd5fda8c58a1c442d6d6954ae7c235d056b82d0f0d61c7d7a2dccb2b95",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
     "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
@@ -219,5 +219,15 @@
     "colors": "CBA or FDK red; RRI blue. Axial reference gray; cone geometry red. No measured data in browser.",
     "exports": "Same renderer for screen and 600-dpi PNG; aligned arrays and deviations in Excel",
     "numericalModelChanged": false
+  },
+  "linked3dWorkflow": {
+    "version": "2026-09-16.1",
+    "angles": "360 start angles, base + 0..359 degrees, fixed object z; old short sweeps promoted",
+    "inspection": "same selected start angle for actual row weights, diagram, SSPz, width cursor and images",
+    "weightTrace": "CBA filtered acquired-row coefficients across image-average window; FDK virtual-flat row interpolation with separate geometric factor",
+    "sampleIdentity": "unwrapped view and row; folded angular display retains different-turn samples",
+    "exports": "all profiles, widths and deviations; selected window weights and volumes; same-renderer 600-dpi figures",
+    "reconstructionEquationsChanged": false,
+    "checks": "tests/fdk-workflow.mjs; four-row numeric regression; browser 360-angle and selected-angle/export checks"
   }
 }

@@ -155,6 +155,8 @@ export async function reconstructFdk(input={},hooks={}) {
   const c=fdkConfig(input),zObject=c.state*c.feed,g=fdkVolumeGeometry(c,zObject);
   fdkCheckCoverage(c,g,zObject);
   const n=c.xySamples,nxy=n*n,volume=new Float64Array(nxy*c.zSamples),counts=new Uint16Array(c.zSamples);
+  const activePixels=[];for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if(!hooks.profileOnly||(g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)activePixels.push(iy*n+ix);
+  const auditSamples=[];let lastYield=performance.now();
   for(let view=g.first;view<g.last;view++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const beta=c.phase+view*g.db,cb=Math.cos(beta),sb=Math.sin(beta),R=c.sourceRadius;
@@ -169,9 +171,13 @@ export async function reconstructFdk(input={},hooks={}) {
     const patch=fdkFilteredPatch(c,raw,Math.floor(uMin/c.channelWidth-c.uOffset)-1,Math.ceil(uMax/c.channelWidth-c.uOffset)+1);
     for(let iz=0;iz<c.zSamples;iz++)if(view>=g.starts[iz]&&view<g.starts[iz]+c.viewSamples){
       const dz=g.z[iz]-c.feed*(beta-c.phase)/FDK_TAU;counts[iz]++;
-      for(let j=0;j<nxy;j++)volume[iz*nxy+j]+=fdkSamplePatch(c,patch,us[j],dz*scales[j])*weights[j]*g.db/2;
+      for(const j of activePixels)volume[iz*nxy+j]+=fdkSamplePatch(c,patch,us[j],dz*scales[j])*weights[j]*g.db/2;
+      if(!hooks.profileOnly&&iz===(c.zSamples-1)/2){
+        const j=(nxy-1)/2,fu=us[j]/c.channelWidth-c.uOffset,i=Math.floor(fu),a=fu-i,fv=dz*scales[j]/c.rowWidth-c.vOffset,k=Math.floor(fv),b=fv-k;
+        for(const [row,weight] of [[k,1-b],[k+1,b]])if(weight>0)auditSamples.push({view,row,theta:beta,beta,z:c.feed*view/c.viewSamples+(row+c.vOffset)*c.rowWidth/scales[j]-zObject,weight,referenceWeight:0,geometricWeight:weights[j],filteredValue:(1-a)*fdkPatchAt(patch,i,row)+a*fdkPatchAt(patch,i+1,row)});
+      }
     }
-    if((view-g.first)%12===0){hooks.progress?.((view-g.first)/(g.last-g.first));await new Promise(resolve=>setTimeout(resolve,0));}
+    if((view-g.first)%12===0&&performance.now()-lastYield>=32){hooks.progress?.((view-g.first)/(g.last-g.first));await new Promise(resolve=>setTimeout(resolve,0));lastYield=performance.now();}
   }
   if(!counts.every(v=>v===c.viewSamples))throw Error('Internal full-turn view-count mismatch');
   const roi=[];
@@ -182,7 +188,8 @@ export async function reconstructFdk(input={},hooks={}) {
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(g.z,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('FDK_DOMAIN: increase z extent to enclose both width thresholds');
-  return {config:c,x:g.x,y:g.y,z,volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,
+  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the sphere-centre voxel; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,centerValue:volume[((c.zSamples-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:auditSamples};
+  return {config:c,x:g.x,y:g.y,z,volume:hooks.profileOnly?null:volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,weightAudit,
     acquisition:{firstView:g.first,lastViewExclusive:g.last,viewsPerSlice:c.viewSamples},
     model:{version:FDK_VERSION,algorithm:'full-turn helical FDK approximation',detector:'source-centered cylindrical; bilinear rebin to virtual flat detector',
       object:'unit-attenuation finite sphere; no deconvolution',filter:'unwindowed discrete Ram-Lak; full nonzero input support',
@@ -193,9 +200,10 @@ export async function reconstructFdkSeries(input,hooks={}) {
   const c=fdkConfig(input),profiles=[];let selected;
   for(let i=0;i<c.phaseCount;i++){
     const phase=c.phase+FDK_TAU*i/c.phaseCount;
-    const r=await reconstructFdk({...c,phase},{...hooks,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
+    const r=await reconstructFdk({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
     if(!selected)selected=r;
     profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline});
+    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
   }
   const mean=Float64Array.from(selected.z,(_,i)=>profiles.reduce((s,p)=>s+p.profile[i],0)/profiles.length);
   return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]))};

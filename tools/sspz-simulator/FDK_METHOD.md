@@ -155,7 +155,7 @@ there is no SD or mean-difference plot.
 
 Excel includes native raw/normalized profiles, pointwise means and deviations,
 widths, parameters and method metadata. JSON additionally retains the local
-3D volume for the first angle. Image displays use equal physical axis scale;
+3D volume for the currently inspected angle. Image displays use equal physical axis scale;
 negative values are black and all images share the volume maximum as white.
 The underlying values, including negatives, remain unchanged in JSON.
 
@@ -175,3 +175,7 @@ Comparison to independently reconstructed helical phantom images or
 commercial-scanner measurements remains unperformed. Previous standalone
 Python flat-detector tests are development history and do not validate the
 integrated cylindrical-detector implementation.
+
+## Linked 360-angle workflow
+
+The browser now automatically evaluates 360 start angles at one-degree increments. It links the inspected angle to acquired-row geometry, virtual-flat filtered row weights, the native SSPz, the width cursor and reconstructed images. Later batch angles compute the same ROI voxels without unused surrounding pixels; full images are recalculated when inspected. Tests confirm identical raw ROI values. Virtual-flat weights are not labeled as original cylindrical detector rows. Their channel-interpolated filtered values, row coefficients, FDK geometric factor and angular factor reproduce the central voxel. All profiles remain available in Excel/CSV; the selected volume and audit are exported in JSON. See tests/fdk-workflow.mjs. Reconstruction equations and coverage checks are unchanged.

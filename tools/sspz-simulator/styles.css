@@ -396,6 +396,13 @@ footer p { margin: 0.2rem 0; }
 #fdk-panel { margin-top: 28px; }
 #fdk-panel canvas { width: 100%; height: auto; aspect-ratio: auto; }
 #fdk-panel h3 { font-size: 1rem; margin: 0 0 8px; }
+.workflow-block { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccd2d6; }
+.workflow-block > h2 { margin-bottom: 1rem; }
+.workflow-block > .chart-card { margin-top: 1rem; }
+.state-controls { display: flex; align-items: center; gap: 1rem; }
+.state-controls input[type=range] { flex: 1; min-width: 120px; }
+#fdk-inspect-label { font-weight: 600; margin-left: 1rem; }
+#fdk-weight-scope { line-height: 1.6; }
 
 /* Share the same density painter with 600-dpi exports. Keep labels legible on
    narrow screens through keyboard-accessible horizontal scrolling. */

@@ -8,11 +8,12 @@ import {
   tableFeedMm,
   validateParams,
 } from "./sim-core.js";
-import { reconstructFdkSeries } from "./fdk-core.js";
-import { reconstructCbaSeries } from "./cba-core.js";
+import { reconstructFdkSeries, reconstructFdk } from "./fdk-core.js";
+import { reconstructCbaSeries, reconstructCba } from "./cba-core.js";
 
 let cancelled = false;
 let activeContext = null;
+let fdkContext=null, fdkInspectionToken=0;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
 function overlaySampleIndices(length) {
@@ -106,16 +107,28 @@ self.onmessage = async event => {
   const message = event.data;
   if (message.type === 'fdk-run') {
     cancelled = false;
+    fdkContext=null;fdkInspectionToken++;
     try {
       const reconstruct = message.params.method === 'hsieh' ? reconstructCbaSeries : reconstructFdkSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
-        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.round(value*100)}%`}),
+        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
       });
+      fdkContext={params:message.params,first:result};
       self.postMessage({type:'fdk-result',result});
     } catch(error) {
       self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
     }
+    return;
+  }
+  if(message.type==='fdk-inspect'){
+    const token=++fdkInspectionToken,context=fdkContext;if(!context)return;
+    try{
+      const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
+      const reconstruct=context.params.method==='hsieh'?reconstructCba:reconstructFdk;
+      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
+      if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
+    }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}
     return;
   }
   if (message.type === "cancel") {

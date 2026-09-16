@@ -2825,6 +2825,8 @@ async function reconstructFdk(input={},hooks={}) {
   const c=fdkConfig(input),zObject=c.state*c.feed,g=fdkVolumeGeometry(c,zObject);
   fdkCheckCoverage(c,g,zObject);
   const n=c.xySamples,nxy=n*n,volume=new Float64Array(nxy*c.zSamples),counts=new Uint16Array(c.zSamples);
+  const activePixels=[];for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++)if(!hooks.profileOnly||(g.x[ix]-c.radius)**2+g.y[iy]**2<=(c.sphereDiameter/2)**2+1e-12)activePixels.push(iy*n+ix);
+  const auditSamples=[];let lastYield=performance.now();
   for(let view=g.first;view<g.last;view++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const beta=c.phase+view*g.db,cb=Math.cos(beta),sb=Math.sin(beta),R=c.sourceRadius;
@@ -2839,9 +2841,13 @@ async function reconstructFdk(input={},hooks={}) {
     const patch=fdkFilteredPatch(c,raw,Math.floor(uMin/c.channelWidth-c.uOffset)-1,Math.ceil(uMax/c.channelWidth-c.uOffset)+1);
     for(let iz=0;iz<c.zSamples;iz++)if(view>=g.starts[iz]&&view<g.starts[iz]+c.viewSamples){
       const dz=g.z[iz]-c.feed*(beta-c.phase)/FDK_TAU;counts[iz]++;
-      for(let j=0;j<nxy;j++)volume[iz*nxy+j]+=fdkSamplePatch(c,patch,us[j],dz*scales[j])*weights[j]*g.db/2;
+      for(const j of activePixels)volume[iz*nxy+j]+=fdkSamplePatch(c,patch,us[j],dz*scales[j])*weights[j]*g.db/2;
+      if(!hooks.profileOnly&&iz===(c.zSamples-1)/2){
+        const j=(nxy-1)/2,fu=us[j]/c.channelWidth-c.uOffset,i=Math.floor(fu),a=fu-i,fv=dz*scales[j]/c.rowWidth-c.vOffset,k=Math.floor(fv),b=fv-k;
+        for(const [row,weight] of [[k,1-b],[k+1,b]])if(weight>0)auditSamples.push({view,row,theta:beta,beta,z:c.feed*view/c.viewSamples+(row+c.vOffset)*c.rowWidth/scales[j]-zObject,weight,referenceWeight:0,geometricWeight:weights[j],filteredValue:(1-a)*fdkPatchAt(patch,i,row)+a*fdkPatchAt(patch,i+1,row)});
+      }
     }
-    if((view-g.first)%12===0){hooks.progress?.((view-g.first)/(g.last-g.first));await new Promise(resolve=>setTimeout(resolve,0));}
+    if((view-g.first)%12===0&&performance.now()-lastYield>=32){hooks.progress?.((view-g.first)/(g.last-g.first));await new Promise(resolve=>setTimeout(resolve,0));lastYield=performance.now();}
   }
   if(!counts.every(v=>v===c.viewSamples))throw Error('Internal full-turn view-count mismatch');
   const roi=[];
@@ -2852,7 +2858,8 @@ async function reconstructFdk(input={},hooks={}) {
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(g.z,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('FDK_DOMAIN: increase z extent to enclose both width thresholds');
-  return {config:c,x:g.x,y:g.y,z,volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,
+  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the sphere-centre voxel; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,centerValue:volume[((c.zSamples-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:auditSamples};
+  return {config:c,x:g.x,y:g.y,z,volume:hooks.profileOnly?null:volume,raw,profile,counts,zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,weightAudit,
     acquisition:{firstView:g.first,lastViewExclusive:g.last,viewsPerSlice:c.viewSamples},
     model:{version:FDK_VERSION,algorithm:'full-turn helical FDK approximation',detector:'source-centered cylindrical; bilinear rebin to virtual flat detector',
       object:'unit-attenuation finite sphere; no deconvolution',filter:'unwindowed discrete Ram-Lak; full nonzero input support',
@@ -2863,9 +2870,10 @@ async function reconstructFdkSeries(input,hooks={}) {
   const c=fdkConfig(input),profiles=[];let selected;
   for(let i=0;i<c.phaseCount;i++){
     const phase=c.phase+FDK_TAU*i/c.phaseCount;
-    const r=await reconstructFdk({...c,phase},{...hooks,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
+    const r=await reconstructFdk({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
     if(!selected)selected=r;
     profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline});
+    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
   }
   const mean=Float64Array.from(selected.z,(_,i)=>profiles.reduce((s,p)=>s+p.profile[i],0)/profiles.length);
   return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]))};
@@ -2903,6 +2911,18 @@ function cbaSlabMean(values,dz,width,padding){
     return prefix[i]+dz*(values[i]*f+(values[i+1]-values[i])*f*f/2);};
   const half=width/(2*dz);
   for(let i=0;i<out.length;i++){const j=i+padding;out[i]=(integral(j+half)-integral(j-half))/width;}
+  return out;
+}
+// Exact coefficients of the same piecewise-linear rectangular integral.
+// These are used only to trace the centre image sample, not to reconstruct it.
+function cbaSlabCoefficients(length,dz,width){
+  const out=new Float64Array(length),mid=(length-1)/2;
+  if(width===0){out[mid]=1;return out;}
+  const lo=mid-width/(2*dz),hi=mid+width/(2*dz);
+  for(let i=Math.floor(lo);i<Math.ceil(hi);i++){
+    const a=Math.max(0,lo-i),b=Math.min(1,hi-i),right=(b*b-a*a)/2;
+    out[i]+=dz*(b-a-right)/width;out[i+1]+=dz*right/width;
+  }
   return out;
 }
 function cbaCoordinates(c,theta,x,y,z){
@@ -3022,7 +3042,8 @@ async function reconstructCba(input={},hooks={}){
     const p=cbaFilteredPatch(c,rawAt,theta,Math.floor(Math.min(...ts)/c.channelWidth-c.uOffset)-1,Math.ceil(Math.max(...ts)/c.channelWidth-c.uOffset)+1);
     patches.set(v,p);return p;
   };
-  const sampleAudit=[];let boundaryPairs=0,totalVoxelPairs=0;
+  const sampleAudit=[],weightMap=new Map(),slab=cbaSlabCoefficients(g.z.length,c.zStep,c.axialAverageMm);
+  let boundaryPairs=0,totalVoxelPairs=0,lastYield=performance.now();
   for(let v=g.first;v<g.last-half;v++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const theta=c.phase+v*g.db,theta2=theta+Math.PI,p=patchAt(v),p2=patchAt(v+half);
@@ -3043,6 +3064,17 @@ async function reconstructCba(input={},hooks={}){
         const q0=l0?cbaSampleRow(c,p,a0.t,an):0,q1=l1?cbaSampleRow(c,p,a0.t,an+1):0,q2=l2?cbaSampleRow(c,p2,b0.t,bn):0,q3=l3?cbaSampleRow(c,p2,b0.t,bn+1):0,j=iz*nxy+pixel.j;
         volume[j]+=g.db*(w0*q0+w1*q1+w2*q2+w3*q3);
         rriVolume[j]+=g.db*(l0/sr*q0+l1/sr*q1+l2/sr*q2+l3/sr*q3);
+        if(!hooks.profileOnly&&slab[iz]>0&&ix===(n-1)/2&&iy===(n-1)/2){
+          const ws=[w0,w1,w2,w3],rs=[l0/sr,l1/sr,l2/sr,l3/sr],qs=[q0,q1,q2,q3],rows=[an,an+1,bn,bn+1];
+          for(let k=0;k<4;k++)if(ws[k]>0){
+            const view=v+(k<2?0:half),row=rows[k],key=view+':'+row,coord=k<2?a0:b0;
+            let entry=weightMap.get(key);
+            if(!entry){entry={view,row,theta:c.phase+view*g.db,beta:coord.beta,
+              z:coord.sourceZ+(row-(c.rows-1)/2)*c.rowWidth*coord.L/c.sourceRadius-zObject,
+              weight:0,referenceWeight:0,filteredValue:qs[k]};weightMap.set(key,entry);}
+            entry.weight+=slab[iz]*ws[k];entry.referenceWeight+=slab[iz]*rs[k];
+          }
+        }
         if(iz===(g.z.length-1)/2&&ix===(n-1)/2&&iy===(n-1)/2){
           const a={...a0,n:an,delta:ad},b={...b0,n:bn,delta:bd},w=[w0,w1,w2,w3],wr=[l0/sr,l1/sr,l2/sr,l3/sr];
           const zs=[a.sourceZ+(a.n-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,a.sourceZ+(a.n+1-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,
@@ -3053,12 +3085,17 @@ async function reconstructCba(input={},hooks={}){
         }
       }
     }
-    if((v-g.first)%6===0){hooks.progress?.((v-g.first)/(g.last-half-g.first));await new Promise(resolve=>setTimeout(resolve,0));}
+    if((v-g.first)%6===0&&performance.now()-lastYield>=32){hooks.progress?.((v-g.first)/(g.last-half-g.first));await new Promise(resolve=>setTimeout(resolve,0));lastYield=performance.now();}
   }
   if(!counts.every(v=>v===c.viewSamples))throw Error('CBA_INTERNAL: paired view count mismatch');
   const acquisition={firstView:rawFirst,lastViewExclusive:rawLast+1,viewsPerSlice:c.viewSamples,rebinnedPairsPerSlice:half,firstRebinnedView:g.first,lastRebinnedViewExclusive:g.last,boundaryPairs,totalVoxelPairs,paddedReconstructionSlices:g.z.length};
   const r=cbaResult(c,g,volume,counts,zObject,'cba',acquisition,hooks.profileOnly),reference=cbaResult(c,g,rriVolume,counts,zObject,'rri',acquisition,hooks.profileOnly);
-  return {...r,reference,sampleAudit};
+  const center=((r.z.length-1)/2*n+(n-1)/2)*n+(n-1)/2;
+  const weightAudit=hooks.profileOnly?null:{
+    definition:'Rebinned filtered row coefficients at the transverse sphere centre, integrated over the image-domain axial averaging window; not whole-SSP or raw-projection contributions.',
+    coordinate:'parallel rebinned angle theta; unwrapped view identity retained',axialAverageMm:c.axialAverageMm,db:g.db,
+    centerValue:r.volume[center],referenceCenterValue:reference.volume[center],samples:[...weightMap.values()]};
+  return {...r,reference,sampleAudit,weightAudit};
 }
 async function reconstructCbaSeries(input,hooks={}){
   const c=fdkConfig(input),profiles=[],referenceProfiles=[];let selected;
@@ -3067,6 +3104,7 @@ async function reconstructCbaSeries(input,hooks={}){
     const r=await reconstructCba({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
     if(!selected)selected=r;
     for(const [target,q] of [[profiles,r],[referenceProfiles,r.reference]])target.push({phase,profile:q.profile,raw:q.raw,fwhm:q.fwhm,fwtm:q.fwtm,baseline:q.baseline});
+    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
   }
   const series=(r,ps)=>{const mean=Float64Array.from(r.z,(_,i)=>ps.reduce((s,p)=>s+p.profile[i],0)/ps.length);return {...r,profiles:ps,mean,meanDifference:ps.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]))};};
   return {...series(selected,profiles),reference:series(selected.reference,referenceProfiles)};
@@ -3074,6 +3112,7 @@ async function reconstructCbaSeries(input,hooks={}){
 
 let cancelled = false;
 let activeContext = null;
+let fdkContext=null, fdkInspectionToken=0;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
 function overlaySampleIndices(length) {
@@ -3167,16 +3206,28 @@ self.onmessage = async event => {
   const message = event.data;
   if (message.type === 'fdk-run') {
     cancelled = false;
+    fdkContext=null;fdkInspectionToken++;
     try {
       const reconstruct = message.params.method === 'hsieh' ? reconstructCbaSeries : reconstructFdkSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
-        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.round(value*100)}%`}),
+        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
       });
+      fdkContext={params:message.params,first:result};
       self.postMessage({type:'fdk-result',result});
     } catch(error) {
       self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
     }
+    return;
+  }
+  if(message.type==='fdk-inspect'){
+    const token=++fdkInspectionToken,context=fdkContext;if(!context)return;
+    try{
+      const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
+      const reconstruct=context.params.method==='hsieh'?reconstructCba:reconstructFdk;
+      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
+      if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
+    }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}
     return;
   }
   if (message.type === "cancel") {

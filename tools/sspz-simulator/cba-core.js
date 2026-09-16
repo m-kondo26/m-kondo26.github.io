@@ -33,6 +33,18 @@ export function cbaSlabMean(values,dz,width,padding){
   for(let i=0;i<out.length;i++){const j=i+padding;out[i]=(integral(j+half)-integral(j-half))/width;}
   return out;
 }
+// Exact coefficients of the same piecewise-linear rectangular integral.
+// These are used only to trace the centre image sample, not to reconstruct it.
+export function cbaSlabCoefficients(length,dz,width){
+  const out=new Float64Array(length),mid=(length-1)/2;
+  if(width===0){out[mid]=1;return out;}
+  const lo=mid-width/(2*dz),hi=mid+width/(2*dz);
+  for(let i=Math.floor(lo);i<Math.ceil(hi);i++){
+    const a=Math.max(0,lo-i),b=Math.min(1,hi-i),right=(b*b-a*a)/2;
+    out[i]+=dz*(b-a-right)/width;out[i+1]+=dz*right/width;
+  }
+  return out;
+}
 export function cbaCoordinates(c,theta,x,y,z){
   const t=-x*Math.sin(theta)+y*Math.cos(theta),along=x*Math.cos(theta)+y*Math.sin(theta);
   const gamma=Math.asin(t/c.sourceRadius),beta=theta+gamma;
@@ -150,7 +162,8 @@ export async function reconstructCba(input={},hooks={}){
     const p=cbaFilteredPatch(c,rawAt,theta,Math.floor(Math.min(...ts)/c.channelWidth-c.uOffset)-1,Math.ceil(Math.max(...ts)/c.channelWidth-c.uOffset)+1);
     patches.set(v,p);return p;
   };
-  const sampleAudit=[];let boundaryPairs=0,totalVoxelPairs=0;
+  const sampleAudit=[],weightMap=new Map(),slab=cbaSlabCoefficients(g.z.length,c.zStep,c.axialAverageMm);
+  let boundaryPairs=0,totalVoxelPairs=0,lastYield=performance.now();
   for(let v=g.first;v<g.last-half;v++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const theta=c.phase+v*g.db,theta2=theta+Math.PI,p=patchAt(v),p2=patchAt(v+half);
@@ -171,6 +184,17 @@ export async function reconstructCba(input={},hooks={}){
         const q0=l0?cbaSampleRow(c,p,a0.t,an):0,q1=l1?cbaSampleRow(c,p,a0.t,an+1):0,q2=l2?cbaSampleRow(c,p2,b0.t,bn):0,q3=l3?cbaSampleRow(c,p2,b0.t,bn+1):0,j=iz*nxy+pixel.j;
         volume[j]+=g.db*(w0*q0+w1*q1+w2*q2+w3*q3);
         rriVolume[j]+=g.db*(l0/sr*q0+l1/sr*q1+l2/sr*q2+l3/sr*q3);
+        if(!hooks.profileOnly&&slab[iz]>0&&ix===(n-1)/2&&iy===(n-1)/2){
+          const ws=[w0,w1,w2,w3],rs=[l0/sr,l1/sr,l2/sr,l3/sr],qs=[q0,q1,q2,q3],rows=[an,an+1,bn,bn+1];
+          for(let k=0;k<4;k++)if(ws[k]>0){
+            const view=v+(k<2?0:half),row=rows[k],key=view+':'+row,coord=k<2?a0:b0;
+            let entry=weightMap.get(key);
+            if(!entry){entry={view,row,theta:c.phase+view*g.db,beta:coord.beta,
+              z:coord.sourceZ+(row-(c.rows-1)/2)*c.rowWidth*coord.L/c.sourceRadius-zObject,
+              weight:0,referenceWeight:0,filteredValue:qs[k]};weightMap.set(key,entry);}
+            entry.weight+=slab[iz]*ws[k];entry.referenceWeight+=slab[iz]*rs[k];
+          }
+        }
         if(iz===(g.z.length-1)/2&&ix===(n-1)/2&&iy===(n-1)/2){
           const a={...a0,n:an,delta:ad},b={...b0,n:bn,delta:bd},w=[w0,w1,w2,w3],wr=[l0/sr,l1/sr,l2/sr,l3/sr];
           const zs=[a.sourceZ+(a.n-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,a.sourceZ+(a.n+1-(c.rows-1)/2)*c.rowWidth*a.L/c.sourceRadius,
@@ -181,12 +205,17 @@ export async function reconstructCba(input={},hooks={}){
         }
       }
     }
-    if((v-g.first)%6===0){hooks.progress?.((v-g.first)/(g.last-half-g.first));await new Promise(resolve=>setTimeout(resolve,0));}
+    if((v-g.first)%6===0&&performance.now()-lastYield>=32){hooks.progress?.((v-g.first)/(g.last-half-g.first));await new Promise(resolve=>setTimeout(resolve,0));lastYield=performance.now();}
   }
   if(!counts.every(v=>v===c.viewSamples))throw Error('CBA_INTERNAL: paired view count mismatch');
   const acquisition={firstView:rawFirst,lastViewExclusive:rawLast+1,viewsPerSlice:c.viewSamples,rebinnedPairsPerSlice:half,firstRebinnedView:g.first,lastRebinnedViewExclusive:g.last,boundaryPairs,totalVoxelPairs,paddedReconstructionSlices:g.z.length};
   const r=cbaResult(c,g,volume,counts,zObject,'cba',acquisition,hooks.profileOnly),reference=cbaResult(c,g,rriVolume,counts,zObject,'rri',acquisition,hooks.profileOnly);
-  return {...r,reference,sampleAudit};
+  const center=((r.z.length-1)/2*n+(n-1)/2)*n+(n-1)/2;
+  const weightAudit=hooks.profileOnly?null:{
+    definition:'Rebinned filtered row coefficients at the transverse sphere centre, integrated over the image-domain axial averaging window; not whole-SSP or raw-projection contributions.',
+    coordinate:'parallel rebinned angle theta; unwrapped view identity retained',axialAverageMm:c.axialAverageMm,db:g.db,
+    centerValue:r.volume[center],referenceCenterValue:reference.volume[center],samples:[...weightMap.values()]};
+  return {...r,reference,sampleAudit,weightAudit};
 }
 export async function reconstructCbaSeries(input,hooks={}){
   const c=fdkConfig(input),profiles=[],referenceProfiles=[];let selected;
@@ -195,6 +224,7 @@ export async function reconstructCbaSeries(input,hooks={}){
     const r=await reconstructCba({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
     if(!selected)selected=r;
     for(const [target,q] of [[profiles,r],[referenceProfiles,r.reference]])target.push({phase,profile:q.profile,raw:q.raw,fwhm:q.fwhm,fwtm:q.fwtm,baseline:q.baseline});
+    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
   }
   const series=(r,ps)=>{const mean=Float64Array.from(r.z,(_,i)=>ps.reduce((s,p)=>s+p.profile[i],0)/ps.length);return {...r,profiles:ps,mean,meanDifference:ps.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]))};};
   return {...series(selected,profiles),reference:series(selected.reference,referenceProfiles)};
