@@ -1,6 +1,47 @@
 (() => {
 "use strict";
-const MODEL_VERSION = "2026-09-08.1";
+// Shared physical cell aperture. Coordinates, pitch and aperture use the same
+// units. Sampling pitch is not aperture width; a gap is not filled by a ray.
+function detectorCellMembership(coordinate, pitch, aperture, count) {
+  if (!(pitch > 0 && aperture > 0 && aperture <= pitch && Number.isInteger(count) && count > 0))
+    throw Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing');
+  const q=coordinate/pitch+(count-1)/2, radius=aperture/(2*pitch), out=[];
+  for(let k=Math.max(0,Math.ceil(q-radius-1e-10));k<=Math.min(count-1,Math.floor(q+radius+1e-10));k++){
+    const distance=Math.abs(q-k), boundary=Math.abs(distance-radius)<=1e-10;
+    if(boundary||distance<radius)out.push([k,boundary?.5:1]);
+  }
+  return out;
+}
+
+// A unit-integral Cartesian point projected onto the source-centred cylinder.
+// Transaxial coordinates are R*gamma; axial coordinates are cylinder heights.
+// parallel=true is the explicitly nondivergent reference acquisition, not FBP.
+function detectorPointProjection(c,beta,zObject,parallel=false){
+  const R=c.sourceRadius, L=parallel?R:Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
+  const transverse=parallel?-c.radius*Math.sin(beta):R*Math.atan2(-c.radius*Math.sin(beta),R-c.radius*Math.cos(beta));
+  const sourceZ=c.sourceZ, w=parallel?zObject-sourceZ:R*(zObject-sourceZ)/L;
+  const aperture=c.channelApertureMm??c.channelWidth;
+  const js=detectorCellMembership(transverse,c.channelWidth,aperture,c.channels);
+  const ks=detectorCellMembership(w,c.rowWidth,c.rowWidth,c.rows);
+  const empty={j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0),transverse,w};
+  if(!js.length||!ks.length)return empty;
+  const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
+  const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
+  const signal=parallel?1/(aperture*c.rowWidth):Math.hypot(R,w)/(L*L*(aperture/R)*c.rowWidth);
+  for(const [j,a] of js)for(const [k,b] of ks)data[(k-k0)*width+j-j0]=signal*a*b;
+  return {j0,j1,k0,k1,width,height,data,transverse,w};
+}
+
+// Read the acquired, cell-averaged data at the ray through the transverse point.
+// This is interpolation of acquired channels, not an average of finished SSPs.
+function detectorRowReadout(c,p,row){
+  if(row<p.k0||row>p.k1)return 0;
+  const q=p.transverse/c.channelWidth+(c.channels-1)/2,j=Math.floor(q),a=q-j;
+  const at=k=>k<p.j0||k>p.j1?0:p.data[(row-p.k0)*p.width+k-p.j0];
+  return (1-a)*at(j)+a*at(j+1);
+}
+
+const MODEL_VERSION = "2026-09-17.4";
 
 const PROFILE_MODES = Object.freeze({
   TAGUCHI_FILTER: "taguchi-filter",
@@ -16,6 +57,8 @@ const RECONSTRUCTION_PATHS = Object.freeze({
 const DEFAULT_PARAMS = Object.freeze({
   rows: 4,
   rowWidth: 1.0,
+  channelWidth: .25,
+  channelApertureMm: .25,
   beamPitch: 0.875,
   sourceRadius: 600.0,
   radius: 100.0,
@@ -46,6 +89,9 @@ function validateParams(input, { allowZeroPitch = false } = {}) {
   const p = {
     rows: Math.round(Number(input.rows)),
     rowWidth: Number(input.rowWidth),
+    channelWidth: Number(input.channelWidth??.25),
+    channelApertureMm: Number(input.channelApertureMm??input.channelWidth??.25),
+    detectorModel: input.detectorModel==='finite-channel'?'finite-channel':'axial-only-legacy',
     beamPitch: Number(input.beamPitch),
     sourceRadius: Number(input.sourceRadius),
     radius: Math.abs(Number(input.radius)),
@@ -79,6 +125,7 @@ function validateParams(input, { allowZeroPitch = false } = {}) {
   if (finite.length) throw new Error(`The following inputs could not be parsed as numbers: ${finite.map(([key]) => key).join(", ")}`);
   if (p.rows < 1 || p.rows > 320) throw new Error("Set the number of detector rows to a value from 1 to 320.");
   if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("Set the single-row width to a value greater than 0 and no greater than 10 mm.");
+  if(!(p.channelWidth>=.05&&p.channelWidth<=1&&p.channelApertureMm>0&&p.channelApertureMm<=p.channelWidth))throw new Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing (0.05–1 mm)');
   if (p.beamPitch < 0 || (!allowZeroPitch && p.beamPitch === 0) || p.beamPitch > 3) throw new Error("Set the beam pitch to a value greater than 0 and no greater than 3.");
   if (p.sourceRadius <= 0) throw new Error("The source-to-isocenter distance must be positive.");
   if (p.radius > 250) throw new Error("Set the radial distance from isocenter to a value from 0 to 250 mm.");
@@ -2002,6 +2049,7 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
   const knots = [];
   for (let turn = firstTurn; turn <= lastTurn; turn += 1) {
     const firstAtTurn = first + turn * feed;
+    const acquired=p.detectorModel==='finite-channel'?axialDetectorProjection(p,zObject,angleRad,turn,coneOn):null;
     const firstRow = Math.max(0, Math.min(p.rows - 1,
       Math.floor((left - firstAtTurn) / aperture)));
     const lastRow = Math.max(0, Math.min(p.rows - 1,
@@ -2011,13 +2059,21 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
       const boundaryDistance = Math.abs(offset) - aperture / 2;
       // The half-height boundary is the symmetric thin-bead limit of a
       // rectangular detector aperture, avoiding double-height edge ties.
-      const response = Math.abs(boundaryDistance) <= 1e-10
+      const response = acquired?detectorRowReadout(acquired.config,acquired.projection,row):Math.abs(boundaryDistance) <= 1e-10
         ? 0.5 / aperture
         : boundaryDistance < 0 ? 1 / aperture : 0;
       knots.push({ x: offset, y: response });
     }
   }
   return knots;
+}
+
+function axialDetectorProjection(p,zObject,angleRad,turn=0,coneOn=true){
+  // Even channel grid with half-integer centres, identical to the 3D path.
+  // Extra empty outer channels do not change the interior sample locations.
+  const channels=2*Math.ceil((Math.asin(p.radius/p.sourceRadius)*p.sourceRadius+3*p.channelWidth)/p.channelWidth);
+  const config={...p,channels,sourceZ:tableFeedMm(p)*(angleRad/PI2+turn)};
+  return {config,projection:detectorPointProjection(config,angleRad-p.phase,zObject,!coneOn)};
 }
 
 function taguchiBranchEvents(familyKnots, weight, events) {
@@ -2248,7 +2304,12 @@ function computeTaguchiSsp(rawParams, options = {}) {
     profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     modelStatus: "literature-based-reference-with-explicit-geometry-extensions",
     responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
-    fixedObjectResponseDefinition: "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    fixedObjectResponseDefinition: p.detectorModel==='finite-channel'
+      ? 'shared-unit-point-detector-cell-integral-and-linear-channel-readout; axial interpolation only, no transaxial ramp or image backprojection'
+      : "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    detectorModel: p.detectorModel,
+    channelApertureMm: p.channelApertureMm,
+    channelSpacingMm: p.channelWidth,
     axialCoordinateDefinition: "z-reconstruction-plane-minus-z-object",
     filterMethod: "Taguchi-Aradate-1998-Eq6-rectangular-filter-interpolation",
     filterEvaluation: "exact-finite-Eq6-sum-of-piecewise-linear-acquired-data-interpolation",
@@ -2727,7 +2788,7 @@ globalThis.SSPZShape = (() => {
     const o=result.overlay,sheets=[];
     sheets.push(['Readme',[
       ['SSPz simulation export','Value'],['model_version',version],['export_version','2026-09-15.5'],['generated_utc',new Date().toISOString()],
-      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Minimum extent -0.06 to +0.06, expanded to contain all deviations; width 0.002; intensity fraction^0.35, fixed 0..1; arrows show mean individual native FWHM'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
+      ['normalization','Peak-normalized model profiles; no measured data'],['native_coordinate','reconstruction-plane minus fixed-object position (mm)'],['aligned_coordinate','z position relative to native FWHM midpoint (mm)'],['alignment','Bilateral native linear half-height crossings; translation only'],['resampling','0.01 mm linear grid; common finite support; no extrapolation or smoothing'],['deviation','Each aligned profile minus its condition-specific pointwise arithmetic mean'],['inclusion','Complete coverage and valid bilateral FWHM crossings; excluded states retained in Native sheets'],['numeric_storage','Native model overlay arrays are Float32; exported without display rounding'],['distribution','Fractions describe sampled model states, not measured tube-angle probabilities'],['histogram','Minimum extent -0.06 to +0.06, expanded to contain all deviations; width 0.002; intensity fraction^0.35, fixed 0..1; arrows show mean individual native FWHM'],['units','Positions and widths: mm; normalized SSPz and deviations: dimensionless'],['acquired_signal','Unit point integrated over shared finite channel/row cells; linear transaxial readout before axial interpolation; no transaxial ramp or image backprojection'],['detector_spacing','parameter_channelWidth is center spacing; parameter_channelApertureMm is active width; both at isocenter'],['off_condition','Parallel reference; no cone distance scaling'],['on_condition','Fan-beam cone geometry'],...Object.entries(result.params).map(([k,v])=>['parameter_'+k,typeof v==='object'?JSON.stringify(v):v])]]);
     for(const key of ['off','on']){const a=analyses[key],ids=Array.from({length:o.stateCount},(_,i)=>'state_'+i);
       const nativeRows=Array.from(o.z,(z,i)=>[z,...ids.map((_,s)=>o[key].final[s*o.zCount+i])]);
       sheets.push([key+'_Native',[['z_position_mm',...ids],...nativeRows]]);
@@ -3053,7 +3114,7 @@ async function exportFdkWorkflowCanvas(id){
 
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
-const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,objectModel:'point',channelWidth:.25,
+const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,objectModel:'point',
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
@@ -3114,7 +3175,6 @@ function initializeFdkUi(initial){
   <details class="reading-details"><summary>${fdkText('','3D numerical and image-display settings')}</summary>
   <div class="parameter-grid">
   <input id="fdk-axialAverageMm" type="hidden" value="1"><input id="fdk-objectModel" type="hidden" value="point">
-  ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
   ${num('zStep','','Reconstruction z spacing (mm)',.01,.2,.01)}
   ${num('zExtent','','SSPz calculation half-range (mm)',1,20,.5,fdkText('','A value of 3 covers −3 to +3 mm. This is the profile interval, including its tails, rather than slice thickness.'))}
   ${num('xyExtent','','Local image half-range (mm)',.5,10,.5)}
@@ -3155,7 +3215,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both 2D and 3D use zero axial object extent; 3D additionally includes transaxial aperture, filtering and backprojection, so their responses need not coincide. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel width and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both models use zero object extent and shared transaxial/axial acquisition apertures. The axial reference uses linear transaxial readout; 3D also includes filtering and backprojection, so their responses need not coincide. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel spacing and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -3176,7 +3236,7 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
@@ -3395,7 +3455,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.3 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.2`;
+versionLabel.textContent = `Web build 2026-09-17.4 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.4`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3443,6 +3503,9 @@ function readParams() {
   return {
     rows: Number(data.get("rows")),
     rowWidth: Number(data.get("rowWidth")),
+    channelWidth: Number(data.get("channelWidth")),
+    channelApertureMm: Number(data.get("channelApertureMm")),
+    detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
     sourceRadius: Number(data.get("sourceRadius")),
     radius: Number(data.get("radius")),
@@ -3487,7 +3550,9 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 8,
+    v: 9,
+    cp: params.channelWidth,
+    ca: params.channelApertureMm,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -3515,7 +3580,7 @@ function paramsFromUrl() {
   const hasNewThickness = query.has("st");
   const hasLegacyThickness = !hasNewThickness && query.has("t");
   const hasLegacyState = query.has("s") && !query.has("vs");
-  legacyInputMigrated = get("v", 0) < 8 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
+  legacyInputMigrated = get("v", 0) < 9 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
   selectedStateIndex = query.has("vs")
     ? Math.max(0, Math.min(359, Math.round(get("vs", 0))))
     : hasLegacyState
@@ -3526,6 +3591,9 @@ function paramsFromUrl() {
     ...DEFAULT_PARAMS,
     rows: get("n", DEFAULT_PARAMS.rows),
     rowWidth: get("d", DEFAULT_PARAMS.rowWidth),
+    channelWidth: get("cp",get("fdk_channelWidth",.25)),
+    channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",.25))),
+    detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
     radius: get("r", DEFAULT_PARAMS.radius),
@@ -3698,8 +3766,9 @@ function runSimulation() {
       showCalculatingState(message.label);
     } else if (message.type === "geometry-result") {
       lastResult = message.result;
-      const title = localizedText("Pitch 0: stationary-table geometry", "Pitch 0: stationary-table geometry");
-      const detail = localizedText("Helical SSPz, interpolation weights and state sweeps are not evaluated.", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
+      const gap=lastResult.geometryReason==='detector-gap';
+      const title = gap?localizedText('Point object lies in a detector gap: geometry only','Point object lies in a detector gap: geometry only'):localizedText("Pitch 0: stationary-table geometry", "Pitch 0: stationary-table geometry");
+      const detail = gap?localizedText('The isocenter point lies in the central gap of the even-channel grid. No signal is acquired; SSPz and widths are unavailable.','The isocenter point lies in the central gap of the even-channel grid. No signal is acquired; SSPz and widths are unavailable.'):localizedText("Helical SSPz, interpolation weights and state sweeps are not evaluated.", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
       setResultPlaceholder("unavailable", title, detail);
       for (const selector of ["#overview-scope", "#calculation-scope", "#overlay-scope", "#profile-axis-note", "#metric-label", "#overlay-core-heading", "#overlay-core-description", "#profile-model-note"]) {
         const element = document.querySelector(selector);
@@ -5324,7 +5393,7 @@ function updateProfileModelNote(result) {
     ? "In the primary analysis, all detector-row candidates from the direct and complementary ray families are merged separately at the two acquired views bracketing the ideal complementary angle of each direct-ray view. Nearest longitudinal brackets are formed in both branches and then combined by linear angular interpolation."
     : "In the comparator, the complementary-ray family is not used for SSPz; nearest longitudinal brackets are formed from direct-ray views over 0-360° only.";
   const candidateSpreadText = "The geometry display reports the unweighted longitudinal standard deviation of row-center positions for all direct-side rows and all rows in the acquired views bracketing the ideal complementary angle. Candidate selection, interpolation or reconstruction weighting, and thresholds based on configured thickness are not applied.";
-  const modelText = localizedText(`Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. This ideal row-aperture and axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`, `Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. This ideal row-aperture and axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`);
+  const modelText = localizedText(`Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. Acquired point signals include finite channel and row apertures, followed by linear transaxial readout and axial interpolation. This axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`, `Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. Acquired point signals include finite channel and row apertures, followed by linear transaxial readout and axial interpolation. This axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`);
   const topologyText = multiComponent
     ? " Caution: the 50% level is split into multiple components; do not represent the profile by FWHM alone."
     : "";
@@ -6608,11 +6677,13 @@ const initial = paramsFromUrl() ?? (() => {
   }
   catch { return DEFAULT_PARAMS; }
 })();
-if(initial.thicknessMapping!=='configured-rectangular' && initial!==DEFAULT_PARAMS)legacyInputMigrated=true;
+if(initial!==DEFAULT_PARAMS && (initial.thicknessMapping!=='configured-rectangular' || initial.detectorModel!=='finite-channel'))legacyInputMigrated=true;
+// Old saved 3D conditions used channelWidth for both physical aperture and pitch.
+if(initial!==DEFAULT_PARAMS && initial.channelApertureMm==null)initial.channelApertureMm=initial.channelWidth??DEFAULT_PARAMS.channelApertureMm;
 writeParams({ ...DEFAULT_PARAMS, ...initial, filterWidthMm:initial.sliceThicknessMm??DEFAULT_PARAMS.sliceThicknessMm, thicknessMapping:'configured-rectangular' });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.", "The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.");
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width.", "A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width.");
 }
 initializeFdkUi(initial);
 runSimulation();

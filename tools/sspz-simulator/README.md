@@ -1,3 +1,7 @@
+## Shared finite detector aperture (2026-09-17.4)
+
+Both browser models now acquire a unit point through the same finite transaxial and axial detector cells. Transaxial active aperture and detector-center spacing are common, separate controls (default 0.25 mm each); neither is image pixel spacing. The axial reference applies linear channel readout followed by its existing longitudinal interpolation; the 3D path applies rebinning, ramp filtering and backprojection. See [DETECTOR_APERTURE_METHOD.md](DETECTOR_APERTURE_METHOD.md) for equations, assumptions and checks. This extends the axial model and changes its results; it is not full 2D image FBP. Browser URL v9 records both inputs. Historical low-level axial APIs remain available with `detectorModel: 'axial-only-legacy'`, which is also the API default when omitted.
+
 ## Ideal-point response (2026-09-17)
 
 The browser's 3D paths now use a unit-integral ideal point, an analytic detector-cell projection and fixed-point profile extraction. Sphere diameter and sphere-radius ROI averaging are removed from the browser calculation. Shared geometry and thickness inputs remain. See [POINT_RESPONSE_METHOD.md](POINT_RESPONSE_METHOD.md) for the derivation, comparison with the axial model, tests and interpretation limits. Historical finite-sphere API calculations remain reproducible but are not the current browser result. The sections below record earlier feature introductions; the 80/160/320 presets were subsequently removed in favor of the common row-count input.

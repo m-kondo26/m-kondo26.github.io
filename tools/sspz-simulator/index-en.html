@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-17.3">
+  <link rel="stylesheet" href="styles.css?v=2026-09-17.4">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -53,12 +53,21 @@
         </div>
       </div>
 
+      <p class="field-help" id="detector-model-guide">Both models share the detector acquisition aperture. The axial model uses linear transaxial readout; the 3D model also filters and backprojects the data.<a href="DETECTOR_APERTURE_METHOD.md">Aperture and calculation method</a></p>
       <form id="parameter-form" class="parameter-grid">
         <label>Number of detector rows <span class="symbol">N</span>
           <input id="rows" name="rows" type="number" min="1" max="320" step="1" value="4">
         </label>
         <label>Single-row width <span class="unit">mm</span>
           <input id="rowWidth" name="rowWidth" type="number" min="0.05" max="10" step="0.05" value="1.0">
+        </label>
+        <label>Transaxial detector aperture width <span class="unit">mm</span>
+          <input id="channelApertureMm" name="channelApertureMm" type="number" min="0.01" max="1" step="0.01" value="0.25">
+          <small class="field-help">At isocenter. The same acquisition aperture applies to both models.</small>
+        </label>
+        <label>Transaxial channel spacing <span class="unit">mm</span>
+          <input id="channelWidth" name="channelWidth" type="number" min="0.05" max="1" step="0.01" value="0.25">
+          <small class="field-help">Detector-center spacing at isocenter; must be at least the aperture width. This is distinct from image pixel spacing.</small>
         </label>
         <label>Beam pitch
           <input id="beamPitch" name="beamPitch" type="number" min="0" max="3" step="0.025" value="0.875">
@@ -473,10 +482,10 @@
 
   <footer>
     <p>Models: axial filter interpolation and approximate 3D filtered backprojection. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-17.3 / axial model 2026-09-08.1 / 3D models 2026-09-17.2</p>
+    <p id="version">Web build 2026-09-17.4 / axial model 2026-09-17.4 / 3D models 2026-09-17.4</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-17.3"></script>
-  <script src="app-bundle-en.js?v=2026-09-17.3"></script>
+  <script src="worker-source-en.js?v=2026-09-17.4"></script>
+  <script src="app-bundle-en.js?v=2026-09-17.4"></script>
 </body>
 </html>

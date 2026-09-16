@@ -1,4 +1,4 @@
-# Point-response definition (2026-09-17.2)
+# Point-response definition (2026-09-17.4)
 
 The browser's FDK, CBA and matched RRI paths now reconstruct a unit-integral
 Dirac point at (r, 0, z0). No bead diameter, finite sphere blur, subray sphere
@@ -15,10 +15,11 @@ the reconstruction position moves in z. Detector row aperture remains
 finite. Both apply a normalized rectangular longitudinal average of width
 T, followed by the selected profile normalization. T is not a fitted FWHM.
 
-The axial model evaluates row-aperture responses and axial interpolation
-directly at the transverse evaluation location. The 3D path additionally
-projects the point through finite transaxial detector cells, rebins and
-ramp-filters these data, and backprojects in three dimensions. It reads
+Both paths use the same finite detector-cell point projection (see
+[shared aperture](DETECTOR_APERTURE_METHOD.md)). The axial reference reads
+these samples with linear transaxial interpolation before axial
+interpolation. The 3D path additionally rebins and ramp-filters the data,
+and backprojects in three dimensions. It reads
 the reconstructed value at the fixed transverse object location for every
 z, rather than averaging a bead-dependent ROI. The output is specifically
 an **axial section of the 3D point spread function (PSF)**, shown as model
@@ -58,7 +59,7 @@ Integrating the Cartesian unit delta along the ray therefore gives
 
 The detector averages line-integral values uniformly in gamma and w, just
 as in the former midpoint quadrature. With angular cell width Dgamma =
-channelWidth/R and axial width d, the cell value is
+channelApertureMm/R and axial width d, the cell value is
 
     P_jk = hypot(R,w0) / (L² Dgamma d) * a_j * b_k.
 
@@ -68,7 +69,9 @@ receive a quarter each. An outer detector boundary does not redistribute
 the unacquired half into acquired cells. Float roundoff within 1e-10 cell
 spacings is treated as an exact boundary. No sphere radius or numerical
 subray quadrature is involved. At isocenter and w0=0 the full signal equals
-1/(channelWidth*d). Detector aperture blur and interpolation remain.
+1/(channelApertureMm*d) for touching, full-fill cells. If the aperture
+is smaller than channel spacing, the even grid has a gap at isocenter:
+a point there is not acquired. Detector aperture blur and interpolation remain.
 
 The same acquired point projections feed CBA and RRI. All rebinning,
 filtering, backprojection, detector-coverage rules, image-domain averaging,

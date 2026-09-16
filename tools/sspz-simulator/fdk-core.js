@@ -1,7 +1,8 @@
 // Full-turn FDK on a helix, with acquired cylindrical detector data rebinned
 // to a virtual flat detector. Sources and assumptions: FDK_METHOD.md.
 // A declared image-domain rectangular average follows FBP; no target-width fit or scanner-specific thickness kernel.
-export const FDK_VERSION = '2026-09-17.2';
+import {detectorPointProjection} from './detector-aperture.js';
+export const FDK_VERSION = '2026-09-17.4';
 export const FDK_DEFAULTS = Object.freeze({
   rows:80,rowWidth:.5,beamPitch:.5,sourceRadius:600,radius:100,
   viewSamples:360,phase:0,state:0,sphereDiameter:.65,channelWidth:.25,
@@ -11,6 +12,8 @@ export const FDK_DEFAULTS = Object.freeze({
 const FDK_TAU=2*Math.PI;
 export function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
+  c.channelApertureMm=Number(input.channelApertureMm??c.channelWidth);
+  if(!(c.channelApertureMm>0&&c.channelApertureMm<=c.channelWidth))throw Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing');
   if(!['point','sphere'].includes(c.objectModel))throw Error('Unknown object model');
   // Legacy numerical API remains explicit/reproducible. The browser selects
   // point. In that branch these obsolete sphere controls have no effect.
@@ -73,22 +76,7 @@ export function fdkWidth(z,y,level) {
 // Thus the delta mass in detector (gamma,w) is hypot(R,w)/L^2.
 // See POINT_RESPONSE_METHOD.md for the derivation and boundary convention.
 export function fdkPointProjection(c,beta,zObject){
-  const R=c.sourceRadius,L=Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
-  const gamma=Math.atan2(-c.radius*Math.sin(beta),R-c.radius*Math.cos(beta));
-  const w=R*(zObject-c.feed*(beta-c.phase)/FDK_TAU)/L,dg=c.channelWidth/R;
-  const cells=(coordinate,spacing,count)=>{
-    const edge=coordinate/spacing+count/2,nearest=Math.round(edge);
-    // The symmetric delta limit shares mass on exact aperture boundaries.
-    const entries=Math.abs(edge-nearest)<=1e-10?[[nearest-1,.5],[nearest,.5]]:[[Math.floor(edge),1]];
-    return entries.filter(([i])=>i>=0&&i<count);
-  };
-  const js=cells(gamma,dg,c.channels),ks=cells(w,c.rowWidth,c.rows);
-  if(!js.length||!ks.length)return {j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0)};
-  const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
-  const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
-  const signal=Math.hypot(R,w)/(L*L*dg*c.rowWidth);
-  for(const [j,a] of js)for(const [k,b] of ks)data[(k-k0)*width+j-j0]=signal*a*b;
-  return {j0,j1,k0,k1,width,height,data};
+  return detectorPointProjection({...c,sourceZ:c.feed*(beta-c.phase)/FDK_TAU},beta,zObject);
 }
 // Store only the analytically bounded nonzero sphere projection. Missing
 // entries are exact air measurements, not a cropped object or missing rays.
@@ -106,7 +94,10 @@ export function fdkArcProjection(c,beta,zObject) {
   for(let k=k0;k<=k1;k++)for(let j=j0;j<=j1;j++){
     let sum=0;
     for(let av=0;av<A;av++)for(let au=0;au<A;au++){
-      const g=(j-(c.channels-1)/2+(au+.5)/A-.5)*dg;
+      const aperture=c.channelApertureMm??c.channelWidth;
+      const g=aperture===c.channelWidth
+        ? (j-(c.channels-1)/2+(au+.5)/A-.5)*dg
+        : (j-(c.channels-1)/2)*dg+((au+.5)/A-.5)*aperture/R;
       const w=(k-(c.rows-1)/2+(av+.5)/A-.5)*c.rowWidth;
       const cg=Math.cos(g),sg=Math.sin(g);
       sum+=fdkSphereChord(R*cb,R*sb,zs,-R*(cg*cb+sg*sb),R*(-cg*sb+sg*cb),w,c.radius,0,zObject,a);

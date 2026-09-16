@@ -163,10 +163,11 @@ self.onmessage = async event => {
   activeContext = null;
   try {
     const params = validateParams(message.params, { allowZeroPitch: true });
-    if (params.beamPitch === 0) {
+    const detectorGap=params.detectorModel==='finite-channel' && params.radius===0 && params.channelApertureMm<params.channelWidth;
+    if (params.beamPitch === 0 || detectorGap) {
       activeContext = null;
       self.postMessage({ type: "geometry-result", result: {
-        params, geometryOnly: true,
+        params, geometryOnly: true, geometryReason: params.beamPitch===0?'zero-pitch':'detector-gap',
         diagramOff: computeUnwrapped(params, { coneOn: false }),
         diagramOn: computeUnwrapped(params, { coneOn: true }),
       } });

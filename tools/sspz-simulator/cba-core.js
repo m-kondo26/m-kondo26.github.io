@@ -2,7 +2,7 @@
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
 import {fdkConfig,fdkArcProjection,fdkRamp,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
-export const CBA_VERSION='2026-09-17.2';
+export const CBA_VERSION='2026-09-17.4';
 const CBA_TAU=2*Math.PI;
 export function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');

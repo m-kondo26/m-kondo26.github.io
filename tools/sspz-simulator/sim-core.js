@@ -1,4 +1,5 @@
-export const MODEL_VERSION = "2026-09-08.1";
+import {detectorPointProjection,detectorRowReadout} from './detector-aperture.js';
+export const MODEL_VERSION = "2026-09-17.4";
 
 export const PROFILE_MODES = Object.freeze({
   TAGUCHI_FILTER: "taguchi-filter",
@@ -14,6 +15,8 @@ export const RECONSTRUCTION_PATHS = Object.freeze({
 export const DEFAULT_PARAMS = Object.freeze({
   rows: 4,
   rowWidth: 1.0,
+  channelWidth: .25,
+  channelApertureMm: .25,
   beamPitch: 0.875,
   sourceRadius: 600.0,
   radius: 100.0,
@@ -44,6 +47,9 @@ export function validateParams(input, { allowZeroPitch = false } = {}) {
   const p = {
     rows: Math.round(Number(input.rows)),
     rowWidth: Number(input.rowWidth),
+    channelWidth: Number(input.channelWidth??.25),
+    channelApertureMm: Number(input.channelApertureMm??input.channelWidth??.25),
+    detectorModel: input.detectorModel==='finite-channel'?'finite-channel':'axial-only-legacy',
     beamPitch: Number(input.beamPitch),
     sourceRadius: Number(input.sourceRadius),
     radius: Math.abs(Number(input.radius)),
@@ -77,6 +83,7 @@ export function validateParams(input, { allowZeroPitch = false } = {}) {
   if (finite.length) throw new Error(`数値として解釈できない入力があります: ${finite.map(([key]) => key).join(", ")}`);
   if (p.rows < 1 || p.rows > 320) throw new Error("検出器列数は1〜320にしてください。");
   if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("1列幅は0より大きく10 mm以下にしてください。");
+  if(!(p.channelWidth>=.05&&p.channelWidth<=1&&p.channelApertureMm>0&&p.channelApertureMm<=p.channelWidth))throw new Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing (0.05–1 mm)');
   if (p.beamPitch < 0 || (!allowZeroPitch && p.beamPitch === 0) || p.beamPitch > 3) throw new Error("ビームピッチは0より大きく3以下にしてください。");
   if (p.sourceRadius <= 0) throw new Error("焦点―回転中心距離は正にしてください。");
   if (p.radius > 250) throw new Error("横断面内位置の回転中心からの距離は0〜250 mmにしてください。");
@@ -2000,6 +2007,7 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
   const knots = [];
   for (let turn = firstTurn; turn <= lastTurn; turn += 1) {
     const firstAtTurn = first + turn * feed;
+    const acquired=p.detectorModel==='finite-channel'?axialDetectorProjection(p,zObject,angleRad,turn,coneOn):null;
     const firstRow = Math.max(0, Math.min(p.rows - 1,
       Math.floor((left - firstAtTurn) / aperture)));
     const lastRow = Math.max(0, Math.min(p.rows - 1,
@@ -2009,13 +2017,21 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
       const boundaryDistance = Math.abs(offset) - aperture / 2;
       // The half-height boundary is the symmetric thin-bead limit of a
       // rectangular detector aperture, avoiding double-height edge ties.
-      const response = Math.abs(boundaryDistance) <= 1e-10
+      const response = acquired?detectorRowReadout(acquired.config,acquired.projection,row):Math.abs(boundaryDistance) <= 1e-10
         ? 0.5 / aperture
         : boundaryDistance < 0 ? 1 / aperture : 0;
       knots.push({ x: offset, y: response });
     }
   }
   return knots;
+}
+
+export function axialDetectorProjection(p,zObject,angleRad,turn=0,coneOn=true){
+  // Even channel grid with half-integer centres, identical to the 3D path.
+  // Extra empty outer channels do not change the interior sample locations.
+  const channels=2*Math.ceil((Math.asin(p.radius/p.sourceRadius)*p.sourceRadius+3*p.channelWidth)/p.channelWidth);
+  const config={...p,channels,sourceZ:tableFeedMm(p)*(angleRad/PI2+turn)};
+  return {config,projection:detectorPointProjection(config,angleRad-p.phase,zObject,!coneOn)};
 }
 
 function taguchiBranchEvents(familyKnots, weight, events) {
@@ -2246,7 +2262,12 @@ export function computeTaguchiSsp(rawParams, options = {}) {
     profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     modelStatus: "literature-based-reference-with-explicit-geometry-extensions",
     responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
-    fixedObjectResponseDefinition: "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    fixedObjectResponseDefinition: p.detectorModel==='finite-channel'
+      ? 'shared-unit-point-detector-cell-integral-and-linear-channel-readout; axial interpolation only, no transaxial ramp or image backprojection'
+      : "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    detectorModel: p.detectorModel,
+    channelApertureMm: p.channelApertureMm,
+    channelSpacingMm: p.channelWidth,
     axialCoordinateDefinition: "z-reconstruction-plane-minus-z-object",
     filterMethod: "Taguchi-Aradate-1998-Eq6-rectangular-filter-interpolation",
     filterEvaluation: "exact-finite-Eq6-sum-of-piecewise-linear-acquired-data-interpolation",

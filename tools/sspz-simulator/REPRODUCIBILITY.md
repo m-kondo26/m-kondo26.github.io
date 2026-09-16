@@ -1,3 +1,11 @@
+## 2026-09-17.4: shared finite transaxial aperture
+
+The browser axial model now uses the same point-to-detector-cell integral as the 3D paths, followed by linear channel readout and its existing axial interpolation/filter sum. Active aperture (`channelApertureMm`, URL `ca`) and detector-center spacing (`channelWidth`, URL `cp`) are separate common inputs. URL version is 9. This changes the axial numerical model; it does not add full 2D FBP. See DETECTOR_APERTURE_METHOD.md for scope and the additional geometric amplitude convention.
+
+All 20 suites in `npm test` passed. `tests/detector-aperture.mjs` independently enumerates acquired data and axial interpolation/filter queries: maximum raw discrepancy was 1.2 × 10⁻¹⁴. It checks shared 2D/3D acquired samples, inactive gaps and edge ties, finite-sphere quadrature approaching a point for aperture smaller than spacing, and fixed-point extraction with different image pixel spacings. Changing aperture at fixed spacing changes the normalized axial shape. These are implementation checks, not commercial-scanner validation or proof of publication-condition convergence.
+
+A separate comparison with published release af79993 at full fill (aperture=spacing=0.25 mm) found exactly unchanged raw CBA/RRI profiles at 4, 80 and 320 rows and T=1/5 mm, and unchanged FDK profiles at 320 rows and T=1/5 mm. No manuscript result or figure was regenerated. Older low-level axial calculations remain reproducible via the explicitly documented legacy acquisition mode.
+
 ## 2026-09-17: ideal point without a measurement sphere
 
 Web build and 3D cores **2026-09-17.2** use `fdk_objectModel=point` in browser URLs. The object is projected analytically through each detector aperture and read at its fixed transverse location after 3D reconstruction and the configured axial average. The old sphere-diameter and subray controls are absent. Older browser settings are migrated with a visible notice; the numerical API still accepts explicit `objectModel: 'sphere'` for reproduction of historical studies. See POINT_RESPONSE_METHOD.md for the formula and comparison limits.

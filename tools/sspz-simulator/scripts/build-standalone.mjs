@@ -1,11 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { finalizeEnglishHtml, translateEnglishSource } from "./english-replacements.mjs";
 
-const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core)\.js["'];\s*/gm, "");
+const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");
 
-const core = stripExports(await readFile(new URL("../sim-core.js", import.meta.url), "utf8"));
-const fdk = stripExports(await readFile(new URL("../fdk-core.js", import.meta.url), "utf8"));
+const detector = stripExports(await readFile(new URL("../detector-aperture.js", import.meta.url), "utf8"));
+const core = detector+'\n'+stripExports(stripImports(await readFile(new URL("../sim-core.js", import.meta.url), "utf8")));
+const fdk = stripExports(stripImports(await readFile(new URL("../fdk-core.js", import.meta.url), "utf8")));
 const cba = stripExports(stripImports(await readFile(new URL("../cba-core.js", import.meta.url), "utf8")));
 const worker = stripImports(await readFile(new URL("../worker.js", import.meta.url), "utf8"));
 const shapeExport=await readFile(new URL("../shape-export.js", import.meta.url), "utf8");

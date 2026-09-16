@@ -1,5 +1,46 @@
 "use strict";
-const MODEL_VERSION = "2026-09-08.1";
+// Shared physical cell aperture. Coordinates, pitch and aperture use the same
+// units. Sampling pitch is not aperture width; a gap is not filled by a ray.
+function detectorCellMembership(coordinate, pitch, aperture, count) {
+  if (!(pitch > 0 && aperture > 0 && aperture <= pitch && Number.isInteger(count) && count > 0))
+    throw Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing');
+  const q=coordinate/pitch+(count-1)/2, radius=aperture/(2*pitch), out=[];
+  for(let k=Math.max(0,Math.ceil(q-radius-1e-10));k<=Math.min(count-1,Math.floor(q+radius+1e-10));k++){
+    const distance=Math.abs(q-k), boundary=Math.abs(distance-radius)<=1e-10;
+    if(boundary||distance<radius)out.push([k,boundary?.5:1]);
+  }
+  return out;
+}
+
+// A unit-integral Cartesian point projected onto the source-centred cylinder.
+// Transaxial coordinates are R*gamma; axial coordinates are cylinder heights.
+// parallel=true is the explicitly nondivergent reference acquisition, not FBP.
+function detectorPointProjection(c,beta,zObject,parallel=false){
+  const R=c.sourceRadius, L=parallel?R:Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
+  const transverse=parallel?-c.radius*Math.sin(beta):R*Math.atan2(-c.radius*Math.sin(beta),R-c.radius*Math.cos(beta));
+  const sourceZ=c.sourceZ, w=parallel?zObject-sourceZ:R*(zObject-sourceZ)/L;
+  const aperture=c.channelApertureMm??c.channelWidth;
+  const js=detectorCellMembership(transverse,c.channelWidth,aperture,c.channels);
+  const ks=detectorCellMembership(w,c.rowWidth,c.rowWidth,c.rows);
+  const empty={j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0),transverse,w};
+  if(!js.length||!ks.length)return empty;
+  const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
+  const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
+  const signal=parallel?1/(aperture*c.rowWidth):Math.hypot(R,w)/(L*L*(aperture/R)*c.rowWidth);
+  for(const [j,a] of js)for(const [k,b] of ks)data[(k-k0)*width+j-j0]=signal*a*b;
+  return {j0,j1,k0,k1,width,height,data,transverse,w};
+}
+
+// Read the acquired, cell-averaged data at the ray through the transverse point.
+// This is interpolation of acquired channels, not an average of finished SSPs.
+function detectorRowReadout(c,p,row){
+  if(row<p.k0||row>p.k1)return 0;
+  const q=p.transverse/c.channelWidth+(c.channels-1)/2,j=Math.floor(q),a=q-j;
+  const at=k=>k<p.j0||k>p.j1?0:p.data[(row-p.k0)*p.width+k-p.j0];
+  return (1-a)*at(j)+a*at(j+1);
+}
+
+const MODEL_VERSION = "2026-09-17.4";
 
 const PROFILE_MODES = Object.freeze({
   TAGUCHI_FILTER: "taguchi-filter",
@@ -15,6 +56,8 @@ const RECONSTRUCTION_PATHS = Object.freeze({
 const DEFAULT_PARAMS = Object.freeze({
   rows: 4,
   rowWidth: 1.0,
+  channelWidth: .25,
+  channelApertureMm: .25,
   beamPitch: 0.875,
   sourceRadius: 600.0,
   radius: 100.0,
@@ -45,6 +88,9 @@ function validateParams(input, { allowZeroPitch = false } = {}) {
   const p = {
     rows: Math.round(Number(input.rows)),
     rowWidth: Number(input.rowWidth),
+    channelWidth: Number(input.channelWidth??.25),
+    channelApertureMm: Number(input.channelApertureMm??input.channelWidth??.25),
+    detectorModel: input.detectorModel==='finite-channel'?'finite-channel':'axial-only-legacy',
     beamPitch: Number(input.beamPitch),
     sourceRadius: Number(input.sourceRadius),
     radius: Math.abs(Number(input.radius)),
@@ -78,6 +124,7 @@ function validateParams(input, { allowZeroPitch = false } = {}) {
   if (finite.length) throw new Error(`The following inputs could not be parsed as numbers: ${finite.map(([key]) => key).join(", ")}`);
   if (p.rows < 1 || p.rows > 320) throw new Error("Set the number of detector rows to a value from 1 to 320.");
   if (p.rowWidth <= 0 || p.rowWidth > 10) throw new Error("Set the single-row width to a value greater than 0 and no greater than 10 mm.");
+  if(!(p.channelWidth>=.05&&p.channelWidth<=1&&p.channelApertureMm>0&&p.channelApertureMm<=p.channelWidth))throw new Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing (0.05–1 mm)');
   if (p.beamPitch < 0 || (!allowZeroPitch && p.beamPitch === 0) || p.beamPitch > 3) throw new Error("Set the beam pitch to a value greater than 0 and no greater than 3.");
   if (p.sourceRadius <= 0) throw new Error("The source-to-isocenter distance must be positive.");
   if (p.radius > 250) throw new Error("Set the radial distance from isocenter to a value from 0 to 250 mm.");
@@ -2001,6 +2048,7 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
   const knots = [];
   for (let turn = firstTurn; turn <= lastTurn; turn += 1) {
     const firstAtTurn = first + turn * feed;
+    const acquired=p.detectorModel==='finite-channel'?axialDetectorProjection(p,zObject,angleRad,turn,coneOn):null;
     const firstRow = Math.max(0, Math.min(p.rows - 1,
       Math.floor((left - firstAtTurn) / aperture)));
     const lastRow = Math.max(0, Math.min(p.rows - 1,
@@ -2010,13 +2058,21 @@ function taguchiAcquiredFamilyKnots(p, zObject, angleRad, coneOn, searchHalfWidt
       const boundaryDistance = Math.abs(offset) - aperture / 2;
       // The half-height boundary is the symmetric thin-bead limit of a
       // rectangular detector aperture, avoiding double-height edge ties.
-      const response = Math.abs(boundaryDistance) <= 1e-10
+      const response = acquired?detectorRowReadout(acquired.config,acquired.projection,row):Math.abs(boundaryDistance) <= 1e-10
         ? 0.5 / aperture
         : boundaryDistance < 0 ? 1 / aperture : 0;
       knots.push({ x: offset, y: response });
     }
   }
   return knots;
+}
+
+function axialDetectorProjection(p,zObject,angleRad,turn=0,coneOn=true){
+  // Even channel grid with half-integer centres, identical to the 3D path.
+  // Extra empty outer channels do not change the interior sample locations.
+  const channels=2*Math.ceil((Math.asin(p.radius/p.sourceRadius)*p.sourceRadius+3*p.channelWidth)/p.channelWidth);
+  const config={...p,channels,sourceZ:tableFeedMm(p)*(angleRad/PI2+turn)};
+  return {config,projection:detectorPointProjection(config,angleRad-p.phase,zObject,!coneOn)};
 }
 
 function taguchiBranchEvents(familyKnots, weight, events) {
@@ -2247,7 +2303,12 @@ function computeTaguchiSsp(rawParams, options = {}) {
     profileMode: PROFILE_MODES.TAGUCHI_FILTER,
     modelStatus: "literature-based-reference-with-explicit-geometry-extensions",
     responseDefinition: "fixed-axial-impulse-moving-reconstruction-plane",
-    fixedObjectResponseDefinition: "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    fixedObjectResponseDefinition: p.detectorModel==='finite-channel'
+      ? 'shared-unit-point-detector-cell-integral-and-linear-channel-readout; axial interpolation only, no transaxial ramp or image backprojection'
+      : "unit-area-projected-rectangular-row-aperture-half-height-at-exact-boundaries",
+    detectorModel: p.detectorModel,
+    channelApertureMm: p.channelApertureMm,
+    channelSpacingMm: p.channelWidth,
     axialCoordinateDefinition: "z-reconstruction-plane-minus-z-object",
     filterMethod: "Taguchi-Aradate-1998-Eq6-rectangular-filter-interpolation",
     filterEvaluation: "exact-finite-Eq6-sum-of-piecewise-linear-acquired-data-interpolation",
@@ -2672,7 +2733,7 @@ function summarizeSweep(rows, coneOn) {
 // Full-turn FDK on a helix, with acquired cylindrical detector data rebinned
 // to a virtual flat detector. Sources and assumptions: FDK_METHOD.md.
 // A declared image-domain rectangular average follows FBP; no target-width fit or scanner-specific thickness kernel.
-const FDK_VERSION = '2026-09-17.2';
+const FDK_VERSION = '2026-09-17.4';
 const FDK_DEFAULTS = Object.freeze({
   rows:80,rowWidth:.5,beamPitch:.5,sourceRadius:600,radius:100,
   viewSamples:360,phase:0,state:0,sphereDiameter:.65,channelWidth:.25,
@@ -2682,6 +2743,8 @@ const FDK_DEFAULTS = Object.freeze({
 const FDK_TAU=2*Math.PI;
 function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
+  c.channelApertureMm=Number(input.channelApertureMm??c.channelWidth);
+  if(!(c.channelApertureMm>0&&c.channelApertureMm<=c.channelWidth))throw Error('DETECTOR_APERTURE: require 0 < aperture <= channel spacing');
   if(!['point','sphere'].includes(c.objectModel))throw Error('Unknown object model');
   // Legacy numerical API remains explicit/reproducible. The browser selects
   // point. In that branch these obsolete sphere controls have no effect.
@@ -2744,22 +2807,7 @@ function fdkWidth(z,y,level) {
 // Thus the delta mass in detector (gamma,w) is hypot(R,w)/L^2.
 // See POINT_RESPONSE_METHOD.md for the derivation and boundary convention.
 function fdkPointProjection(c,beta,zObject){
-  const R=c.sourceRadius,L=Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
-  const gamma=Math.atan2(-c.radius*Math.sin(beta),R-c.radius*Math.cos(beta));
-  const w=R*(zObject-c.feed*(beta-c.phase)/FDK_TAU)/L,dg=c.channelWidth/R;
-  const cells=(coordinate,spacing,count)=>{
-    const edge=coordinate/spacing+count/2,nearest=Math.round(edge);
-    // The symmetric delta limit shares mass on exact aperture boundaries.
-    const entries=Math.abs(edge-nearest)<=1e-10?[[nearest-1,.5],[nearest,.5]]:[[Math.floor(edge),1]];
-    return entries.filter(([i])=>i>=0&&i<count);
-  };
-  const js=cells(gamma,dg,c.channels),ks=cells(w,c.rowWidth,c.rows);
-  if(!js.length||!ks.length)return {j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0)};
-  const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
-  const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
-  const signal=Math.hypot(R,w)/(L*L*dg*c.rowWidth);
-  for(const [j,a] of js)for(const [k,b] of ks)data[(k-k0)*width+j-j0]=signal*a*b;
-  return {j0,j1,k0,k1,width,height,data};
+  return detectorPointProjection({...c,sourceZ:c.feed*(beta-c.phase)/FDK_TAU},beta,zObject);
 }
 // Store only the analytically bounded nonzero sphere projection. Missing
 // entries are exact air measurements, not a cropped object or missing rays.
@@ -2777,7 +2825,10 @@ function fdkArcProjection(c,beta,zObject) {
   for(let k=k0;k<=k1;k++)for(let j=j0;j<=j1;j++){
     let sum=0;
     for(let av=0;av<A;av++)for(let au=0;au<A;au++){
-      const g=(j-(c.channels-1)/2+(au+.5)/A-.5)*dg;
+      const aperture=c.channelApertureMm??c.channelWidth;
+      const g=aperture===c.channelWidth
+        ? (j-(c.channels-1)/2+(au+.5)/A-.5)*dg
+        : (j-(c.channels-1)/2)*dg+((au+.5)/A-.5)*aperture/R;
       const w=(k-(c.rows-1)/2+(av+.5)/A-.5)*c.rowWidth;
       const cg=Math.cos(g),sg=Math.sin(g);
       sum+=fdkSphereChord(R*cb,R*sb,zs,-R*(cg*cb+sg*sb),R*(-cg*sb+sg*cb),w,c.radius,0,zObject,a);
@@ -2952,7 +3003,7 @@ async function reconstructFdkSeries(input,hooks={}) {
 // Hsieh et al., Opt Eng 46:067001 (2007), Eqs. 4-6.
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
-const CBA_VERSION='2026-09-17.2';
+const CBA_VERSION='2026-09-17.4';
 const CBA_TAU=2*Math.PI;
 function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');
@@ -3310,10 +3361,11 @@ self.onmessage = async event => {
   activeContext = null;
   try {
     const params = validateParams(message.params, { allowZeroPitch: true });
-    if (params.beamPitch === 0) {
+    const detectorGap=params.detectorModel==='finite-channel' && params.radius===0 && params.channelApertureMm<params.channelWidth;
+    if (params.beamPitch === 0 || detectorGap) {
       activeContext = null;
       self.postMessage({ type: "geometry-result", result: {
-        params, geometryOnly: true,
+        params, geometryOnly: true, geometryReason: params.beamPitch===0?'zero-pitch':'detector-gap',
         diagramOff: computeUnwrapped(params, { coneOn: false }),
         diagramOn: computeUnwrapped(params, { coneOn: true }),
       } });

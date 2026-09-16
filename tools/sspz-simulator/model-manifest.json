@@ -1,6 +1,6 @@
 {
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
-  "modelVersion": "2026-09-08.1",
+  "modelVersion": "2026-09-17.4",
   "diagramDisplayVersion": "2026-09-16.1",
   "profileDisplayVersion": "2026-09-08.1",
   "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The unchanged log-tail rule omits values below 0.001, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
@@ -8,11 +8,11 @@
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
     "sha256": "c2f554f89cf5bced2504381a7c5955e1eee1598cdf3cf270438c1c9235da0cab",
-    "note": "Historical baseline only: the named Python reference and full-scan fixture use the former fixed-plane candidate-kernel model. They do not validate the current thick-slice response. Current longitudinal filtering follows Taguchi Eq. (6): reselect adjacent acquired candidates at every resampling z position, linearly interpolate, then apply the normalized finite rectangular-weight sum. Geometry and row apertures remain idealized; complete FBP, scanner-specific weights, and finite bead diameter are excluded."
+    "note": "Historical baseline only: the named Python reference and full-scan fixture use the former fixed-plane candidate-kernel model. They do not validate the current thick-slice response. Current longitudinal filtering follows Taguchi Eq. (6): reselect adjacent acquired candidates at every resampling z position, linearly interpolate, then apply the normalized finite rectangular-weight sum. Geometry and row apertures remain idealized; complete FBP, scanner-specific weights, and finite bead diameter are excluded. Current browser axial response additionally uses shared finite-channel acquisition; historical fixture agreement does not validate that extension."
   },
   "browserCore": {
     "fileName": "sim-core.js",
-    "sha256": "f63126c5515401cea6fe0ade31f2d19e308320232f73d9d0fa294541b68bafb6",
+    "sha256": "0a93d441d273e52cee2b2fbc605430a3c13cf7476fd7765cf4f0ebb42218eb6c",
     "sha256Convention": "UTF-8 bytes with LF line endings, matching the published GitHub Pages source"
   },
   "regressionFixture": {
@@ -118,7 +118,7 @@
       "implementationBoundary": "The model remains an idealized acquisition-geometry reference and does not implement missing-data restoration."
     }
   ],
-  "scanCalculationConvention": "Direct views cover 0 <= beta < 360 degrees. Fan-beam complementary angles use beta+180 degrees+2gamma and their two acquired angular neighbors. Each local resampling coordinate z_f has its own direct/complementary adjacent-candidate selection and normalized linear weights. Angular branches are convexly combined and K resampling values equally averaged. The thin object and its acquired row-aperture samples remain fixed while the reconstruction plane z_r moves. Linear aggregation of the rebracketed piecewise-linear response is used before the finite shifted sum; this is not postconvolution of the former fixed-plane candidate kernel. T is used only as a reference thickness for reported ratios. The direct-only comparator omits complementary samples but uses the same moving-plane/filter response definition.",
+  "scanCalculationConvention": "Direct views cover 0 <= beta < 360 degrees. Fan-beam complementary angles use beta+180 degrees+2gamma and their two acquired angular neighbors. Each local resampling coordinate z_f has its own direct/complementary adjacent-candidate selection and normalized linear weights. Angular branches are convexly combined and K resampling values equally averaged. The thin object and its acquired row-aperture samples remain fixed while the reconstruction plane z_r moves. Linear aggregation of the rebracketed piecewise-linear response is used before the finite shifted sum; this is not postconvolution of the former fixed-plane candidate kernel. Browser T sets rectangular averaging width FW; FWHM remains an output. The direct-only comparator omits complementary samples but uses the same moving-plane/filter response definition.",
   "angleConvention": "The diagram uses a model-relative tube angle beta with 0 degrees at the top and 360 degrees at the bottom. It is not a measured absolute tube angle. The drawn endpoint at 360 degrees closes the displayed helix period but is not double-counted in SSPz integration.",
   "overlayConvention": "The overlay samples 360 fixed-object positions within one table feed. Each curve fixes that object and moves the reconstruction plane, is individually peak-normalized, and uses z_reconstruction-z_object without peak or centroid alignment. All states and all calculated z samples are rendered. Center panels share a >=10% derived horizontal domain; the cone-on log-tail panel uses values >=0.1%. Display thresholds do not truncate the calculated or exported response.",
   "candidateDisplayConvention": "The all-N-row direct and complementary acquired-view trajectories and geometric coordinates are unchanged. Cone-off uses q=1 and a 180-degree complementary angle; cone-on uses fan-angle correspondence and each acquired family's own distance scaling. T and FW do not remove the displayed row population. Section 2B markers/weights and Section 2C gaps refer to local FW=0 interpolation at the selected central position, not all acquired samples contributing across a thick-slice filter. The geometry reference plane passes through the object position selected for SSPz. Same acquired samples may reappear in different angular correspondences; displayed counts are not independent data counts.",
@@ -128,7 +128,7 @@
   "internalCandidateAuditConvention": "The former computeSsp fixed-plane kernel remains a local-FW0 geometry/legacy numerical diagnostic. Its moments and selected-candidate counts are not interpreted as all thick-slice contributors and are not exported as filtered-response variances.",
   "momentConvention": "The former mean(M2)+T^2/12 identity belongs only to the historical fixed-plane-kernel plus continuous width-T rectangle model. It is not an acceptance identity for the fixed-object moving-plane response or the finite-K Taguchi filter. Current filtered width and standard-deviation outputs are computed from the new response.",
   "numericalRasterizationConvention": "The current fixed-object response evaluates acquired ideal row apertures and adjacent interpolation as a piecewise-linear function of reconstruction-plane z, combines angular views by linearity, and evaluates the finite K shifted resampling sum. The output grid is shared across states and cone conditions; the requested count is a minimum. No T-wide post-average or old fixed-plane profile rasterization is used to form the new default output. Numerical acceptance requires comparison to direct per-view, per-z, per-filter-position evaluation and K/grid convergence.",
-  "complementaryPairConvention": "The primary 180LI SSPz path is exact only within the declared idealized acquisition model. Its continuous complementary angle uses the second intersection of the source-to-evaluation-point line with the source orbit. For each acquired angular neighbor, all direct-side and complementary-side detector-row samples are merged and the adjacent candidates around each local z_f are used, allowing DD, DC, CD, or CC types while retaining equal-distance ties and exact matches. The two branch kernels are combined by the ideal angle's linear fraction between the acquired neighbors. The absolute-order D-n-to-C-n and C-n-to-D-n-plus-one spans remain separate diagnostics and are not averaged as an unvalidated redundancy rule. Scanner-specific detector-channel interpolation, redundancy weights, cone-beam weights, z-filter calibration, and backprojection remain outside scope.",
+  "complementaryPairConvention": "The primary 180LI SSPz path is exact only within the declared idealized acquisition model. Its continuous complementary angle uses the second intersection of the source-to-evaluation-point line with the source orbit. For each acquired angular neighbor, all direct-side and complementary-side detector-row samples are merged and the adjacent candidates around each local z_f are used, allowing DD, DC, CD, or CC types while retaining equal-distance ties and exact matches. The two branch kernels are combined by the ideal angle's linear fraction between the acquired neighbors. The absolute-order D-n-to-C-n and C-n-to-D-n-plus-one spans remain separate diagnostics and are not averaged as an unvalidated redundancy rule. The shared linear detector-channel readout is now included; scanner-specific redundancy weights, cone-beam weights, z-filter calibration, and backprojection remain outside scope.",
   "launchModes": [
     "double-click index.html (standalone build; current revision browser verification uses HTTP, with file-protocol checks retained as historical evidence only)",
     "HTTP static server",
@@ -155,14 +155,14 @@
     "responseDefinition": "fixed-thin-object-moving-reconstruction-plane",
     "responseCoordinate": "z_reconstruction-z_object (mm)",
     "stateMeaning": "fixed-object-position-within-one-table-feed",
-    "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
+    "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.3",
+  "webBuildVersion": "2026-09-17.4",
   "threeDimensionalFbp": {
-    "version": "2026-09-17.2",
+    "version": "2026-09-17.4",
     "core": "fdk-core.js",
-    "sha256": "c3a3db34145884966ee95ec77558fe1829f0ba048d5626ed7974110ac31e3f00",
+    "sha256": "bbb71c3bc7286e2885be2856319a409c08ac85a4756954c90ebb71b7ada83544",
     "path": "full-turn helical FDK approximation",
     "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
     "rows": {
@@ -178,16 +178,16 @@
     "implementationTests": "tests/fdk.mjs",
     "numericalSensitivity": "tests/fdk-verification.json",
     "scannerValidation": "not established",
-    "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core.",
+    "scope": "Integrated 3D browser path. Both models share finite detector-cell acquisition; the axial reference uses transverse linear readout without ramp filtering or image backprojection.",
     "axialAveraging": "Post-backprojection normalized rectangular image-domain mean of width T, before profile normalization; reconstruct required padding and retain coverage checks.",
     "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
     "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
     "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
   },
   "conjugateFbp": {
-    "version": "2026-09-17.2",
+    "version": "2026-09-17.4",
     "core": "cba-core.js",
-    "sha256": "1a94e1bfc3e28d1696a191509bfa196390a67a5cd9b6755c4a0093a9fcab6d5a",
+    "sha256": "d63b2bf4522906eaecd6d118b20099d065614954b9e453a621c23e5b3427e0a9",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
     "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
@@ -249,7 +249,7 @@
   },
   "configuredThickness": {
     "version": "2026-09-16.1",
-    "urlVersion": 8,
+    "urlVersion": 9,
     "input": "sliceThicknessMm / st",
     "mapping": "configured-rectangular",
     "browserRangeMm": [
@@ -277,5 +277,21 @@
     "source": "Hsieh et al. 2007, printed pp. 067001-2 and 067001-3",
     "placement": "Visible definitions before reconstruction method selection; bilingual; linked from results and retained in Excel",
     "numericalChange": false
+  },
+  "sharedDetectorAperture": {
+    "version": "2026-09-17.4",
+    "core": "detector-aperture.js",
+    "sha256": "d6cf7f76c341c9ff3cc00314e5e0b502805b6e9b5eee9489bfce8e924ffcbde9",
+    "documentation": "DETECTOR_APERTURE_METHOD.md",
+    "tests": "tests/detector-aperture.mjs",
+    "urlVersion": 9,
+    "aperture": "ca / channelApertureMm: physical active transaxial width at isocenter",
+    "spacing": "cp / channelWidth: detector center spacing at isocenter, not image pixel spacing",
+    "operator": "Unit-point analytic detector-cell integral shared by axial cone model and 3D model. Axial model uses linear channel readout before axial interpolation; parallel reference retains nondivergent geometry.",
+    "boundary": "0 < aperture <= spacing. Inactive gaps acquire no signal. Symmetric half-mass exact-edge convention; no redistribution.",
+    "legacy": "Low-level axial API defaults to axial-only-legacy. Browser selects finite-channel. Old URLs/saved conditions show migration notice; historical 3D full-fill default unchanged to roundoff.",
+    "interpretation": "Axial changes include transverse sampling/readout and point-projector geometric amplitude; not aperture alone. Common acquisition does not make reconstruction operators identical.",
+    "paperFiguresRegenerated": false,
+    "scannerValidation": "not established"
   }
 }

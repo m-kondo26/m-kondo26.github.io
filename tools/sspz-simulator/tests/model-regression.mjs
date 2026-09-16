@@ -209,7 +209,7 @@ assert.equal(DEFAULT_PARAMS.stateSamples, 360);
 assert.equal(DEFAULT_PARAMS.profileMode, PROFILE_MODES.TAGUCHI_FILTER);
 assert.equal(DEFAULT_PARAMS.viewSamples, 360);
 assert.equal(validateParams({ ...params, viewSamples: undefined, thetaSamples: 720 }).viewSamples, 720);
-assert.equal(MODEL_VERSION, "2026-09-08.1");
+assert.equal(MODEL_VERSION, "2026-09-17.4");
 if (process.env.SSPZ_SKIP_MANIFEST_INTEGRITY !== "1") {
   assert.equal(manifest.modelVersion, MODEL_VERSION);
   assert.equal(manifest.browserCore.sha256, coreHash);
@@ -437,7 +437,8 @@ assert.match(englishAppBundle, /Generating figures for the current conditions/);
 assert.match(appSource, /st: params\.sliceThicknessMm/);
 assert.doesNotMatch(appSource, /fw: params\.filterWidthMm/);
 assert.match(appSource, /nf: params\.filterSamples/);
-assert.match(appSource, /旧条件の独立したFW・画像平均化幅は使用せず、Tの値で再計算します/);
+assert.match(appSource, /旧条件は共通開口で再計算されるため/);
+assert.match(appSource, /設定厚Tは平均化幅として使用します/);
 assert.match(appSource, /filter_width_mm/);
 assert.match(appSource, /filter_resampling_count/);
 assert.match(appSource, /requested_minimum_filter_resampling_count/);

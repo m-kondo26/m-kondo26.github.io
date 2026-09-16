@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.3 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.2`;
+versionLabel.textContent = `Web build 2026-09-17.4 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.4`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -125,6 +125,9 @@ function readParams() {
   return {
     rows: Number(data.get("rows")),
     rowWidth: Number(data.get("rowWidth")),
+    channelWidth: Number(data.get("channelWidth")),
+    channelApertureMm: Number(data.get("channelApertureMm")),
+    detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
     sourceRadius: Number(data.get("sourceRadius")),
     radius: Number(data.get("radius")),
@@ -169,7 +172,9 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 8,
+    v: 9,
+    cp: params.channelWidth,
+    ca: params.channelApertureMm,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -197,7 +202,7 @@ function paramsFromUrl() {
   const hasNewThickness = query.has("st");
   const hasLegacyThickness = !hasNewThickness && query.has("t");
   const hasLegacyState = query.has("s") && !query.has("vs");
-  legacyInputMigrated = get("v", 0) < 8 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
+  legacyInputMigrated = get("v", 0) < 9 || hasLegacyThickness || hasLegacyState || getText("pm", "") !== "taguchi-filter" || query.has("z") || query.has("nr") || query.has("nt") || query.has("stage");
   selectedStateIndex = query.has("vs")
     ? Math.max(0, Math.min(359, Math.round(get("vs", 0))))
     : hasLegacyState
@@ -208,6 +213,9 @@ function paramsFromUrl() {
     ...DEFAULT_PARAMS,
     rows: get("n", DEFAULT_PARAMS.rows),
     rowWidth: get("d", DEFAULT_PARAMS.rowWidth),
+    channelWidth: get("cp",get("fdk_channelWidth",.25)),
+    channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",.25))),
+    detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
     radius: get("r", DEFAULT_PARAMS.radius),
@@ -380,8 +388,9 @@ function runSimulation() {
       showCalculatingState(message.label);
     } else if (message.type === "geometry-result") {
       lastResult = message.result;
-      const title = localizedText("ピッチ0：寝台移動なしの展開図", "Pitch 0: stationary-table geometry");
-      const detail = localizedText("ヘリカルSSPz・補間重み・状態変動は計算対象外です。", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
+      const gap=lastResult.geometryReason==='detector-gap';
+      const title = gap?localizedText('点対象がチャネル間の非感度領域にあります：展開図のみ表示','Point object lies in a detector gap: geometry only'):localizedText("ピッチ0：寝台移動なしの展開図", "Pitch 0: stationary-table geometry");
+      const detail = gap?localizedText('回転中心の点が偶数チャネルの中央の隙間にあり、信号を取得できません。SSPz・幅指標は計算できません。','The isocenter point lies in the central gap of the even-channel grid. No signal is acquired; SSPz and widths are unavailable.'):localizedText("ヘリカルSSPz・補間重み・状態変動は計算対象外です。", "Helical SSPz, interpolation weights and state sweeps are not evaluated.");
       setResultPlaceholder("unavailable", title, detail);
       for (const selector of ["#overview-scope", "#calculation-scope", "#overlay-scope", "#profile-axis-note", "#metric-label", "#overlay-core-heading", "#overlay-core-description", "#profile-model-note"]) {
         const element = document.querySelector(selector);
@@ -2006,7 +2015,7 @@ function updateProfileModelNote(result) {
     ? "主解析では、各実データ側ビューの理想対向角を挟む両隣の実取得ビューについて、実データ側・対向データ側の全列候補を統合して体軸方向の最近接挟み込みを作り、その2枝を角度方向に線形合成します。"
     : "比較表示では、対向データ側をSSPzへ用いず、0～360°の実データ側ビューだけで体軸方向の最近接挟み込みを作ります。";
   const candidateSpreadText = "幾何表示では、実データ側の全列と、理想対向角を挟む実取得ビューの全列について、列中心位置の体軸方向標準偏差を無重みで示します。候補点の採用、補間・再構成重み、設定厚による閾値は適用しません。";
-  const modelText = localizedText(`Taguchiらの式（6）・Fig. 5/6に基づき、再構成面周囲のK個のz位置で取得候補を選び直し、線形補間した値を矩形重みで平均します。${filterParameterLabel(result.params, result.selectedOn.filterSamples)}。固定した薄い物体に対して再構成面を動かした応答です。360状態は寝台移動量内の物体位置であり、各SSPz内の横軸はzᵣ−zₒです。FWと設定厚Tの対応は実機に校正せず、FWHMは結果として計算します。展開図の端点・間隔は中心位置でのFW=0の局所補間の監査で、厚いスライスの全寄与候補ではありません。取得幾何の全列表示は変更していません。これは理想的な列開口と体軸応答のモデルであり、全画像再構成・装置固有の重み・逆投影・有限ビーズ径は再現しません。`, `Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. This ideal row-aperture and axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`);
+  const modelText = localizedText(`Taguchiらの式（6）・Fig. 5/6に基づき、再構成面周囲のK個のz位置で取得候補を選び直し、線形補間した値を矩形重みで平均します。${filterParameterLabel(result.params, result.selectedOn.filterSamples)}。固定した薄い物体に対して再構成面を動かした応答です。360状態は寝台移動量内の物体位置であり、各SSPz内の横軸はzᵣ−zₒです。FWと設定厚Tの対応は実機に校正せず、FWHMは結果として計算します。展開図の端点・間隔は中心位置でのFW=0の局所補間の監査で、厚いスライスの全寄与候補ではありません。取得幾何の全列表示は変更していません。面内・列方向とも有限開口で取得した点信号を使い、面内の線形補間後に体軸方向を補間します。これは体軸応答のモデルであり、全画像再構成・装置固有の重み・逆投影・有限ビーズ径は再現しません。`, `Using Eq. (6) and Figs. 5/6 of Taguchi et al., acquired candidates are reselected at K longitudinal positions around the reconstruction plane, locally linearly interpolated, and averaged with rectangular weights. ${filterParameterLabel(result.params, result.selectedOn.filterSamples)}. The response is evaluated by moving the reconstruction plane past a fixed thin object. The 360 states are object positions within one table feed; the coordinate within each SSPz is zᵣ−zₒ. FW is not calibrated to scanner-specific nominal thickness T, and FWHM is an output. Diagram endpoints and gaps audit local FW=0 interpolation at the central position; they are not all contributors to the thick-slice response. All-row acquisition geometry is unchanged. Acquired point signals include finite channel and row apertures, followed by linear transaxial readout and axial interpolation. This axial-response model does not reproduce full image reconstruction, scanner-specific weights, backprojection, or finite bead diameter.`);
   const topologyText = multiComponent
     ? " 注意：50%水準が複数成分に分かれています。FWHMだけで形状を代表させないでください。"
     : "";
@@ -3290,11 +3299,13 @@ const initial = paramsFromUrl() ?? (() => {
   }
   catch { return DEFAULT_PARAMS; }
 })();
-if(initial.thicknessMapping!=='configured-rectangular' && initial!==DEFAULT_PARAMS)legacyInputMigrated=true;
+if(initial!==DEFAULT_PARAMS && (initial.thicknessMapping!=='configured-rectangular' || initial.detectorModel!=='finite-channel'))legacyInputMigrated=true;
+// Old saved 3D conditions used channelWidth for both physical aperture and pitch.
+if(initial!==DEFAULT_PARAMS && initial.channelApertureMm==null)initial.channelApertureMm=initial.channelWidth??DEFAULT_PARAMS.channelApertureMm;
 writeParams({ ...DEFAULT_PARAMS, ...initial, filterWidthMm:initial.sliceThicknessMm??DEFAULT_PARAMS.sliceThicknessMm, thicknessMapping:'configured-rectangular' });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("設定厚Tを平均化幅に使う仕様へ更新しました。旧条件の独立したFW・画像平均化幅は使用せず、Tの値で再計算します。", "The configured thickness T now sets the averaging width. Separate FW or image-average values from older settings are replaced by T when recalculating.");
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("両モデルに共通の面内有限開口を導入しました。旧条件は共通開口で再計算されるため、従来の体軸補間モデルと結果が異なります。設定厚Tは平均化幅として使用します。", "A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width.");
 }
 initializeFdkUi(initial);
 runSimulation();

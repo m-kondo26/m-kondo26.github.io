@@ -1,6 +1,6 @@
 # Integrated three-dimensional FBP reference
 
-Version 2026-09-17.2. This is an additional calculation path in the existing
+Version 2026-09-17.4. This is an additional calculation path in the existing
 public SSPz simulator, executed locally in the same browser Web Worker. The
 original axial filter-interpolation model remains available. No server or
 Python installation is needed for the public path.
@@ -70,7 +70,12 @@ is integrated analytically, including finite row and channel apertures; see
 The channel grid contains the object projection and local image volume.
 The historical API sphere mode instead uses analytic sphere chords and
 midpoint subray quadrature. That mode is not the browser's current object.
-Neither mode includes septa, focal-spot blur, noise or measured projections.
+Active transaxial aperture a and channel-center spacing c are separate
+shared inputs; see [shared aperture](DETECTOR_APERTURE_METHOD.md).
+Here channel_width means c; each cell integrates over angular width a/R.
+The default a=c retains full fill. When a<c, inactive gaps acquire no
+signal; no detailed septum transmission/scatter model is used. Neither
+mode includes focal-spot blur, noise or measured projections.
 
 For the FDK filter we bilinearly rebin the cylindrical samples to the virtual
 flat plane through isocenter, perpendicular to e_r, using
