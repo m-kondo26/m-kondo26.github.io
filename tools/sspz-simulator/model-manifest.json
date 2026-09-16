@@ -158,11 +158,11 @@
     "thicknessMapping": "Browser v8: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.1",
+  "webBuildVersion": "2026-09-17.2",
   "threeDimensionalFbp": {
-    "version": "2026-09-16.1",
+    "version": "2026-09-17.2",
     "core": "fdk-core.js",
-    "sha256": "086f7d8d813252aaec4f549e266c7cda6682ca0d2ddd627f8eb4342b6308bb14",
+    "sha256": "c3a3db34145884966ee95ec77558fe1829f0ba048d5626ed7974110ac31e3f00",
     "path": "full-turn helical FDK approximation",
     "detector": "cylindrical acquired samples rebinned to a center-aligned virtual flat grid",
     "rows": {
@@ -179,12 +179,15 @@
     "numericalSensitivity": "tests/fdk-verification.json",
     "scannerValidation": "not established",
     "scope": "Additional integrated browser path. Existing purpose/implemented/excluded and browserCore fields describe the unchanged axial-reference core.",
-    "axialAveraging": "Post-backprojection normalized rectangular image-domain mean of width T, before profile normalization; reconstruct required padding and retain coverage checks."
+    "axialAveraging": "Post-backprojection normalized rectangular image-domain mean of width T, before profile normalization; reconstruct required padding and retain coverage checks.",
+    "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
+    "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
+    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
   },
   "conjugateFbp": {
-    "version": "2026-09-15.3",
+    "version": "2026-09-17.2",
     "core": "cba-core.js",
-    "sha256": "c318a13553416f73fc42048cbca75d2c326b08c70ee532318b3fcdaa5e4d123c",
+    "sha256": "1a94e1bfc3e28d1696a191509bfa196390a67a5cd9b6755c4a0093a9fcab6d5a",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
     "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
@@ -193,7 +196,10 @@
     "documentation": "CBA_METHOD.md",
     "implementationTests": "tests/cba.mjs and tests/cba-four-row.mjs",
     "numericalSensitivity": "tests/cba-verification.json",
-    "scope": "Matched CBA and linear-reference reconstructions; acquired-row conjugate normalization at edges, optional image-domain rectangular average, and strict legacy policy. No commercial validation."
+    "scope": "Matched CBA and linear-reference reconstructions; acquired-row conjugate normalization at edges, optional image-domain rectangular average, and strict legacy policy. No commercial validation.",
+    "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
+    "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
+    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
   },
   "diagramLayout": {
     "logicalCanvas": [
@@ -254,5 +260,14 @@
     "axial": "filterWidthMm=T",
     "output": "FWHM from final normalized SSPz; never fitted to T",
     "test": "tests/configured-thickness.mjs"
+  },
+  "pointResponse": {
+    "version": "2026-09-17.2",
+    "documentation": "POINT_RESPONSE_METHOD.md",
+    "tests": "tests/point-response.mjs",
+    "axialCoreChanged": false,
+    "paperFiguresRegenerated": false,
+    "sphereDiameterUsed": false,
+    "apertureQuadratureUsed": false
   }
 }

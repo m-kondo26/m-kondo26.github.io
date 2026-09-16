@@ -1,6 +1,6 @@
 # Integrated three-dimensional FBP reference
 
-Version 2026-09-16.1. This is an additional calculation path in the existing
+Version 2026-09-17.2. This is an additional calculation path in the existing
 public SSPz simulator, executed locally in the same browser Web Worker. The
 original axial filter-interpolation model remains available. No server or
 Python installation is needed for the public path.
@@ -39,7 +39,7 @@ The table feed per turn is H = pNd. At acquired view i,
 
 phi_0 is the source angle at source z = 0. Changing it rotates the helix
 relative to the object; it does not merely rename the same acquired views.
-The sphere center is (r, 0, z_object), with z_object = state H.
+The object location is (r, 0, z_object), with z_object = state H.
 
 The detector is a source-centered cylinder with horizontal radius R. This
 is an isocenter-normalized virtual acquisition surface, not a specification
@@ -64,13 +64,13 @@ introduced into this FDK path.
 
 ## Forward projection and rebinning
 
-The phantom is a finite, unit-attenuation sphere. Each ray value is the
-analytic positive-ray chord length through that sphere. Detector cell values
-are averages of midpoint subrays over the angular and axial aperture (8 x 8
-by default, selectable through 32 x 32). The number of channels is chosen to
-include the entire sphere projection and local reconstruction volume; it is
-reported in the exported configuration. There are no septa, focal spot,
-noise, beam hardening, or measured projection data.
+The browser uses an ideal unit-integral point. Its detector-cell projection
+is integrated analytically, including finite row and channel apertures; see
+[the point-response definition](POINT_RESPONSE_METHOD.md) for its derivation.
+The channel grid contains the object projection and local image volume.
+The historical API sphere mode instead uses analytic sphere chords and
+midpoint subray quadrature. That mode is not the browser's current object.
+Neither mode includes septa, focal-spot blur, noise or measured projections.
 
 For the FDK filter we bilinearly rebin the cylindrical samples to the virtual
 flat plane through isocenter, perpendicular to e_r, using
@@ -115,12 +115,12 @@ view at or after the lower endpoint of the slice-centered 2 pi segment.
 For pitch 0, every slice uses the same circular full turn.
 
 The optimized implementation stores only the analytically bounded nonzero
-sphere projection. It evaluates the full discrete convolution at the output
+object projection. It evaluates the full discrete convolution at the output
 columns needed by the local image. **Every nonzero input column participates**;
 this is not truncation of the filter or of the object's projection. Exact
 air samples can be zero; missing required detector measurements cannot.
 
-Before computation, the full sphere projection and the reconstructed
+Before computation, the full object projection and the reconstructed
 volume's detector-center interpolation support are checked throughout the
 selected acquisition. Conditions failing this conservative check stop with
 an explanatory error. No pitch is silently reduced and no missing ray is
@@ -129,11 +129,13 @@ outside this full-turn implementation.
 
 ## SSPz, normalization and output
 
-A true local 3D image array is reconstructed (z,y,x; x fastest). Each SSPz
-sample is the mean of a disk ROI centered on the sphere in one axial slice,
-with radius equal to the sphere radius. Therefore this is a **finite-sphere
-derived SSPz**, not a deconvolved ideal point response. The radius and number
-of contributing pixels are recorded. In the browser, the single configured
+A local 3D image array is reconstructed (z,y,x; x fastest). The browser
+reads each z sample at the fixed transverse object location: an axial
+section of the 3D PSF, displayed as model SSPz. This is a point response,
+with no finite-sphere or sphere-radius ROI averaging. The historical sphere
+API retains its disk-ROI readout; it is not the current browser result.
+See POINT_RESPONSE_METHOD.md for comparison with the axial model and the
+limits of the SSP interpretation. In the browser the configured
 slice-thickness input T is the width of an image-domain rectangular mean:
 
     f_T(x,y,z) = (1/T) integral[-T/2,+T/2] f(x,y,z+u) du.
@@ -142,7 +144,7 @@ This average is applied after FDK backprojection and before SSPz normalization.
 The padded image is reconstructed to cover the complete averaging window at
 each requested output position. The integral is exact for piecewise-linear
 image columns; missing slices are not filled with zeros. The same operation
-is applied to the displayed/exported volume and the raw ROI profile. ROI-only
+is applied to the displayed/exported volume and the raw response profile. Profile-only
 batch calculations commute these two linear averages and match the full-volume
 result. The acquisition-coverage check includes the padding and still rejects
 unsupported conditions. FWHM is measured from the resulting SSPz; it is not
@@ -153,7 +155,7 @@ thicknessMapping = configured-rectangular and uses T throughout.
 
 The display offers min–max normalization (default, minimum 0 and maximum 1)
 and peak-only normalization (negative lobes retained). Min–max normalization
-can shift negative FBP lobes; raw reconstructed ROI values and each baseline
+can shift negative FBP lobes; raw reconstructed values and each baseline
 remain in the exports. FWHM and FWTM use native linear crossings of the
 selected normalized profile, and missing crossings cause an error. Width
 display uses 0.01 mm and SD 0.001 mm, without rounding the exported analysis
@@ -162,7 +164,7 @@ values or implying that those digits establish measurement accuracy.
 For multiple start angles, the displayed FWHM mean and sample SD summarize
 widths computed from individual profiles, not the width of the mean profile.
 The mean-difference plot subtracts the pointwise mean at the common
-sphere-centered z coordinates. No FWHM alignment, width rescaling, spline,
+object-centered z coordinates. No FWHM alignment, width rescaling, spline,
 or smoothing is applied. These equally spaced model start angles are not a
 probability distribution for measured tube start angles. With one angle,
 there is no SD or mean-difference plot.

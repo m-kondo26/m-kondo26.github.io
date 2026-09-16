@@ -1,3 +1,11 @@
+## 2026-09-17: ideal point without a measurement sphere
+
+Web build and 3D cores **2026-09-17.2** use `fdk_objectModel=point` in browser URLs. The object is projected analytically through each detector aperture and read at its fixed transverse location after 3D reconstruction and the configured axial average. The old sphere-diameter and subray controls are absent. Older browser settings are migrated with a visible notice; the numerical API still accepts explicit `objectModel: 'sphere'` for reproduction of historical studies. See POINT_RESPONSE_METHOD.md for the formula and comparison limits.
+
+The new implementation checks pass: solid-angle mass, aperture edges, small-sphere projection limits, bead-parameter independence, fixed-point readout, weight-audit closure, full angular closure, and 4/80/160/320-row cases. Tests for the unchanged axial model and historical finite-sphere API also pass. Browser checks cover the 360-angle CBA/RRI series, selected-angle images, shape maps, Excel and JSON exports, and both languages.
+
+`tests/point-response-sensitivity.json` records additional view/z-spacing examples. These are not convergence certificates for manuscript conditions. For example, at four rows, radius 250 mm, T=1 mm and start angle zero, CBA FWHM changes from 1.18 to 1.16 mm between 1440 and 2400 acquired views. The original axial kernel and existing manuscript figures have not been replaced by this update. Historical sphere-based sensitivity reports below must not be read as validation of the point-response model.
+
 ## 2026-09-16: configured thickness drives rectangular averaging
 
 Web build **2026-09-16.4**, URL schema **v8**, FDK core **2026-09-16.1**. The public Japanese and English interfaces use one configured slice-thickness input T. The axial interpolation path uses FW=T in its finite rectangular-weight filter; FDK, CBA and RRI use T as the normalized rectangular image-domain z-average width after reconstruction and before profile normalization. FWHM is measured from each resulting profile, never fitted to T. This is an explicit model convention, not a scanner-specific thickness calibration.

@@ -64,7 +64,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
-  document.getElementById('fdk-weight-scope').textContent=fdkText('球中心の面内位置における、フィルタ適用後のデータへの重みを表示します。SSPz全体の寄与率ではありません。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights apply to filtered data at the transverse sphere centre, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
+  document.getElementById('fdk-weight-scope').textContent=fdkText('対象点の面内位置における、フィルタ適用後のデータへの重みを表示します。SSPz全体の寄与率ではありません。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights apply to filtered data at the transverse object point, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('展開図・重み・SSPz・画像は、選択した同じ開始角度に対応しています。','Geometry, weights, SSPz and images now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;

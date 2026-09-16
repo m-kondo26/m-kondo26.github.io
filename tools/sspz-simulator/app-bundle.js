@@ -2926,7 +2926,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
-  document.getElementById('fdk-weight-scope').textContent=fdkText('球中心の面内位置における、フィルタ適用後のデータへの重みを表示します。SSPz全体の寄与率ではありません。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights apply to filtered data at the transverse sphere centre, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
+  document.getElementById('fdk-weight-scope').textContent=fdkText('対象点の面内位置における、フィルタ適用後のデータへの重みを表示します。SSPz全体の寄与率ではありません。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights apply to filtered data at the transverse object point, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('展開図・重み・SSPz・画像は、選択した同じ開始角度に対応しています。','Geometry, weights, SSPz and images now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
@@ -3052,12 +3052,12 @@ async function exportFdkWorkflowCanvas(id){
 
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
-const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
+const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,objectModel:'point',channelWidth:.25,
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
-const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
@@ -3070,6 +3070,7 @@ function readFdkParams(){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
   }
   out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
+  out.objectModel='point';
   out.thicknessMapping='configured-rectangular';
   out.phaseCount=360;
   return out;
@@ -3084,6 +3085,8 @@ function fdkParamsFromUrl(q){
   if(out.computationModel!=='fdk')return out;
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.phaseCount=360;
+  out.legacySphereInput=q.get('fdk_objectModel')!=='point';
+  out.objectModel='point';
   return out;
 }
 function initializeFdkUi(initial){
@@ -3092,17 +3095,15 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step,help='')=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"${help?` aria-describedby="fdk-${k}-help"`:''}>${help?`<small class="field-help" id="fdk-${k}-help">${help}</small>`:''}</label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('上の共通条件を使用します。以下は、有限球の画像応答を求める3次元FBPの追加条件です。','The shared controls above apply. Additional settings below define the 3D FBP response to a finite sphere.')}</p>
+  controls.innerHTML=`<p class="section-summary">${fdkText('上の共通条件を使用し、球径を含まない理想的な点への応答を計算します。','Shared controls apply. The object is an ideal point, with no finite sphere diameter.')}</p>
   <div class="parameter-grid">
   ${sel('method','3次元再構成法','3D reconstruction method',[['fdk',fdkText('従来のヘリカルFDK近似','Original helical FDK reference')],['hsieh',fdkText('Hsiehらの対向データ補間（CBAとRRIを比較）','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','Hsieh法の検出器端処理','Hsieh detector-edge treatment',[['available',fdkText('取得済みの列で正規化','Normalize acquired rows')],['strict',fdkText('4点が揃う場合のみ','Require all four row samples')]])}
   </div>
-  <details class="reading-details"><summary>${fdkText('有限球モデル・数値計算の詳細設定','Finite-sphere model and numerical settings')}</summary>
+  <details class="reading-details"><summary>${fdkText('3次元計算・画像表示の詳細設定','3D numerical and image-display settings')}</summary>
   <div class="parameter-grid">
-  <input id="fdk-axialAverageMm" type="hidden" value="1">
-  ${num('sphereDiameter','投影する球の直径 (mm)','Projected sphere diameter (mm)',.1,10,.01,fdkText('球の投影データと、SSPzを取り出すROIの大きさに用います。','Sets the object size for projections and the ROI size for profile extraction.'))}
+  <input id="fdk-axialAverageMm" type="hidden" value="1"><input id="fdk-objectModel" type="hidden" value="point">
   ${num('channelWidth','面内チャネル幅：回転中心換算 (mm)','Transaxial channel width at isocenter (mm)',.05,1,.05)}
-  ${sel('apertureSamples','開口積分：各方向の分割数','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
   ${num('zStep','再構成z間隔 (mm)','Reconstruction z spacing (mm)',.01,.2,.01)}
   ${num('zExtent','SSPzの計算範囲：中心から± (mm)','SSPz calculation half-range (mm)',1,20,.5,fdkText('3なら−3～+3 mmを計算します。厚みではなく、SSPzの裾まで含める計算区間です。','A value of 3 covers −3 to +3 mm. This is the profile interval, including its tails, rather than slice thickness.'))}
   ${num('xyExtent','局所画像範囲：中心から± (mm)','Local image half-range (mm)',.5,10,.5)}
@@ -3113,21 +3114,26 @@ function initializeFdkUi(initial){
   ${sel('normalization','表示と幅測定の正規化','Normalization for display and widths', [['minmax',fdkText('最小値0・最大値1','Minimum 0, maximum 1')],['peak',fdkText('最大値1（負値を保持）','Peak 1 (retain negative values)')]])}
   </div><p class="model-note">${fdkText('各断面に1回転分を使用します。Hsieh法は同じ前処理・同じ投影からCBAとRRIを計算します。取得ビュー数は偶数にしてください。取得済みの列で正規化する設定では、検出器外の列を除いて対向データと重みを正規化します。両方向とも支持を失う場合は停止します。','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
   form.append(controls);
+  if(initial.computationModel==='fdk'&&(initial.legacySphereInput||initial.objectModel!=='point')){
+    const note=document.createElement('p');note.id='fdk-point-migration';note.className='model-note';
+    note.textContent=fdkText('旧条件を読み込みました。今回から球径を含まない点応答を計算します。以前の有限球の結果とは異なります。','Older settings loaded. Calculations now use an ideal point, without sphere diameter. Results differ from the former finite-sphere response.');controls.prepend(note);
+  }
   const syncHsiehControls=syncFdkMethodControls;
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
+  document.getElementById('fdk-objectModel').value='point';
   document.getElementById('fdk-phaseCount').value=360;
   syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('展開図から3次元FBPへ','From acquired geometry to 3D FBP')}</h2></div>
-  <p class="section-summary">${fdkText('球の投影データから局所3次元画像とSSPzを計算します。Hsieh法では、CBAの二次重みと、線形重みの参照結果を比較します。4点が揃う内部では、線形重みは従来RRIと一致します。検出器端の扱いは両者で共通です。','Reconstruct local 3D images and SSPz from sphere projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
+  <p class="section-summary">${fdkText('点の投影データから局所3次元画像とモデルSSPzを計算します。Hsieh法では、CBAの二次重みと、線形重みの参照結果を比較します。4点が揃う内部では、線形重みは従来RRIと一致します。検出器端の扱いは両者で共通です。','Reconstruct local 3D images and model SSPz from ideal-point projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
   <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('取得列の展開図','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('球から求めたSSPz','Sphere-derived SSPz')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('横断像：球の中心断面','Axial image through the sphere center')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('冠状断像：球の中心断面','Coronal image through the sphere center')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
-  </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('各SSPzと平均SSPzの差','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('球の中心を共通の原点とし、各z位置の平均を引きます。FWHM中点での位置合わせは行いません。','The sphere center is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
+  <article class="chart-card"><h3>${fdkText('モデルSSPz：点への応答','Model SSPz: point response')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('横断像：点の位置断面','Axial image through the object point')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('冠状断像：点の位置断面','Coronal image through the object point')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
+  </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('各SSPzと平均SSPzの差','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('点の位置を共通の原点とし、各z位置の平均を引きます。FWHM中点での位置合わせは行いません。','The object point is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
   <div id="fdk-shape-wrap" class="chart-card shape-card" hidden>
     <h3>${fdkText('SSPzの形状変動分布','SSPz shape-variation distribution')}</h3>
     <p>${fdkText('各曲線のFWHM中点を0 mmに揃え、方法ごとの平均からの偏差を重ねます。両矢印は個々のFWHMの平均です。','Align each native FWHM midpoint to zero and overlay deviations from each method’s own mean. Double-headed arrows show the mean of individual FWHMs.')}</p>
@@ -3137,8 +3143,8 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：CBA（単独計算ではFDK）、青：RRI。紫は同じ位置・偏差のビンに両者が存在することを表します。曲線全体や平均形状の一致ではありません。0.01 mm格子への線形補間、偏差ビン幅0.002、濃さは各ビンの割合の0.35乗で、色間で共通です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('3次元画像・条件をJSON保存','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('近似3次元FBPです。従来FDKと、投影を再配列して対向データを補間するHsieh法を選択できます。両者は焦点軌道・検出器列位置を共有します。TCOTの再現や厳密な広角コーンビーム逆変換ではありません。','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('対象は有限径の一様な球です。像中心に置いた、球の投影半径と等しい円形ROIの平均を各断面で求めます。ビーズ径の補正、ノイズ、焦点サイズ、隔壁、装置固有の重みは含みません。FDK・CBA・RRIのいずれも、設定スライス厚Tを幅とする矩形平均化を再構成画像に適用し、その後にSSPzを正規化します。平均化には必要な周辺断面も再構成して用います。FWHMをTに一致させる調整や実機のスライス厚の校正は行いません。','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('表示は計算点を直線で結びます。最小値0・最大値1の正規化では、FBP由来の負の応答も基線移動されます。元のROI値はExcelに保持し、最大値のみで正規化する表示も選べます。FWHMとFWTMは選択した正規化曲線から求めます。画像の濃淡は負値を黒にし、全画像共通の最大値まで表示します。','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('80～320列は計算可能な検出器構成です。列数だけで実機への妥当性を保証しません。ビュー数・開口分割数・チャネル幅・画像格子を変えて数値依存性を確認してください。','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('FDK：数式・座標・検証記録','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
-  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：球の中心位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は球の中心からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('Hsieh法：計算方法と適用範囲','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('近似3次元FBPです。従来FDKと、投影を再配列して対向データを補間するHsieh法を選択できます。両者は焦点軌道・検出器列位置を共有します。TCOTの再現や厳密な広角コーンビーム逆変換ではありません。','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('対象は大きさを持たない理想的な点です。検出器開口への投影は解析的に積分し、再構成像の同じ面内位置から体軸方向の応答を取り出します。球径と球径に依存するROI平均は含みません。2Dと対象の体軸方向の厚みを0に揃えていますが、3Dでは面内の検出器開口・フィルタ・逆投影も含むため、両者の応答が同じになるとは限りません。FDK・CBA・RRIのいずれも、設定スライス厚Tを幅とする矩形平均化を再構成画像に適用し、その後にSSPzを正規化します。平均化には必要な周辺断面も再構成して用います。FWHMをTに一致させる調整や実機のスライス厚の校正は行いません。','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both 2D and 3D use zero axial object extent; 3D additionally includes transaxial aperture, filtering and backprojection, so their responses need not coincide. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('表示は計算点を直線で結びます。最小値0・最大値1の正規化では、FBP由来の負の応答も基線移動されます。正規化前の点応答はExcelに保持し、最大値のみで正規化する表示も選べます。FWHMとFWTMは選択した正規化曲線から求めます。画像の濃淡は負値を黒にし、全画像共通の最大値まで表示します。','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('80～320列は計算可能な検出器構成です。列数だけで実機への妥当性を保証しません。ビュー数・チャネル幅・再構成z間隔を変えて数値依存性を確認してください。','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel width and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('点応答の定義・2Dとの関係','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('FDK：数式・座標・検証記録','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：点の位置位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は点の位置からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('Hsieh法：計算方法と適用範囲','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
@@ -3148,7 +3154,7 @@ function initializeFdkUi(initial){
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
-    if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の小さな球はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Small off-centre spheres are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
+    if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の点応答はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
 
     if(!runButton.disabled)status.textContent=fdkText('計算モデルを選択しました。条件を確認して計算してください。','Model selected. Check the conditions and calculate.');
   }
@@ -3158,11 +3164,11 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config),['coordinate','z relative to sphere center (mm); no FWHM alignment'],['ROI','disk centered on sphere, radius = sphere radius'],['raw_profile','mean reconstructed attenuation in disk ROI'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
-    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and ROI; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; sphere center voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
       for(const g of fdkShapeGroups){const a=g.analysis;
@@ -3198,7 +3204,7 @@ function runFdkSimulation(){
     else if(m.type==='cancelled'){setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'3D FBP',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
       let text=m.message;
-      if(text.startsWith('FDK_COVERAGE'))text=fdkText('この条件では、球の投影または局所画像に必要な連続360°のデータが検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。展開図・体軸方向モデルは引き続き選択できます。',text);
+      if(text.startsWith('FDK_COVERAGE'))text=fdkText('この条件では、点の投影または局所画像に必要な連続360°のデータが検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。展開図・体軸方向モデルは引き続き選択できます。',text);
       if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('幅を求める交点が計算範囲内にありません。SSPzの計算範囲を広げてください。',text);
       if(text.startsWith('CBA_COVERAGE'))text=fdkText('Hsieh法に必要な投影または対向する列のサンプルが、検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。',text);
       if(text.startsWith('CBA_VIEWS'))text=fdkText('Hsieh法では、1回転の取得ビュー数を偶数にしてください。',text);
@@ -3257,7 +3263,7 @@ function fdkDrawGeometry(canvas,r){
     limit=Math.max(limit,...values.map(Math.abs));curves.push(values);
   }
   limit=Math.ceil(limit/5)*5||5;
-  const a=fdkAxes(canvas,-limit,limit,angleExtent,0,'Row position relative to sphere (mm)','Source angle offset (°)','(a)',fdkAngleTicks);
+  const a=fdkAxes(canvas,-limit,limit,angleExtent,0,'Row position relative to object (mm)','Source angle offset (°)','(a)',fdkAngleTicks);
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();ctx.lineWidth=Math.max(.6,1.1- c.rows/800)*s;ctx.strokeStyle='#687780';ctx.globalAlpha=Math.max(.22,Math.min(.7,25/c.rows));
   for(const values of curves){ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(a.x(v),a.y(360*i/c.viewSamples)):ctx.moveTo(a.x(v),a.y(0)));ctx.stroke();}
   ctx.globalAlpha=1;ctx.strokeStyle='#d55e00';ctx.lineWidth=2*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),a.y(0));ctx.lineTo(a.x(0),a.y(angleExtent));ctx.stroke();ctx.restore();
@@ -3269,15 +3275,15 @@ function fdkDrawImage(canvas,r,coronal){
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)values.push(coronal?r.volume[((nz-1-j)*n+m)*n+i]:r.volume[(iz*n+(n-1-j))*n+i]);
   const peak=r.volume.reduce((m,v)=>Math.max(m,v),0),pixel=2*r.config.xyExtent/(n-1),xmin=-r.config.xyExtent-pixel/2,xmax=-xmin;
   const ymin=coronal?r.z[0]-r.config.zStep/2:xmin,ymax=-ymin;
-  const a=fdkAxes(canvas,xmin,xmax,ymin,ymax,'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const a=fdkAxes(canvas,xmin,xmax,ymin,ymax,'x relative to object (mm)',coronal?'z position (mm)':'y relative to object (mm)',coronal?'(d)':'(c)');
   const w=a.b.right-a.b.left,h=a.b.bottom-a.b.top,scale=Math.min(w/(xmax-xmin),h/(ymax-ymin));
   // Reuse the numeric frame but draw a square metric image in its own bounds.
   // Give x and y the same mm-to-pixel scale by extending the narrower axis.
   const rx=(xmax-xmin)/2,ry=(ymax-ymin)/2,cx=(a.b.left+a.b.right)/2,cy=(a.b.top+a.b.bottom)/2;
-  const physical=fdkAxes(canvas,-w/(2*scale),w/(2*scale),-h/(2*scale),h/(2*scale),'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const physical=fdkAxes(canvas,-w/(2*scale),w/(2*scale),-h/(2*scale),h/(2*scale),'x relative to object (mm)',coronal?'z position (mm)':'y relative to object (mm)',coronal?'(d)':'(c)');
   const temp=document.createElement('canvas');temp.width=nx;temp.height=ny;const tc=temp.getContext('2d'),im=tc.createImageData(nx,ny);
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
-  physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Attenuation: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
+  physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Point response: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
 function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(i)'});}
 function renderFdkResult(r){
@@ -3296,7 +3302,7 @@ function renderFdkResult(r){
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
-  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to sphere (mm)','Rebinned angle within pair sweep (°)','(g)');
+  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to object (mm)','Rebinned angle within pair sweep (°)','(g)');
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();
   const stride=Math.max(1,Math.ceil(audit.length/45));
   audit.forEach((q,j)=>{if(j%stride)return;for(let i=0;i<4;i++){
@@ -3377,7 +3383,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.1 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-17.2 / axial model ${MODEL_VERSION} / FDK 2026-09-17.2 / CBA 2026-09-17.2`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

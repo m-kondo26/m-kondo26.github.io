@@ -1,3 +1,7 @@
+## Ideal-point response (2026-09-17)
+
+The browser's 3D paths now use a unit-integral ideal point, an analytic detector-cell projection and fixed-point profile extraction. Sphere diameter and sphere-radius ROI averaging are removed from the browser calculation. Shared geometry and thickness inputs remain. See [POINT_RESPONSE_METHOD.md](POINT_RESPONSE_METHOD.md) for the derivation, comparison with the axial model, tests and interpretation limits. Historical finite-sphere API calculations remain reproducible but are not the current browser result. The sections below record earlier feature introductions; the 80/160/320 presets were subsequently removed in favor of the common row-count input.
+
 ## Diagram layout (2026-09-15)
 
 Overview and zoom diagrams now place a compact four-row legend below the axes. The 900 × 960 logical canvas preserves a 650-unit-high plotting field on screen and in 600-dpi PNG exports. Candidate coordinates, marker weights, color mapping and model calculations are unchanged.

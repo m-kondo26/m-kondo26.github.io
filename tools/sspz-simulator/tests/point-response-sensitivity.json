@@ -1,0 +1,193 @@
+{
+  "scope": "Point-model sensitivity examples at one start angle and T=1 mm; not convergence certification for all angles or manuscript conditions",
+  "reports": [
+    {
+      "rows": 4,
+      "radius": 102,
+      "phase": 0,
+      "cases": [
+        {
+          "viewSamples": 360,
+          "zStep": 0.05,
+          "cbaFwhm": 1.243527704853069,
+          "rriFwhm": 1.4093460138107883,
+          "cbaFwtm": 2.192998550439677,
+          "rriFwtm": 2.510733519339088
+        },
+        {
+          "viewSamples": 720,
+          "zStep": 0.05,
+          "cbaFwhm": 1.2416092600618827,
+          "rriFwhm": 1.4027945757638607,
+          "cbaFwtm": 2.1958625343460447,
+          "rriFwtm": 2.500187328529613
+        },
+        {
+          "viewSamples": 1440,
+          "zStep": 0.05,
+          "cbaFwhm": 1.2314740336855736,
+          "rriFwhm": 1.3746722545067107,
+          "cbaFwtm": 2.1657122820785863,
+          "rriFwtm": 2.4473261367300805
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.05,
+          "cbaFwhm": 1.2321258505788335,
+          "rriFwhm": 1.369829899913864,
+          "cbaFwtm": 2.161286705060061,
+          "rriFwtm": 2.431695747324054
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.025,
+          "cbaFwhm": 1.231365633674895,
+          "rriFwhm": 1.3692032122332431,
+          "cbaFwtm": 2.157531179998513,
+          "rriFwtm": 2.42941524628836
+        }
+      ]
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "phase": 0,
+      "cases": [
+        {
+          "viewSamples": 360,
+          "zStep": 0.05,
+          "cbaFwhm": 1.1048023141323462,
+          "rriFwhm": 1.218660108442534,
+          "cbaFwtm": 1.8751279701722785,
+          "rriFwtm": 2.120680755437636
+        },
+        {
+          "viewSamples": 720,
+          "zStep": 0.05,
+          "cbaFwhm": 1.1494273401845783,
+          "rriFwhm": 1.2698631524997415,
+          "cbaFwtm": 2.0289495741838426,
+          "rriFwtm": 2.3117746032524176
+        },
+        {
+          "viewSamples": 1440,
+          "zStep": 0.05,
+          "cbaFwhm": 1.1786190970854653,
+          "rriFwhm": 1.2962132062853278,
+          "cbaFwtm": 2.148560393062197,
+          "rriFwtm": 2.4563907908099263
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.05,
+          "cbaFwhm": 1.1631618095380927,
+          "rriFwhm": 1.2727928774682502,
+          "cbaFwtm": 2.1211716753449865,
+          "rriFwtm": 2.4167005562360147
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.025,
+          "cbaFwhm": 1.1622243820690288,
+          "rriFwhm": 1.2718353750776044,
+          "cbaFwtm": 2.118130158463435,
+          "rriFwtm": 2.414038959094438
+        }
+      ]
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "phase": 0,
+      "cases": [
+        {
+          "viewSamples": 360,
+          "zStep": 0.05,
+          "cbaFwhm": 1.0104286011225658,
+          "rriFwhm": 1.0284103781593688,
+          "cbaFwtm": 1.5896161485310398,
+          "rriFwtm": 1.6718255715179744
+        },
+        {
+          "viewSamples": 720,
+          "zStep": 0.05,
+          "cbaFwhm": 1.011038478475495,
+          "rriFwhm": 1.0281387014021945,
+          "cbaFwtm": 1.582354836582681,
+          "rriFwtm": 1.6650884934404093
+        },
+        {
+          "viewSamples": 1440,
+          "zStep": 0.05,
+          "cbaFwhm": 1.0106610507940261,
+          "rriFwhm": 1.0268117764566036,
+          "cbaFwtm": 1.5756598258183265,
+          "rriFwtm": 1.6595128658028626
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.05,
+          "cbaFwhm": 1.011328715604399,
+          "rriFwhm": 1.0275349010920631,
+          "cbaFwtm": 1.5771091931747472,
+          "rriFwtm": 1.6617834696912603
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.025,
+          "cbaFwhm": 1.0109596966340477,
+          "rriFwhm": 1.026995413465638,
+          "cbaFwtm": 1.5735248619498285,
+          "rriFwtm": 1.6574350491333458
+        }
+      ]
+    },
+    {
+      "rows": 160,
+      "radius": 250,
+      "phase": 0,
+      "cases": [
+        {
+          "viewSamples": 360,
+          "zStep": 0.05,
+          "cbaFwhm": 1.005497448976218,
+          "rriFwhm": 1.0101539790275864,
+          "cbaFwtm": 1.457396144365079,
+          "rriFwtm": 1.5274328969924214
+        },
+        {
+          "viewSamples": 720,
+          "zStep": 0.05,
+          "cbaFwhm": 1.008475160459371,
+          "rriFwhm": 1.0172826711761522,
+          "cbaFwtm": 1.5053634993055738,
+          "rriFwtm": 1.5829454306150996
+        },
+        {
+          "viewSamples": 1440,
+          "zStep": 0.05,
+          "cbaFwhm": 1.0101581999084044,
+          "rriFwhm": 1.0216323185228453,
+          "cbaFwtm": 1.533809995451092,
+          "rriFwtm": 1.6068077449623117
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.05,
+          "cbaFwhm": 1.0104189739210605,
+          "rriFwhm": 1.0217111406203214,
+          "cbaFwtm": 1.5286477232041387,
+          "rriFwtm": 1.6007512328241789
+        },
+        {
+          "viewSamples": 2400,
+          "zStep": 0.025,
+          "cbaFwhm": 1.0101303676653353,
+          "rriFwhm": 1.0212882570409627,
+          "cbaFwtm": 1.5242139363630716,
+          "rriFwtm": 1.5988216596218674
+        }
+      ]
+    }
+  ]
+}

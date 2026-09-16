@@ -2,7 +2,7 @@
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
 import {fdkConfig,fdkArcProjection,fdkRamp,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
-export const CBA_VERSION='2026-09-15.3';
+export const CBA_VERSION='2026-09-17.2';
 const CBA_TAU=2*Math.PI;
 export function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');
@@ -102,17 +102,18 @@ function cbaResult(c,g,volume,counts,zObject,kind,acquisition,profileOnly=false)
     for(let iz=0;iz<col.length;iz++)averagedVolume[iz*nxy+j]=col[iz];
   }
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  if(!(max>baseline))throw Error('CBA_DOMAIN: no positive reconstructed sphere');
+  if(!(max>baseline))throw Error('CBA_DOMAIN: no positive reconstructed object');
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(outputZ,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('CBA_DOMAIN: increase z extent to contain width crossings');
   return {config:c,x:g.x,y:g.y,z,volume:profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,acquisition,
     model:{version:CBA_VERSION,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'Matched row-to-row interpolation (RRI)',
-      reference:'Hsieh et al. 2007; DOI 10.1117/1.2746866; Eqs. 4-6',detector:'same cylindrical sphere projections for RRI and CBA',
+      reference:'Hsieh et al. 2007; DOI 10.1117/1.2746866; Eqs. 4-6',detector:'same cylindrical projections for RRI and CBA',
       rebinning:'rowwise fan-to-parallel; linear acquired view and channel interpolation; row unchanged',
       filter:'unwindowed discrete parallel Ram-Lak; cone cosine per row; full nonzero input support',
       interpolation:kind==='cba'?'normalized distance-quadratic acquired-row weights; Eq. 6 in the four-sample interior':'normalized distance-linear acquired-row weights; conventional RRI in the four-sample interior',
-      angularWeight:'one paired full turn per slice; no overscan or adaptive cone weighting',object:'finite sphere; no deconvolution',normalization:c.normalization,
+      angularWeight:'one paired full turn per slice; no overscan or adaptive cone weighting',object:c.objectModel==='point'?'unit-integral Dirac point; exact detector-aperture integral':'finite sphere; no deconvolution',
+      profileReadout:c.objectModel==='point'?'fixed transverse point through object location; axial section of 3D PSF':'mean in disk ROI of sphere radius',normalization:c.normalization,
       edgePolicy:c.edgePolicy,edgeExtension:'unavailable acquired row coefficients are zero; normalize available distance weights; not the full published scanner algorithm',
       extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,thicknessMapping:c.thicknessMapping??'explicit-average-width',axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',
       fullTurnCoverage:c.edgePolicy==='strict',pairedAngularCoverage:true,profileOnly,scientificScope:'paper-based approximate reference; not TCOT or a validated commercial scanner'}};
@@ -129,7 +130,7 @@ export async function reconstructCba(input={},hooks={}){
     if(raws.has(v))return raws.get(v);
     const beta=c.phase+v*g.db,R=c.sourceRadius,a=c.sphereDiameter/2,L=Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
     const wc=R*(zObject-c.feed*v/c.viewSamples)/L,wa=(R+Math.abs(wc))*a/(L-a);
-    if(c.edgePolicy==='strict'&&Math.abs(wc)+wa>=c.rows*c.rowWidth/2)throw Error('CBA_COVERAGE: acquired sphere projection is truncated');
+    if(c.edgePolicy==='strict'&&Math.abs(wc)+wa>=c.rows*c.rowWidth/2)throw Error('CBA_COVERAGE: acquired object projection is truncated');
     const p=fdkArcProjection(c,beta,zObject);raws.set(v,p);rawFirst=Math.min(rawFirst,v);rawLast=Math.max(rawLast,v);return p;
   };
   const patchAt=v=>{
@@ -189,7 +190,7 @@ export async function reconstructCba(input={},hooks={}){
   const r=cbaResult(c,g,volume,counts,zObject,'cba',acquisition,hooks.profileOnly),reference=cbaResult(c,g,rriVolume,counts,zObject,'rri',acquisition,hooks.profileOnly);
   const center=((r.z.length-1)/2*n+(n-1)/2)*n+(n-1)/2;
   const weightAudit=hooks.profileOnly?null:{
-    definition:'Rebinned filtered row coefficients at the transverse sphere centre, integrated over the image-domain axial averaging window; not whole-SSP or raw-projection contributions.',
+    definition:'Rebinned filtered row coefficients at the transverse object centre, integrated over the image-domain axial averaging window; not whole-SSP or raw-projection contributions.',
     coordinate:'parallel rebinned angle theta; unwrapped view identity retained',axialAverageMm:c.axialAverageMm,db:g.db,
     centerValue:r.volume[center],referenceCenterValue:reference.volume[center],samples:[...weightMap.values()]};
   return {...r,reference,sampleAudit,weightAudit};

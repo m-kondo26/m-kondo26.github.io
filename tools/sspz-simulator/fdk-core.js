@@ -1,25 +1,29 @@
 // Full-turn FDK on a helix, with acquired cylindrical detector data rebinned
 // to a virtual flat detector. Sources and assumptions: FDK_METHOD.md.
 // A declared image-domain rectangular average follows FBP; no target-width fit or scanner-specific thickness kernel.
-export const FDK_VERSION = '2026-09-16.1';
+export const FDK_VERSION = '2026-09-17.2';
 export const FDK_DEFAULTS = Object.freeze({
   rows:80,rowWidth:.5,beamPitch:.5,sourceRadius:600,radius:100,
   viewSamples:360,phase:0,state:0,sphereDiameter:.65,channelWidth:.25,
   apertureSamples:8,xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,
-  phaseCount:1,normalization:'minmax',axialAverageMm:0,
+  phaseCount:1,normalization:'minmax',axialAverageMm:0,objectModel:'sphere',
 });
 const FDK_TAU=2*Math.PI;
 export function fdkConfig(input={}) {
   const c={...FDK_DEFAULTS,...input};
+  if(!['point','sphere'].includes(c.objectModel))throw Error('Unknown object model');
+  // Legacy numerical API remains explicit/reproducible. The browser selects
+  // point. In that branch these obsolete sphere controls have no effect.
+  if(c.objectModel==='point'){c.sphereDiameter=0;c.apertureSamples=0;}
   if(c.thicknessMapping==='configured-rectangular'){
     if(!Number.isFinite(c.sliceThicknessMm)||c.sliceThicknessMm<=0||c.sliceThicknessMm>20)throw Error('THICKNESS: configured thickness must be > 0 and <= 20 mm');
     c.axialAverageMm=c.sliceThicknessMm;
   }
-  for(const k of Object.keys(FDK_DEFAULTS)) if(k!=='normalization'&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
+  for(const k of Object.keys(FDK_DEFAULTS)) if(!['normalization','objectModel'].includes(k)&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
   for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
-    if(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi)throw Error(`${k}: integer ${lo}–${hi} required`);
+    if(!(c.objectModel==='point'&&k==='apertureSamples')&&(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi))throw Error(`${k}: integer ${lo}–${hi} required`);
   for(const [k,lo,hi] of [['axialAverageMm',0,20],['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
-    if(c[k]<lo||c[k]>hi)throw Error(`${k}: ${lo}–${hi} required`);
+    if(!(c.objectModel==='point'&&k==='sphereDiameter')&&(c[k]<lo||c[k]>hi))throw Error(`${k}: ${lo}–${hi} required`);
   if(c.xySamples%2!==1)throw Error('xySamples must be odd');
   if(c.radius+Math.SQRT2*c.xyExtent>=c.sourceRadius||c.xyExtent<c.sphereDiameter/2)throw Error('Local volume must contain the sphere and remain inside the source orbit');
   if(!['minmax','peak'].includes(c.normalization))throw Error('Unknown normalization');
@@ -63,9 +67,33 @@ export function fdkWidth(z,y,level) {
   const right=z[r-1]+(level-y[r-1])*(z[r]-z[r-1])/(y[r]-y[r-1]);
   return {width:right-left,left,right};
 }
+// Cell-averaged projection of a unit-integral Cartesian Dirac point. This is
+// the analytic zero-size limit, not a small sphere or a voxel phantom.
+// In X=S+lambda*d(gamma,w), |J|=lambda^2 R^2 and dl=|d| d lambda.
+// Thus the delta mass in detector (gamma,w) is hypot(R,w)/L^2.
+// See POINT_RESPONSE_METHOD.md for the derivation and boundary convention.
+export function fdkPointProjection(c,beta,zObject){
+  const R=c.sourceRadius,L=Math.hypot(R*Math.cos(beta)-c.radius,R*Math.sin(beta));
+  const gamma=Math.atan2(-c.radius*Math.sin(beta),R-c.radius*Math.cos(beta));
+  const w=R*(zObject-c.feed*(beta-c.phase)/FDK_TAU)/L,dg=c.channelWidth/R;
+  const cells=(coordinate,spacing,count)=>{
+    const edge=coordinate/spacing+count/2,nearest=Math.round(edge);
+    // The symmetric delta limit shares mass on exact aperture boundaries.
+    const entries=Math.abs(edge-nearest)<=1e-10?[[nearest-1,.5],[nearest,.5]]:[[Math.floor(edge),1]];
+    return entries.filter(([i])=>i>=0&&i<count);
+  };
+  const js=cells(gamma,dg,c.channels),ks=cells(w,c.rowWidth,c.rows);
+  if(!js.length||!ks.length)return {j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0)};
+  const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
+  const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
+  const signal=Math.hypot(R,w)/(L*L*dg*c.rowWidth);
+  for(const [j,a] of js)for(const [k,b] of ks)data[(k-k0)*width+j-j0]=signal*a*b;
+  return {j0,j1,k0,k1,width,height,data};
+}
 // Store only the analytically bounded nonzero sphere projection. Missing
 // entries are exact air measurements, not a cropped object or missing rays.
 export function fdkArcProjection(c,beta,zObject) {
+  if(c.objectModel==='point')return fdkPointProjection(c,beta,zObject);
   const R=c.sourceRadius,cb=Math.cos(beta),sb=Math.sin(beta),zs=c.feed*(beta-c.phase)/FDK_TAU,a=c.sphereDiameter/2;
   const L=Math.hypot(R*cb-c.radius,R*sb),gc=Math.atan2(-c.radius*sb,R-c.radius*cb);
   const ga=Math.asin(a/L),wc=R*(zObject-zs)/L;
@@ -169,7 +197,7 @@ export function fdkCheckCoverage(c,g,zObject) {
     const beta=c.phase+view*g.db;
     const cb=Math.cos(beta),sb=Math.sin(beta),L=Math.hypot(R*cb-c.radius,R*sb),zs=c.feed*(beta-c.phase)/FDK_TAU;
     const wc=R*(zObject-zs)/L,wa=R*a/(L-a)+Math.abs(wc)*a/(L-a);
-    if(Math.abs(wc)+wa>(c.rows/2)*c.rowWidth)throw Error('FDK_COVERAGE: the sphere projection is axially truncated. Reduce pitch or z extent; this full-turn FDK does not extrapolate missing data.');
+    if(Math.abs(wc)+wa>(c.rows/2)*c.rowWidth)throw Error('FDK_COVERAGE: the object projection is axially truncated. Reduce pitch or z extent; this full-turn FDK does not extrapolate missing data.');
     for(let iz=0;iz<g.z.length;iz++)if(view>=g.starts[iz]&&view<g.starts[iz]+c.viewSamples){
       for(const x of [g.x[0],g.x.at(-1)])for(const y of [g.y[0],g.y.at(-1)]){
         const q=fdkCoordinates(c,beta,x,y,g.z[iz]);
@@ -224,15 +252,16 @@ export async function reconstructFdk(input={},hooks={}) {
     for(let iz=0;iz<col.length;iz++)averagedVolume[iz*nxy+j]=col[iz];
   }
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  if(!(max>baseline))throw Error('No positive reconstructed sphere signal');
+  if(!(max>baseline))throw Error('No positive reconstructed object signal');
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),z=Float64Array.from(outputZ,v=>v-zObject);
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('FDK_DOMAIN: increase z extent to enclose both width thresholds');
-  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the transverse sphere centre, integrated over the image-domain axial averaging window; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,axialAverageMm:c.axialAverageMm,centerValue:averagedVolume[((outputZ.length-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:[...weightMap.values()]};
+  const weightAudit=hooks.profileOnly?null:{definition:'Virtual flat filtered row interpolation at the transverse object centre, integrated over the image-domain axial averaging window; channel interpolation included in filteredValue, FDK geometricWeight and db/2 applied separately; not raw detector rows or whole-SSP contributions.',coordinate:'source angle beta; virtual flat row index',db:g.db/2,axialAverageMm:c.axialAverageMm,centerValue:averagedVolume[((outputZ.length-1)/2*n+(n-1)/2)*n+(n-1)/2],samples:[...weightMap.values()]};
   return {config:c,x:g.x,y:g.y,z,volume:hooks.profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,weightAudit,
     acquisition:{firstView:g.first,lastViewExclusive:g.last,viewsPerSlice:c.viewSamples,paddedReconstructionSlices:g.z.length},
     model:{version:FDK_VERSION,algorithm:'full-turn helical FDK approximation',detector:'source-centered cylindrical; bilinear rebin to virtual flat detector',
-      object:'unit-attenuation finite sphere; no deconvolution',filter:'unwindowed discrete Ram-Lak; full nonzero input support',
+      object:c.objectModel==='point'?'unit-integral Dirac point; exact detector-aperture integral':'unit-attenuation finite sphere; no deconvolution',
+      profileReadout:c.objectModel==='point'?'fixed transverse point through object location; axial section of 3D PSF':'mean in disk ROI of sphere radius',filter:'unwindowed discrete Ram-Lak; full nonzero input support',
       interpolation:'bilinear rebin and backprojection; native linear width crossings',normalization:c.normalization,
       extraAxialAveraging:c.axialAverageMm>0,axialAverageMm:c.axialAverageMm,thicknessMapping:c.thicknessMapping??'explicit-average-width',axialAverageDefinition:'image-domain normalized rectangular mean; piecewise-linear z integration before profile normalization; reconstructed padding',fullTurnCoverage:true,scientificScope:'reference implementation; not a validated scanner-specific reconstruction or exact wide-cone inversion'}};
 }

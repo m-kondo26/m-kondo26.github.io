@@ -2926,7 +2926,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
-  document.getElementById('fdk-weight-scope').textContent=fdkText('','Weights apply to filtered data at the transverse sphere centre, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
+  document.getElementById('fdk-weight-scope').textContent=fdkText('','Weights apply to filtered data at the transverse object point, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Geometry, weights, SSPz and images now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
@@ -3052,12 +3052,12 @@ async function exportFdkWorkflowCanvas(id){
 
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
-const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,sphereDiameter:.65,channelWidth:.25,apertureSamples:8,
+const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,objectModel:'point',channelWidth:.25,
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
-const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
@@ -3070,6 +3070,7 @@ function readFdkParams(){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
   }
   out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
+  out.objectModel='point';
   out.thicknessMapping='configured-rectangular';
   out.phaseCount=360;
   return out;
@@ -3084,6 +3085,8 @@ function fdkParamsFromUrl(q){
   if(out.computationModel!=='fdk')return out;
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.phaseCount=360;
+  out.legacySphereInput=q.get('fdk_objectModel')!=='point';
+  out.objectModel='point';
   return out;
 }
 function initializeFdkUi(initial){
@@ -3092,17 +3095,15 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   const num=(k,ja,en,min,max,step,help='')=>`<label>${fdkText(ja,en)}<input id="fdk-${k}" name="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${FDK_UI_FIELDS[k]}"${help?` aria-describedby="fdk-${k}-help"`:''}>${help?`<small class="field-help" id="fdk-${k}-help">${help}</small>`:''}</label>`;
   const sel=(k,ja,en,options)=>`<label>${fdkText(ja,en)}<select id="fdk-${k}" name="${k}">${options.map(([v,t])=>`<option value="${v}" ${v===FDK_UI_FIELDS[k]?'selected':''}>${t}</option>`).join('')}</select></label>`;
-  controls.innerHTML=`<p class="section-summary">${fdkText('','The shared controls above apply. Additional settings below define the 3D FBP response to a finite sphere.')}</p>
+  controls.innerHTML=`<p class="section-summary">${fdkText('','Shared controls apply. The object is an ideal point, with no finite sphere diameter.')}</p>
   <div class="parameter-grid">
   ${sel('method','','3D reconstruction method',[['fdk',fdkText('','Original helical FDK reference')],['hsieh',fdkText('','Hsieh conjugate interpolation (CBA vs RRI)')]])}
   ${sel('edgePolicy','','Hsieh detector-edge treatment',[['available',fdkText('','Normalize acquired rows')],['strict',fdkText('','Require all four row samples')]])}
   </div>
-  <details class="reading-details"><summary>${fdkText('','Finite-sphere model and numerical settings')}</summary>
+  <details class="reading-details"><summary>${fdkText('','3D numerical and image-display settings')}</summary>
   <div class="parameter-grid">
-  <input id="fdk-axialAverageMm" type="hidden" value="1">
-  ${num('sphereDiameter','','Projected sphere diameter (mm)',.1,10,.01,fdkText('','Sets the object size for projections and the ROI size for profile extraction.'))}
+  <input id="fdk-axialAverageMm" type="hidden" value="1"><input id="fdk-objectModel" type="hidden" value="point">
   ${num('channelWidth','','Transaxial channel width at isocenter (mm)',.05,1,.05)}
-  ${sel('apertureSamples','','Aperture quadrature per direction',[[4,'4 × 4'],[8,'8 × 8'],[16,'16 × 16'],[32,'32 × 32']])}
   ${num('zStep','','Reconstruction z spacing (mm)',.01,.2,.01)}
   ${num('zExtent','','SSPz calculation half-range (mm)',1,20,.5,fdkText('','A value of 3 covers −3 to +3 mm. This is the profile interval, including its tails, rather than slice thickness.'))}
   ${num('xyExtent','','Local image half-range (mm)',.5,10,.5)}
@@ -3113,21 +3114,26 @@ function initializeFdkUi(initial){
   ${sel('normalization','','Normalization for display and widths', [['minmax',fdkText('','Minimum 0, maximum 1')],['peak',fdkText('','Peak 1 (retain negative values)')]])}
   </div><p class="model-note">${fdkText('','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
   form.append(controls);
+  if(initial.computationModel==='fdk'&&(initial.legacySphereInput||initial.objectModel!=='point')){
+    const note=document.createElement('p');note.id='fdk-point-migration';note.className='model-note';
+    note.textContent=fdkText('','Older settings loaded. Calculations now use an ideal point, without sphere diameter. Results differ from the former finite-sphere response.');controls.prepend(note);
+  }
   const syncHsiehControls=syncFdkMethodControls;
   document.getElementById('fdk-method').addEventListener('change',syncHsiehControls);
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=initial[k]??v;
+  document.getElementById('fdk-objectModel').value='point';
   document.getElementById('fdk-phaseCount').value=360;
   syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('','From acquired geometry to 3D FBP')}</h2></div>
-  <p class="section-summary">${fdkText('','Reconstruct local 3D images and SSPz from sphere projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
+  <p class="section-summary">${fdkText('','Reconstruct local 3D images and model SSPz from ideal-point projections. The Hsieh path compares quadratic CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')}</p>
   <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('','Sphere-derived SSPz')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('','Axial image through the sphere center')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
-  <article class="chart-card"><h3>${fdkText('','Coronal image through the sphere center')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
-  </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('','The sphere center is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
+  <article class="chart-card"><h3>${fdkText('','Model SSPz: point response')}</h3><canvas id="fdk-profile" width="1000" height="700"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('','Axial image through the object point')}</h3><canvas id="fdk-axial" width="900" height="800"></canvas></article>
+  <article class="chart-card"><h3>${fdkText('','Coronal image through the object point')}</h3><canvas id="fdk-coronal" width="900" height="800"></canvas></article>
+  </div><div id="fdk-difference-wrap" class="chart-card" hidden><h3>${fdkText('','Each SSPz minus the mean SSPz')}</h3><canvas id="fdk-difference" width="1200" height="650"></canvas><p>${fdkText('','The object point is the common origin; the pointwise mean is subtracted. Profiles are not aligned by their FWHM midpoints.')}</p></div>
   <div id="fdk-shape-wrap" class="chart-card shape-card" hidden>
     <h3>${fdkText('','SSPz shape-variation distribution')}</h3>
     <p>${fdkText('','Align each native FWHM midpoint to zero and overlay deviations from each method’s own mean. Double-headed arrows show the mean of individual FWHMs.')}</p>
@@ -3137,8 +3143,8 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a uniform finite sphere. Each axial profile sample is the mean of a centered circular ROI with the sphere radius. Bead deconvolution, noise, focal-spot size, septa and scanner-specific weights are excluded. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw ROI values are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, aperture quadrature, channel width and image grids.')}</p><p><a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
-  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the sphere center. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both 2D and 3D use zero axial object extent; 3D additionally includes transaxial aperture, filtering and backprojection, so their responses need not coincide. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel width and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
@@ -3148,7 +3154,7 @@ function initializeFdkUi(initial){
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
-    if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Small off-centre spheres are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
+    if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
 
     if(!runButton.disabled)status.textContent=fdkText('','Model selected. Check the conditions and calculate.');
   }
@@ -3158,11 +3164,11 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config),['coordinate','z relative to sphere center (mm); no FWHM alignment'],['ROI','disk centered on sphere, radius = sphere radius'],['raw_profile','mean reconstructed attenuation in disk ROI'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
-    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and ROI; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; sphere center voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    if(r.reference){sheets[0][1].push(['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
       for(const g of fdkShapeGroups){const a=g.analysis;
@@ -3257,7 +3263,7 @@ function fdkDrawGeometry(canvas,r){
     limit=Math.max(limit,...values.map(Math.abs));curves.push(values);
   }
   limit=Math.ceil(limit/5)*5||5;
-  const a=fdkAxes(canvas,-limit,limit,angleExtent,0,'Row position relative to sphere (mm)','Source angle offset (°)','(a)',fdkAngleTicks);
+  const a=fdkAxes(canvas,-limit,limit,angleExtent,0,'Row position relative to object (mm)','Source angle offset (°)','(a)',fdkAngleTicks);
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();ctx.lineWidth=Math.max(.6,1.1- c.rows/800)*s;ctx.strokeStyle='#687780';ctx.globalAlpha=Math.max(.22,Math.min(.7,25/c.rows));
   for(const values of curves){ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(a.x(v),a.y(360*i/c.viewSamples)):ctx.moveTo(a.x(v),a.y(0)));ctx.stroke();}
   ctx.globalAlpha=1;ctx.strokeStyle='#d55e00';ctx.lineWidth=2*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),a.y(0));ctx.lineTo(a.x(0),a.y(angleExtent));ctx.stroke();ctx.restore();
@@ -3269,15 +3275,15 @@ function fdkDrawImage(canvas,r,coronal){
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)values.push(coronal?r.volume[((nz-1-j)*n+m)*n+i]:r.volume[(iz*n+(n-1-j))*n+i]);
   const peak=r.volume.reduce((m,v)=>Math.max(m,v),0),pixel=2*r.config.xyExtent/(n-1),xmin=-r.config.xyExtent-pixel/2,xmax=-xmin;
   const ymin=coronal?r.z[0]-r.config.zStep/2:xmin,ymax=-ymin;
-  const a=fdkAxes(canvas,xmin,xmax,ymin,ymax,'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const a=fdkAxes(canvas,xmin,xmax,ymin,ymax,'x relative to object (mm)',coronal?'z position (mm)':'y relative to object (mm)',coronal?'(d)':'(c)');
   const w=a.b.right-a.b.left,h=a.b.bottom-a.b.top,scale=Math.min(w/(xmax-xmin),h/(ymax-ymin));
   // Reuse the numeric frame but draw a square metric image in its own bounds.
   // Give x and y the same mm-to-pixel scale by extending the narrower axis.
   const rx=(xmax-xmin)/2,ry=(ymax-ymin)/2,cx=(a.b.left+a.b.right)/2,cy=(a.b.top+a.b.bottom)/2;
-  const physical=fdkAxes(canvas,-w/(2*scale),w/(2*scale),-h/(2*scale),h/(2*scale),'x relative to sphere (mm)',coronal?'z position (mm)':'y relative to sphere (mm)',coronal?'(d)':'(c)');
+  const physical=fdkAxes(canvas,-w/(2*scale),w/(2*scale),-h/(2*scale),h/(2*scale),'x relative to object (mm)',coronal?'z position (mm)':'y relative to object (mm)',coronal?'(d)':'(c)');
   const temp=document.createElement('canvas');temp.width=nx;temp.height=ny;const tc=temp.getContext('2d'),im=tc.createImageData(nx,ny);
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
-  physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Attenuation: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
+  physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Point response: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
 function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(i)'});}
 function renderFdkResult(r){
@@ -3296,7 +3302,7 @@ function renderFdkResult(r){
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
-  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to sphere (mm)','Rebinned angle within pair sweep (°)','(g)');
+  const a=fdkAxes(canvas,-limit,limit,0,180,'Sample z relative to object (mm)','Rebinned angle within pair sweep (°)','(g)');
   const {ctx,s}=a;ctx.save();ctx.beginPath();ctx.rect(a.b.left,a.b.top,a.b.right-a.b.left,a.b.bottom-a.b.top);ctx.clip();
   const stride=Math.max(1,Math.ceil(audit.length/45));
   audit.forEach((q,j)=>{if(j%stride)return;for(let i=0;i<4;i++){
@@ -3377,7 +3383,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.1 / axial model ${MODEL_VERSION} / FDK 2026-09-16.1 / CBA 2026-09-15.3`;
+versionLabel.textContent = `Web build 2026-09-17.2 / axial model ${MODEL_VERSION} / FDK 2026-09-17.2 / CBA 2026-09-17.2`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
