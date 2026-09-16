@@ -11,7 +11,7 @@ globalThis.SSPZShapeDisplay = (() => {
     return out;
   }
   function fromFdk(result) {
-    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [['FDK', result, [1, 0, 0]]];
+    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[result.model?.kind==='rri'?'RRI':'FDK', result, [1, 0, 0]]];
     return groups.map(([name, r, rgb]) => {
       const z = r.z, count = r.profiles.length, values = new Float64Array(z.length * count);
       r.profiles.forEach((p, i) => values.set(p.profile, i * z.length));

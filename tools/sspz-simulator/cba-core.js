@@ -2,7 +2,7 @@
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
 import {fdkConfig,fdkArcProjection,fdkRamp,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
-export const CBA_VERSION='2026-09-17.4';
+export const CBA_VERSION='2026-09-17.5';
 const CBA_TAU=2*Math.PI;
 export function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');
@@ -107,7 +107,8 @@ function cbaResult(c,g,volume,counts,zObject,kind,acquisition,profileOnly=false)
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('CBA_DOMAIN: increase z extent to contain width crossings');
   return {config:c,x:g.x,y:g.y,z,volume:profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,acquisition,
-    model:{version:CBA_VERSION,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'Matched row-to-row interpolation (RRI)',
+    coordinateSystem:'rebinned-theta',
+    model:{version:CBA_VERSION,kind,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'RRI-equivalent linear interpolation',
       reference:'Hsieh et al. 2007; DOI 10.1117/1.2746866; Eqs. 4-6',detector:'same cylindrical projections for RRI and CBA',
       rebinning:'rowwise fan-to-parallel; linear acquired view and channel interpolation; row unchanged',
       filter:'unwindowed discrete parallel Ram-Lak; cone cosine per row; full nonzero input support',
@@ -206,4 +207,27 @@ export async function reconstructCbaSeries(input,hooks={}){
   }
   const series=(r,ps)=>{const mean=Float64Array.from(r.z,(_,i)=>ps.reduce((s,p)=>s+p.profile[i],0)/ps.length);return {...r,profiles:ps,mean,meanDifference:ps.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]))};};
   return {...series(selected,profiles),reference:series(selected.reference,referenceProfiles)};
+}
+
+// Promote the existing linear branch without changing its numerical operator.
+// Keep the paired API above for historical reproducibility. Public RRI outputs
+// contain only linear weights, linear-response images and linear SSP profiles.
+function selectRriResult(paired){
+  const r=paired.reference;
+  const sampleAudit=paired.sampleAudit.map(({rriWeights,rriWeightedDistance,...sample})=>({
+    ...sample,weights:rriWeights,weightedDistance:rriWeightedDistance
+  }));
+  let weightAudit=null;
+  if(paired.weightAudit){
+    const {referenceCenterValue,samples,...audit}=paired.weightAudit;
+    weightAudit={...audit,centerValue:referenceCenterValue,
+      samples:samples.map(({referenceWeight,...sample})=>({...sample,weight:referenceWeight}))};
+  }
+  return {...r,config:{...r.config,method:'rri'},sampleAudit,weightAudit};
+}
+export async function reconstructRri(input={},hooks={}){
+  return selectRriResult(await reconstructCba(input,hooks));
+}
+export async function reconstructRriSeries(input={},hooks={}){
+  return selectRriResult(await reconstructCbaSeries(input,hooks));
 }

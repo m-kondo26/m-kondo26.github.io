@@ -1,4 +1,4 @@
-# Hsieh conjugate backprojection and row-to-row interpolation
+# RRI-equivalent linear interpolation and historical CBA comparison
 
 **CBA** means **conjugate backprojection algorithm**: conjugate projections
 are combined during backprojection and their detector-row samples are
@@ -14,7 +14,11 @@ special case. The linear result matches conventional RRI where both rows
 of both conjugate brackets are acquired. The optional detector-edge
 extension described below is shared by both results.
 
-Version 2026-09-17.2. Select **3D FBP**, then **Hsieh conjugate interpolation (CBA vs RRI)**. Both results are computed from the same ideal-point projections in the browser. The acquired-row boundary option adds the four-row, pitch-0.875 manuscript configuration. The 64-, 80-, 160- and 320-row configurations and the original FDK path remain available.
+Version **2026-09-17.5**. The public 3D default is **RRI-equivalent linear interpolation**. The study purpose is to trace candidate geometry through a fixed, readily interpretable distance–weight rule, not to compare CBA with RRI. This choice does not imply that the two reconstructed responses are equal. The public diagrams, coefficients, images, 360-angle SSPz series, shape distributions and all exports use the linear branch. The original FDK reference remains optional.
+
+The paired CBA/RRI equations and low-level APIs below are retained for reproducibility. `reconstructRri` and `reconstructRriSeries` promote the actual former linear reference, including its volume and both weight audits. They do not relabel the CBA response. The numerical RRI operator is unchanged from version 2026-09-17.4. The single public simulation channel is red; the previous paired-display blue RRI channel is no longer used. Row colors in unwrapped diagrams retain their detector-row meaning.
+
+URL schema v10 saves `fdk_method=rri`. Old `fdk_method=hsieh` URLs are migrated with a visible notice that the former primary CBA result has been replaced by RRI. The acquired-row edge extension remains explicit, so the adopted name is RRI-equivalent rather than an unqualified claim to reproduce every conventional RRI implementation. The 4-, 64-, 80-, 160- and 320-row configurations remain computationally supported.
 
 ## Sources and implemented scope
 
@@ -72,13 +76,13 @@ The browser reads an axial section through the reconstructed ideal point at its 
 
 T = 1 or 5 mm is an explicit, uncalibrated comparison to the manuscript's nominal thickness conditions. It does not prescribe FWHM = T, implement a commercial thickness kernel, or remove detector/aperture/reconstruction broadening. In particular, a sufficiently broad rectangular average can make FWHM nearly equal to its own width even when the unsmoothed reconstructed response changes. No deconvolution or target-FWHM adjustment is performed. Native linear crossings determine widths after the selected normalization. Means and SDs summarize individual FWHMs. Both methods retain unnormalized response values and their separate normalization baselines.
 
-The browser automatically reconstructs 360 start angles at one-degree increments from the configured base angle, holding the object z position fixed. Old URLs requesting one or a few phases are promoted to this complete sweep. This count differs from acquired views per turn. The original axial model instead sweeps object position through one table-feed interval; its state variable is not relabeled as a CBA source angle.
+The browser automatically reconstructs 360 start angles at one-degree increments from the configured base angle, holding the object z position fixed. Old URLs requesting one or a few phases are promoted to this complete sweep. This count differs from acquired views per turn. The original axial model instead sweeps object position through one table-feed interval; its state variable is not relabeled as a 3D source start angle.
 
 The inspector links the selected angle to the candidate diagram, actual interpolation weights, native SSPz, width cursor and reconstructed images. Full images are recomputed for the inspected angle using the same model and checked against the saved response profile; the first image is not reused for other angles. The full-series overlay, width sequence and shape distribution remain available.
 
 Candidate trajectories use the rebinned parallel angle theta, not the acquired fan-beam source angle beta. Samples are identified by unwrapped rebinned view and acquired row. The display folds angles into 0–360 degrees while retaining different-turn samples separately. Background curves show complete geometric turns, clipped at the plot boundaries, independently of the selected-weight support. These curves provide geometric context; extending them does not add acquired samples or reconstruction weights. For a nonzero axial image average, weights for the transverse object-centre location are accumulated across the averaging window using the exact coefficients of the same piecewise-linear integral used in reconstruction. Multiplying the recorded coefficients by their filtered values and angular factor reproduces that centre image sample. This is a trace of filtered row weights, not total raw-cell contributions to the entire SSPz or all ROI voxels. Fixed-size markers use row colour and fill intensity to show weight; at most about 72 acquired angular positions per turn are drawn. Exports retain every sample.
 
-Excel and CSV contain both methods' unrounded profiles for all angles. Excel also contains both width sequences, each method's mean differences, aligned shape data and the selected angle's window-integrated weights. The legacy Sample_weights sheet explicitly refers to the first-angle unaveraged centre audit; Selected_weights refers to the inspected angle and chosen image-average width. JSON stores the inspected angle's full volumes and weight audit. PNG exports use the same selected angle and renderers as the screen.
+Excel and CSV contain the selected method's unrounded profiles for all 360 angles. Excel also contains its width sequence, mean differences, aligned shape data and the selected angle's window-integrated weights. The Sample_weights sheet explicitly refers to the first-angle unaveraged centre audit; Selected_weights refers to the inspected angle and chosen image-average width. JSON stores the inspected angle's selected-method volume and weight audit, without a second CBA/RRI result. PNG exports use the same selected angle and renderers as the screen.
 
 ## Verification
 
@@ -86,6 +90,9 @@ Excel and CSV contain both methods' unrounded profiles for all angles. Excel als
 
 `node tests/fdk-workflow.mjs` additionally checks traced weights against reconstructed centre values for 0, 0.63, 1 and 5 mm image averages, unique view/row identities, full-image versus ROI equivalence, selected-angle versus batch-profile identity and cancellation. UI integration changes do not change the reconstruction equations or establish new physical validation.
 
-These checks establish implementation consistency and the reported numerical behaviour, not validation of a commercial scanner. In particular, the paper's measured foil widths of 0.85/0.67 mm are not target values for this finite-sphere simulation. Numerical sensitivity and wide-cone approximation limits must be considered when interpreting small differences.
+These checks establish implementation consistency and the reported numerical behaviour, not validation of a commercial scanner. In particular, the paper's measured foil widths of 0.85/0.67 mm are not target values for this ideal-point model. Numerical sensitivity and wide-cone approximation limits must be considered when interpreting small differences.
 
 For the recorded 0.65-mm sphere at a 100-mm radius, 0.5-mm rows and pitch 0.5, changing 720 to 1440 views changed normalized FWHM by less than 0.003 mm in the 80/160/320-row cases. This is a limited sensitivity observation: the raw peak still changes substantially with view count because rebinning interpolates a small object's angular samples. It does not establish convergence of absolute attenuation, all profile features or other conditions. Raw and normalized profiles must not be confused when judging convergence.
+
+
+`tests/rri-primary.mjs` checks exact identity with the retained linear branch for raw profiles, normalized profiles, widths and full volumes, independent linear-distance coefficients including edge availability, window-integrated weight closure, and selected/series/profile-only agreement. It covers 4, 80, 160 and 320 rows. `tests/fdk-diagram-trajectories.mjs` additionally checks RRI rebinned-angle geometry after removing the paired result wrapper. These are implementation checks, not new scanner validation or publication convergence evidence.

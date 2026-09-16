@@ -3003,7 +3003,7 @@ async function reconstructFdkSeries(input,hooks={}) {
 // Hsieh et al., Opt Eng 46:067001 (2007), Eqs. 4-6.
 // Rowwise fan-to-parallel rebinning; matched RRI and CBA from identical data.
 // Coordinates, quadrature, supported acquisition and limits: CBA_METHOD.md.
-const CBA_VERSION='2026-09-17.4';
+const CBA_VERSION='2026-09-17.5';
 const CBA_TAU=2*Math.PI;
 function cbaWeights(a,b,power=2){
   if(![a,b].every(v=>Number.isFinite(v)&&v>=0&&v<=1)||![1,2].includes(power))throw Error('CBA_WEIGHT_DOMAIN');
@@ -3108,7 +3108,8 @@ function cbaResult(c,g,volume,counts,zObject,kind,acquisition,profileOnly=false)
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm)throw Error('CBA_DOMAIN: increase z extent to contain width crossings');
   return {config:c,x:g.x,y:g.y,z,volume:profileOnly?null:averagedVolume,raw,profile,counts:counts.slice(g.padding,counts.length-g.padding),zObject,fwhm,fwtm,min,max,baseline,roiPixels:roi.length,acquisition,
-    model:{version:CBA_VERSION,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'Matched row-to-row interpolation (RRI)',
+    coordinateSystem:'rebinned-theta',
+    model:{version:CBA_VERSION,kind,algorithm:kind==='cba'?'Hsieh conjugate backprojection (CBA)':'RRI-equivalent linear interpolation',
       reference:'Hsieh et al. 2007; DOI 10.1117/1.2746866; Eqs. 4-6',detector:'same cylindrical projections for RRI and CBA',
       rebinning:'rowwise fan-to-parallel; linear acquired view and channel interpolation; row unchanged',
       filter:'unwindowed discrete parallel Ram-Lak; cone cosine per row; full nonzero input support',
@@ -3209,6 +3210,29 @@ async function reconstructCbaSeries(input,hooks={}){
   return {...series(selected,profiles),reference:series(selected.reference,referenceProfiles)};
 }
 
+// Promote the existing linear branch without changing its numerical operator.
+// Keep the paired API above for historical reproducibility. Public RRI outputs
+// contain only linear weights, linear-response images and linear SSP profiles.
+function selectRriResult(paired){
+  const r=paired.reference;
+  const sampleAudit=paired.sampleAudit.map(({rriWeights,rriWeightedDistance,...sample})=>({
+    ...sample,weights:rriWeights,weightedDistance:rriWeightedDistance
+  }));
+  let weightAudit=null;
+  if(paired.weightAudit){
+    const {referenceCenterValue,samples,...audit}=paired.weightAudit;
+    weightAudit={...audit,centerValue:referenceCenterValue,
+      samples:samples.map(({referenceWeight,...sample})=>({...sample,weight:referenceWeight}))};
+  }
+  return {...r,config:{...r.config,method:'rri'},sampleAudit,weightAudit};
+}
+async function reconstructRri(input={},hooks={}){
+  return selectRriResult(await reconstructCba(input,hooks));
+}
+async function reconstructRriSeries(input={},hooks={}){
+  return selectRriResult(await reconstructCbaSeries(input,hooks));
+}
+
 let cancelled = false;
 let activeContext = null;
 let fdkContext=null, fdkInspectionToken=0;
@@ -3307,7 +3331,7 @@ self.onmessage = async event => {
     cancelled = false;
     fdkContext=null;fdkInspectionToken++;
     try {
-      const reconstruct = message.params.method === 'hsieh' ? reconstructCbaSeries : reconstructFdkSeries;
+      const reconstruct = message.params.method === 'fdk' ? reconstructFdkSeries : reconstructRriSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
         progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
@@ -3323,7 +3347,7 @@ self.onmessage = async event => {
     const token=++fdkInspectionToken,context=fdkContext;if(!context)return;
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
-      const reconstruct=context.params.method==='hsieh'?reconstructCba:reconstructFdk;
+      const reconstruct=context.params.method==='fdk'?reconstructFdk:reconstructRri;
       const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
       if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
     }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}

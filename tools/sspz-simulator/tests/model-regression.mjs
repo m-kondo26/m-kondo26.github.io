@@ -284,7 +284,7 @@ for (const doi of [
 }
 assert.match(indexSource, /各文献の下に、このシミュレーションで採用した計算と適用範囲を示します/);
 assert.match(indexSource, /10\.1117\/1\.2746866/);
-assert.match(indexSource, /式（6）の対向4点補間を実装/);
+assert.match(indexSource, /同報で示されたRRI相当の線形補間を採用/);
 assert.match(appSource, /設定厚Tを矩形平均化幅FWとして計算し、得られた幅をTで除しています/);
 assert.match(appSource, /FWHMは出力値であり、Tと一致するよう調整していません/);
 assert.match(appSource, /sweep-taguchi-\$\{metric\.rawKey\}-FW/);

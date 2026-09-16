@@ -2820,7 +2820,7 @@ globalThis.SSPZShapeDisplay = (() => {
     return out;
   }
   function fromFdk(result) {
-    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [['FDK', result, [1, 0, 0]]];
+    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[result.model?.kind==='rri'?'RRI':'FDK', result, [1, 0, 0]]];
     return groups.map(([name, r, rgb]) => {
       const z = r.z, count = r.profiles.length, values = new Float64Array(z.length * count);
       r.profiles.forEach((p, i) => values.set(p.profile, i * z.length));
@@ -2933,7 +2933,7 @@ function initializeFdkWorkflow(panel){
   const firstCard=document.getElementById('fdk-geometry').closest('article');geometry.append(firstCard);
   firstCard.querySelector('h3').textContent=fdkText('','2A  Candidate arrangement: 0–360° unwrapped diagram');
   const weights=block('fdk-weight-step',fdkText('','2B  Selected data and weights'));
-  weights.insertAdjacentHTML('beforeend',`<p>${fdkText('','Weights refer to the same start angle and target location. If image-domain axial averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">CBA</h3><canvas id="fdk-weights-cba" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
+  weights.insertAdjacentHTML('beforeend',`<p>${fdkText('','Weights refer to the same start angle and target location. If image-domain axial averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
   const profile=block('fdk-profile-step',fdkText('','3  Selected SSPz and all 360 conditions'));
   profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('','Selected angle: half-maximum crossings and FWHM')}</h3><canvas id="fdk-selected-profile" width="1200" height="800"></canvas></article>`);
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('','Overlay of all 360 conditions');
@@ -2956,7 +2956,7 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-width-metric').onchange=e=>{metricSelect.value=e.target.value;if(fdkResult){drawFdkSweep(document.getElementById('fdk-sweep'));const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);}};
   document.getElementById('fdk-width-csv').onclick=()=>{if(!fdkResult)return;const rows=[['method','start_index','start_angle_rad','FWHM_mm','FWTM_mm','configured_thickness_mm','axial_average_mm'],...fdkGroups(fdkResult).flatMap(([name,g])=>g.profiles.map((p,i)=>[name,i,p.phase,p.fwhm.width,p.fwtm.width,fdkResult.config.sliceThicknessMm,fdkResult.config.axialAverageMm]))];downloadBlob(fdkFileStem(fdkResult)+'_360_angles_widths.csv','\uFEFF'+rows.map(r=>r.join(',')).join('\r\n'));};
   document.getElementById('fdk-sweep').onclick=e=>{if(!fdkResult)return;const box=e.currentTarget.getBoundingClientRect(),x=(e.clientX-box.left)/box.width;selectFdkState(Math.max(0,Math.min(359,Math.round((x-.13)/.835*360))),true);};
-  for(const id of ['fdk-geometry','fdk-weights-cba','fdk-weights-rri','fdk-selected-profile','fdk-tail','fdk-sweep','fdk-difference']){
+  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-selected-profile','fdk-tail','fdk-sweep','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
   }
 }
@@ -2971,7 +2971,7 @@ function selectFdkState(index,immediate=false){
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
   document.getElementById('fdk-inspect-label').textContent=`+${selectedStateIndex}° / ${fdkText('','start angle')} ${angle.toFixed(1)}°`;
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Updating geometry, weights and images for the selected angle…');
-  for(const id of ['fdk-geometry','fdk-weights-cba','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('','Computing selected angle'));
+  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('','Computing selected angle'));
   drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));drawFdkSweep(document.getElementById('fdk-sweep'));drawFdkTail(document.getElementById('fdk-tail'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
@@ -2981,11 +2981,12 @@ function selectFdkState(index,immediate=false){
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
-  document.getElementById('fdk-primary-weight-title').textContent=r.reference?fdkText('','CBA: conjugate data'):'FDK';
+  document.getElementById('fdk-primary-weight-title').textContent=r.reference?fdkText('','CBA: conjugate data'):r.model?.kind==='rri'?fdkText('','RRI: linear row interpolation'):'FDK';
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('','RRI: linear row interpolation');
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
-  drawFdkCandidateDiagram(document.getElementById('fdk-weights-cba'),r,true,false);
+  drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
+  document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   fdkDrawImage(document.getElementById('fdk-axial'),r,false);fdkDrawImage(document.getElementById('fdk-coronal'),r,true);
   document.getElementById('fdk-weight-scope').textContent=fdkText('','Weights apply to filtered data at the transverse object point, not to the entire SSPz. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
@@ -3001,20 +3002,21 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   if(!audit)return;
   const samples=audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
   const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
-  const physical=!zoom&&!r.reference;
-  const rowMin=r.reference||physical?0:Math.min(...samples.map(q=>q.row))-2;
-  const rowMax=r.reference||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
+  const rebinned=r.coordinateSystem==='rebinned-theta'||!!r.reference;
+  const physical=!zoom&&!rebinned;
+  const rowMin=rebinned||physical?0:Math.min(...samples.map(q=>q.row))-2;
+  const rowMax=rebinned||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
   const rows=rowMax-rowMin+1,angles=[],axial=[],scales=[];
   const fold=v=>((v-base)%c.viewSamples+c.viewSamples)%c.viewSamples*360/c.viewSamples;
   const geometryAt=v=>{
     const angle=c.phase+v*step;
-    if(r.reference){
+    if(rebinned){
       const t=-c.radius*Math.sin(angle),gamma=Math.asin(t/c.sourceRadius);
       return [c.feed*(angle+gamma-c.phase)/(2*Math.PI),(Math.sqrt(c.sourceRadius**2-t*t)-c.radius*Math.cos(angle))/c.sourceRadius];
     }
     return [c.feed*v/c.viewSamples,physical?Math.hypot(c.sourceRadius*Math.cos(angle)-c.radius,c.sourceRadius*Math.sin(angle))/c.sourceRadius:(c.sourceRadius-c.radius*Math.cos(angle))/c.sourceRadius];
   };
-  const rowOffsets=Array.from({length:rows},(_,i)=>(r.reference||physical?i-(c.rows-1)/2:rowMin+i+c.vOffset)*c.rowWidth);
+  const rowOffsets=Array.from({length:rows},(_,i)=>(rebinned||physical?i-(c.rows-1)/2:rowMin+i+c.vOffset)*c.rowWidth);
   // Preserve the established axis range, which follows the selected audit.
   let extent=0;
   for(let v=first;v<=last;v++){
@@ -3048,14 +3050,14 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     })):[],
     referenceViewSamples:c.viewSamples,renderedAngleSamples:Math.ceil(c.viewSamples/stride),acquiredTraceSamples:angles.length,
     xAxisLabel:fdkText('','Candidate row centre  zᵢ − z₀  (mm)'),
-    yAxisLabel:r.reference?fdkText('','Rebinned angle offset  θ  (°)'):fdkText('','Source angle offset  β  (°)'),
-    directLegendLabel:r.reference?fdkText('','Rebinned data ○'):fdkText('','Acquired data ○'),
+    yAxisLabel:rebinned?fdkText('','Rebinned angle offset  θ  (°)'):fdkText('','Source angle offset  β  (°)'),
+    directLegendLabel:rebinned?fdkText('','Rebinned data ○'):fdkText('','Acquired data ○'),
     overviewLegendLabel:fdkText('','Geometric trajectories: all {rows} rows').replace('{rows}',c.rows),
     weightLegendLabel:fdkText('','Total weight w'),
-    angleCoordinate:r.reference?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
+    angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
-  if(!zoom)diagram.directLegendLabel=r.reference?fdkText('','Rebinned row trajectories'):fdkText('','Detector-row trajectories');
-  if(!r.reference&&zoom){
+  if(!zoom)diagram.directLegendLabel=rebinned?fdkText('','Rebinned row trajectories'):fdkText('','Detector-row trajectories');
+  if(!rebinned&&zoom){
     diagram.rowLegendLabel=fdkText('','Virtual row');
     diagram.rowLabels=Array.from({length:rows},(_,i)=>rowMin+i);
     diagram.directLegendLabel=fdkText('','Flat-grid data ○');
@@ -3099,7 +3101,7 @@ function addFdkWorkflowSheets(sheets){
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','JSON contains selected angle volume, x fastest'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the image-average window at the inspected angle']);
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
-  sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm','weight','reference_weight','geometric_weight','filtered_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,q.referenceWeight,q.geometricWeight??1,q.filteredValue])]]);
+  sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'geometric_weight','filtered_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),q.geometricWeight??1,q.filteredValue])]]);
 }
 async function exportFdkWorkflowCanvas(id){
   if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id==='fdk-geometry'||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
@@ -3114,17 +3116,18 @@ async function exportFdkWorkflowCanvas(id){
 
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
-const FDK_UI_FIELDS={method:'hsieh',edgePolicy:'available',axialAverageMm:0,objectModel:'point',
+const FDK_UI_FIELDS={method:'rri',edgePolicy:'available',axialAverageMm:0,objectModel:'point',
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
-const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[['FDK',r]];
-const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':'FDK')+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
+const fdkMethodName=r=>r.model?.kind==='rri'?'RRI':'FDK';
+const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[[fdkMethodName(r),r]];
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
-function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='hsieh';}
+function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
 function readFdkParams(){
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   if(out.computationModel!=='fdk')return out;
@@ -3147,11 +3150,14 @@ function fdkParamsFromUrl(q){
   if(out.computationModel!=='fdk')return out;
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.phaseCount=360;
+  out.legacyCbaComparison=out.method==='hsieh';
+  if(out.legacyCbaComparison)out.method='rri';
   out.legacySphereInput=q.get('fdk_objectModel')!=='point';
   out.objectModel='point';
   return out;
 }
 function initializeFdkUi(initial){
+  if(initial.method==='hsieh')initial={...initial,method:'rri',legacyCbaComparison:true};
   const pick=document.createElement('label');pick.innerHTML=fdkText('','Calculation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('','Unwrapped geometry / axial interpolation')}</option><option value="fdk">${fdkText('','3D filtered backprojection (FBP)')}</option></select>`;
   form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
@@ -3160,17 +3166,15 @@ function initializeFdkUi(initial){
   controls.innerHTML=`<p class="section-summary">${fdkText('','Shared controls apply. The object is an ideal point, with no finite sphere diameter.')}</p>
   <div id="reconstruction-method-guide" class="reconstruction-method-guide">
     <dl>
-      <dt><span lang="en">Conjugate backprojection algorithm</span> (CBA)</dt>
-      <dd>${fdkText('','Jointly weights detector-row samples from conjugate projections during backprojection.')}</dd>
       <dt><span lang="en">Row-to-row interpolation</span> (RRI)</dt>
       <dd>${fdkText('','Linearly interpolates data from two adjacent detector rows within each projection.')}</dd>
     </dl>
-    <p>${fdkText('','Both are used within 3D backprojection here. Identical projections and preprocessing are used to compare squared CBA weights with a linear-weight RRI reference.')}</p>
+    <p>${fdkText('','The default 3D model uses RRI-equivalent linear interpolation so that the distance–weight relation can be traced. At detector edges, an explicit extension normalizes weights over acquired rows only.')}</p>
     <p class="method-source"><a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a> · <a href="CBA_METHOD.md">${fdkText('','Equations and detector-edge treatment')}</a></p>
   </div>
   <div class="parameter-grid">
-  ${sel('method','','3D reconstruction method',[['fdk',fdkText('','Original helical FDK reference')],['hsieh',fdkText('','Hsieh: CBA / RRI comparison')]])}
-  ${sel('edgePolicy','','Hsieh detector-edge treatment',[['available',fdkText('','Normalize acquired rows')],['strict',fdkText('','Require all four row samples')]])}
+  ${sel('method','','3D reconstruction method',[['rri',fdkText('','RRI-equivalent linear interpolation')],['fdk',fdkText('','Original helical FDK reference')]])}
+  ${sel('edgePolicy','','RRI detector-edge treatment',[['available',fdkText('','Normalize acquired rows')],['strict',fdkText('','Require all four row samples')]])}
   </div>
   <details class="reading-details"><summary>${fdkText('','3D numerical and image-display settings')}</summary>
   <div class="parameter-grid">
@@ -3183,11 +3187,15 @@ function initializeFdkUi(initial){
   ${num('phase','','Source angle at z = 0 (rad)',0,6.28318530718,.01)}
   ${num('state','','Object z / table feed per turn',0,1,.01)}
   ${sel('normalization','','Normalization for display and widths', [['minmax',fdkText('','Minimum 0, maximum 1')],['peak',fdkText('','Peak 1 (retain negative values)')]])}
-  </div><p class="model-note">${fdkText('','Each slice uses one turn. The Hsieh path computes CBA and RRI from identical projections and preprocessing. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
+  </div><p class="model-note">${fdkText('','Each slice uses one turn. RRI linearly interpolates detector-row data from conjugate directions. Use an even view count. The acquired-row option omits unavailable rows and normalizes the remaining conjugate weights. Computation stops if neither direction has support.')}</p></details>`;
   form.append(controls);
   if(initial.computationModel==='fdk'&&(initial.legacySphereInput||initial.objectModel!=='point')){
     const note=document.createElement('p');note.id='fdk-point-migration';note.className='model-note';
     note.textContent=fdkText('','Older settings loaded. Calculations now use an ideal point, without sphere diameter. Results differ from the former finite-sphere response.');controls.prepend(note);
+  }
+  if(initial.legacyCbaComparison){
+    const note=document.createElement('p');note.id='fdk-rri-migration';note.className='model-note';
+    note.textContent=fdkText('','Older CBA/RRI comparison settings loaded. Results are now recalculated using RRI-equivalent linear interpolation only; values differ from the former primary CBA display.');controls.prepend(note);
   }
   const syncHsiehControls=syncFdkMethodControls;
   document.getElementById('fdk-method').setAttribute('aria-describedby','reconstruction-method-guide');
@@ -3198,7 +3206,7 @@ function initializeFdkUi(initial){
   syncHsiehControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('','From acquired geometry to 3D FBP')}</h2></div>
-  <p class="section-summary">${fdkText('','Reconstruct local 3D images and model SSPz from ideal-point projections. The Hsieh path compares squared CBA weights with a linear reference. The linear reference equals conventional RRI in the four-sample interior; both use the same edge treatment.')} <a href="#reconstruction-method-guide">${fdkText('','CBA and RRI definitions')}</a></p>
+  <p class="section-summary">${fdkText('','Reconstruct local 3D images and model SSPz from ideal-point projections. The default RRI-equivalent linear interpolation supplies the same result for diagram weights, images, SSPz and shape variation.')} <a href="#reconstruction-method-guide">${fdkText('','RRI definition')}</a></p>
   <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
@@ -3212,11 +3220,11 @@ function initializeFdkUi(initial){
     <div class="shape-canvas-wrap" tabindex="0"><canvas id="fdk-shape" width="1000" height="830"></canvas></div>
     <p id="fdk-shape-summary"></p>
     <button type="button" id="fdk-shape-png" class="secondary" disabled>${fdkText('','Save distribution as 600-dpi PNG')}</button>
-    <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: CBA (FDK for a single-method calculation); blue: RRI. Purple means both occur in the same position–deviation bin, not agreement of whole curves or mean shapes. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002. All channels use fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
+    <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: the selected 3D model (RRI by default). Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export 3D volume and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Choose conventional FDK or the Hsieh path with rebinned conjugate interpolation. Both are approximate 3D FBP paths with the same source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both models use zero object extent and shared transaxial/axial acquisition apertures. The axial reference uses linear transaxial readout; 3D also includes filtering and backprojection, so their responses need not coincide. FDK, CBA and RRI all apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel spacing and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
-  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','Hsieh path: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','The default approximate 3D FBP path uses RRI-equivalent linear interpolation of rebinned conjugate row data. Conventional FDK remains an optional reference. Both share the source trajectory and detector-row geometry. Neither reproduces TCOT or implements exact wide-cone inversion.')}</p><p>${fdkText('','The object is a unit-integral ideal point, analytically integrated over each detector aperture. The profile follows a fixed transverse position through the reconstructed point (an axial section of the 3D PSF); no sphere-size blur or sphere-dependent ROI averaging is included. Both models use zero object extent and shared transaxial/axial acquisition apertures. The axial reference uses linear transaxial readout; 3D also includes filtering and backprojection, so their responses need not coincide. RRI and FDK both apply an image-domain rectangular average of width T before SSPz normalization, reconstructing the required surrounding slices. FWHM is not fitted to T, and no scanner thickness calibration is performed.')}</p><p>${fdkText('','Displayed curves join native samples with straight lines. Min–max normalization also shifts any negative FBP lobes. Raw point responses are retained in Excel, and peak-only normalization is available. Widths use the selected normalized curves. Images clip negative values to black and share the volume maximum as white.')}</p><p>${fdkText('','80–320 rows are supported computational configurations; row count alone does not establish scanner validity. Assess numerical dependence on views, channel spacing and reconstruction z spacing.')}</p><p><a href="POINT_RESPONSE_METHOD.md">${fdkText('','Point-response definition and relationship to 2D')}</a> · <a href="FDK_METHOD.md">${fdkText('','FDK: equations, coordinates and verification')}</a> · <a href="https://doi.org/10.1364/JOSAA.1.000612">Feldkamp et al. (1984)</a> · <a href="https://doi.org/10.1088/0031-9155/49/13/011">Kudo et al. (2004)</a></p></details>`;
+  panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="CBA_METHOD.md">${fdkText('','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
@@ -3236,11 +3244,15 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_volume.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected first phase only'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','axial section of reconstructed unit-integral 3D point response, after configured axial averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','JSON volume[z,y,x], x fastest; selected start angle'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
     if(r.reference){sheets[0][1].push(['CBA','Conjugate backprojection algorithm: jointly weighted conjugate detector-row samples'],['RRI','Row-to-row interpolation: linear interpolation between adjacent detector rows; matched reference with shared edge extension'],['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
+    if(r.model.kind==='rri'){
+      sheets[0][1].push(['RRI','Row-to-row interpolation; linear weights with an explicit acquired-row edge extension']);
+      sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','RRI_weight','weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.weightedDistance]))]]);
+    }
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
       for(const g of fdkShapeGroups){const a=g.analysis;
@@ -3455,7 +3467,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.4 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.4`;
+versionLabel.textContent = `Web build 2026-09-17.5 / axial model ${MODEL_VERSION} / RRI 2026-09-17.5 / FDK 2026-09-17.4`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3550,7 +3562,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 9,
+    v: 10,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     n: params.rows,

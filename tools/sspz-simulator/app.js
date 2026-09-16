@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.4 / axial model ${MODEL_VERSION} / 3D models 2026-09-17.4`;
+versionLabel.textContent = `Web build 2026-09-17.5 / axial model ${MODEL_VERSION} / RRI 2026-09-17.5 / FDK 2026-09-17.4`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -172,7 +172,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 9,
+    v: 10,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     n: params.rows,

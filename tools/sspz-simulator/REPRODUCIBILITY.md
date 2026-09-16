@@ -1,3 +1,13 @@
+## 2026-09-17.5: RRI-equivalent linear interpolation adopted
+
+The browser's conjugate-data path now publishes one RRI result. `reconstructRri` and `reconstructRriSeries` select the existing linear branch, including its images, native profiles, local row weights and image-window-integrated weights. The paired CBA/RRI APIs remain available for reproducibility. This adoption changes the formerly primary CBA result to RRI; it does not establish equivalence between them. Old `hsieh` URLs show a migration notice; v10 URLs save `rri`.
+
+All 21 `npm test` suites passed. The added RRI tests cover 4, 80, 160 and 320 rows, exact same-runtime equality to the retained RRI branch, independently evaluated linear-distance weights, averaged centre-value closure and selected/series/profile-only consistency. Diagram tests additionally verify rebinned RRI coordinates without a paired result. The axial numerical core and original FDK numerical core are unchanged.
+
+Browser QA used four rows, d=1 mm, pitch 0.875, r=102 mm, T=1 mm, 360 acquired views per turn and all 360 start angles, 0.1-mm reconstruction z spacing, 0.20-mm aperture and 0.25-mm channel spacing. At selected angle 90, the downloaded JSON volume agrees with the Node RRI result within 5.1e-15 (raw profile within 1.4e-15). Actual Excel/CSV raw and normalized profiles agree exactly with JSON; 360 width rows are named RRI, and 1086 selected-window weights agree exactly with the RRI audit. PNGs retain 600-dpi metadata and the shared renderer. Japanese, English, mobile, legacy URL migration, and the optional 80-row FDK browser path were checked.
+
+These settings verify integration and export consistency, not manuscript-condition convergence or commercial scanner validity. No manuscript figure was regenerated in this release. Browser evidence is retained locally in `output/playwright/rri/`; numerical scope and the prior CBA/RRI comparison are recorded separately.
+
 ## 2026-09-17.4: shared finite transaxial aperture
 
 The browser axial model now uses the same point-to-detector-cell integral as the 3D paths, followed by linear channel readout and its existing axial interpolation/filter sum. Active aperture (`channelApertureMm`, URL `ca`) and detector-center spacing (`channelWidth`, URL `cp`) are separate common inputs. URL version is 9. This changes the axial numerical model; it does not add full 2D FBP. See DETECTOR_APERTURE_METHOD.md for scope and the additional geometric amplitude convention.

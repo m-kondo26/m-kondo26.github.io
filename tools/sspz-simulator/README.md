@@ -1,3 +1,9 @@
+## RRI as the primary 3D interpolation (2026-09-17.5)
+
+The browser now uses **RRI-equivalent linear interpolation** for the 3D conjugate-data path. One result supplies the diagram weights, images, SSPz series, shape deviations and Excel/CSV/JSON/PNG exports. This simplifies visualization of candidate geometry and its distance-based weights; it does not claim that CBA and RRI responses are equivalent. The explicit acquired-row edge normalization is retained. See [CBA_METHOD.md](CBA_METHOD.md) for the adopted definition and historical paired APIs.
+
+URL v10 records `fdk_method=rri`; old `hsieh` comparison links show a migration notice and recalculate RRI. RRI is red as the sole simulation channel; detector-row hues and existing figure opacity, grids and FWHM annotations are retained. CBA remains in the numerical API for historical reproducibility, and the original FDK reference remains optional. The dated entries below describe previous releases.
+
 ## Shared finite detector aperture (2026-09-17.4)
 
 Both browser models now acquire a unit point through the same finite transaxial and axial detector cells. Transaxial active aperture and detector-center spacing are common, separate controls (default 0.25 mm each); neither is image pixel spacing. The axial reference applies linear channel readout followed by its existing longitudinal interpolation; the 3D path applies rebinning, ramp filtering and backprojection. See [DETECTOR_APERTURE_METHOD.md](DETECTOR_APERTURE_METHOD.md) for equations, assumptions and checks. This extends the axial model and changes its results; it is not full 2D image FBP. Browser URL v9 records both inputs. Historical low-level axial APIs remain available with `detectorModel: 'axial-only-legacy'`, which is also the API default when omitted.

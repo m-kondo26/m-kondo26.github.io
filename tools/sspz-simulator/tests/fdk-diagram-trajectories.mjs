@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {reconstructCba,cbaCoordinates} from '../cba-core.js';
+import {reconstructCba,reconstructRri,cbaCoordinates} from '../cba-core.js';
 import {reconstructFdk,fdkRowPosition} from '../fdk-core.js';
 
 const app=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
@@ -22,13 +22,15 @@ const plain=v=>JSON.parse(JSON.stringify(v));
 let cases=0,markers=0;
 for(const spec of [
   {method:'cba',rows:4,axialAverageMm:0},
+  {method:'rri',rows:4,axialAverageMm:1,phase:1.13,state:.45,radius:250,objectModel:'point'},
+  {method:'rri',rows:160,rowWidth:.5,beamPitch:.5,axialAverageMm:5,objectModel:'point'},
   {method:'cba',rows:4,axialAverageMm:1},
   {method:'cba',rows:4,axialAverageMm:5},
   {method:'cba',rows:4,axialAverageMm:1,phase:1.13,state:.45,radius:250},
   {method:'cba',rows:80,rowWidth:.5,beamPitch:.5,axialAverageMm:1},
   {method:'fdk',rows:80,rowWidth:.5,beamPitch:.5,axialAverageMm:1,phase:.73,state:.4},
 ]){
-  const r=await (spec.method==='cba'?reconstructCba:reconstructFdk)({rows:4,rowWidth:1,beamPitch:.875,radius:102,viewSamples:180,xySamples:5,zExtent:4,zStep:.2,apertureSamples:2,...spec});
+  const r=await (spec.method==='rri'?reconstructRri:spec.method==='cba'?reconstructCba:reconstructFdk)({rows:4,rowWidth:1,beamPitch:.875,radius:102,viewSamples:180,xySamples:5,zExtent:4,zStep:.2,apertureSamples:2,...spec});
   const before=JSON.stringify(r),c=r.config,N=c.viewSamples,base=Math.ceil(((2*Math.PI*r.zObject/c.feed)-Math.PI)/(2*Math.PI/N)-1e-12);
   for(const zoom of [false,true])for(const reference of (r.reference&&zoom?[false,true]:[false])){
     const canvas={width:900,dataset:{}};
@@ -43,7 +45,7 @@ for(const spec of [
     for(let turn=-4;turn<=4;turn++)for(let row=0;row<s.totalRows;row++)for(let i=0;i<=N;i+=15){
       const v=base+i+turn*N,angle=c.phase+v*2*Math.PI/N;
       let expected;
-      if(r.reference){
+      if(r.coordinateSystem==='rebinned-theta'){
         const q=cbaCoordinates(c,angle,c.radius,0,r.zObject);
         expected=q.sourceZ+(row-(c.rows-1)/2)*c.rowWidth*q.L/c.sourceRadius-r.zObject;
       }else if(!zoom)expected=fdkRowPosition(c,angle,row)-r.zObject;
@@ -52,7 +54,7 @@ for(const spec of [
       if(Math.abs(expected)<limit-1e-10)assert.ok(g.turns.includes(turn),'every visible turn must be retained');
     }
     for(const p of s.weightedPoints){
-      const q=r.weightAudit.samples.find(q=>q.view===p.absoluteViewIndex&&q.row-(r.reference?0:Math.min(...r.weightAudit.samples.map(q=>q.row))-2)===p.row);
+      const q=r.weightAudit.samples.find(q=>q.view===p.absoluteViewIndex&&q.row-(r.coordinateSystem==='rebinned-theta'?0:Math.min(...r.weightAudit.samples.map(q=>q.row))-2)===p.row);
       assert.ok(q,'marker keeps acquired sample identity');
       assert.equal(p.x,q.z);assert.equal(p.weight,reference?q.referenceWeight:q.weight);
       const i=((q.view-base)%N+N)%N,turn=Math.floor((q.view-base)/N);

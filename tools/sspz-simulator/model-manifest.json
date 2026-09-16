@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.4",
+  "webBuildVersion": "2026-09-17.5",
   "threeDimensionalFbp": {
     "version": "2026-09-17.4",
     "core": "fdk-core.js",
@@ -185,18 +185,18 @@
     "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
   },
   "conjugateFbp": {
-    "version": "2026-09-17.4",
+    "version": "2026-09-17.5",
     "core": "cba-core.js",
-    "sha256": "d63b2bf4522906eaecd6d118b20099d065614954b9e453a621c23e5b3427e0a9",
+    "sha256": "7b8d1fd549b47b6df258095b594089d0a9a934c41817b8190cd2853d32f6fb27",
     "sha256Convention": "UTF-8 with LF line endings",
     "sourceDoi": "10.1117/1.2746866",
     "sourceLocation": "Eqs. (4)-(6); quadratic CBA and linear reference, equal to RRI in the four-sample interior; explicit acquired-row boundary extension",
     "sharedPreprocessingDoi": "10.1155/IJBI/2006/45942",
     "sharedPreprocessingLocation": "Eqs. (2)-(3)",
     "documentation": "CBA_METHOD.md",
-    "implementationTests": "tests/cba.mjs and tests/cba-four-row.mjs",
+    "implementationTests": "tests/rri-primary.mjs; tests/cba.mjs; tests/cba-four-row.mjs; tests/fdk-diagram-trajectories.mjs",
     "numericalSensitivity": "tests/cba-verification.json",
-    "scope": "Matched CBA and linear-reference reconstructions; acquired-row conjugate normalization at edges, optional image-domain rectangular average, and strict legacy policy. No commercial validation.",
+    "scope": "Public RRI-equivalent linear interpolation, with explicit acquired-row edge normalization and configured rectangular image average. Historical paired CBA/RRI APIs retained. No commercial validation.",
     "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
     "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
     "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
@@ -218,28 +218,28 @@
     "originalAxialModel": "retained as a separate model"
   },
   "shapeDisplay": {
-    "version": "2026-09-15.6",
+    "version": "2026-09-17.5",
     "intensity": "fraction^0.35; shared across channels; fixed 0–100% LUT",
     "alignment": "Individual native FWHM midpoint translated to zero, no width rescaling; 0.01 mm linear grid; subtract own group mean",
     "arrows": "Mean individual FWHM; mean and sample SD above plots",
     "bins": "0.002; minimum extent +/-0.06, expand to contain all deviations",
-    "colors": "CBA or FDK red; RRI blue. Axial reference gray; cone geometry red. No measured data in browser.",
+    "colors": "Public 3D selected model (RRI by default, optional FDK) red; axial reference gray and cone geometry red. Historical paired APIs retain CBA red/RRI blue. No measured data in browser.",
     "exports": "Same renderer for screen and 600-dpi PNG; aligned arrays and deviations in Excel",
     "numericalModelChanged": false
   },
   "linked3dWorkflow": {
-    "version": "2026-09-16.3",
+    "version": "2026-09-17.5",
     "angles": "360 start angles, base + 0..359 degrees, fixed object z; old short sweeps promoted",
     "inspection": "same selected start angle for actual row weights, diagram, SSPz, width cursor and images",
-    "weightTrace": "CBA filtered acquired-row coefficients across image-average window; FDK virtual-flat row interpolation with separate geometric factor",
+    "weightTrace": "RRI linear filtered-row coefficients across the image-average window; optional FDK virtual-flat row interpolation with a separate geometric factor",
     "sampleIdentity": "unwrapped view and row; folded angular display retains different-turn samples",
     "exports": "all profiles, widths and deviations; selected window weights and volumes; same-renderer 600-dpi figures",
     "reconstructionEquationsChanged": false,
     "checks": "tests/fdk-workflow.mjs; four-row numeric regression; browser 360-angle and selected-angle/export checks",
     "drawing": "Shared original drawDiagram, axisContext, drawAxes, row palette, fixed-radius weight-fill markers and native-sample strokes; 900x960 diagrams with 650-unit data height and footer key; 80-mm 600-dpi diagram export",
-    "overlay": "Native linear segments, opacity 0.13, width 1.1 logical pixels; selected curve width 4; log-tail display 0.001 to 1; CBA/FDK red and RRI blue match the accepted density-map channels",
-    "coordinateBoundary": "Each 3D sample is shown at its own acquisition/rebinned angle; original direct-reference complementary folding and glyphs are not falsely assigned to these scenes. Physical CBA rows and FDK virtual-flat rows are labeled distinctly.",
-    "visualChecks": "Japanese CBA four-row full user configuration; English FDK 80 rows; screen and actual 600-dpi PNG inspection; existing marker/profile renderer checks; unchanged reconstruction and shape-map source hashes",
+    "overlay": "Native linear segments, opacity 0.13, width 1.1 logical pixels; selected curve width 4; log-tail display 0.001 to 1. Public single RRI/FDK simulation channel red.",
+    "coordinateBoundary": "Each 3D sample uses its own acquired/rebinned angle. RRI physical row geometry uses explicit rebinned-theta metadata, independently of a paired result wrapper. Optional FDK uses source-beta and virtual-flat rows.",
+    "visualChecks": "2026-09-17.5: Japanese/English single RRI at four rows, 360 angles; inspected angle 90; actual Excel/CSV/JSON/600-dpi PNG; mobile no viewport overflow; original FDK 80-row smoke check.",
     "backgroundTrajectories": {
       "version": "2026-09-16.1",
       "scope": "Complete geometric turns clipped at the existing axes, independent of selected-weight support; no additional acquired samples",
@@ -271,11 +271,11 @@
     "apertureQuadratureUsed": false
   },
   "reconstructionTerminology": {
-    "version": "2026-09-17.3",
+    "version": "2026-09-17.5",
     "CBA": "Conjugate backprojection algorithm",
     "RRI": "Row-to-row interpolation",
     "source": "Hsieh et al. 2007, printed pp. 067001-2 and 067001-3",
-    "placement": "Visible definitions before reconstruction method selection; bilingual; linked from results and retained in Excel",
+    "placement": "RRI defined before first method selection; bilingual and retained in exports. CBA definition retained in historical-method documentation.",
     "numericalChange": false
   },
   "sharedDetectorAperture": {
@@ -293,5 +293,18 @@
     "interpretation": "Axial changes include transverse sampling/readout and point-projector geometric amplitude; not aperture alone. Common acquisition does not make reconstruction operators identical.",
     "paperFiguresRegenerated": false,
     "scannerValidation": "not established"
+  },
+  "primary3dInterpolation": {
+    "version": "2026-09-17.5",
+    "urlSchema": 10,
+    "method": "rri",
+    "name": "RRI-equivalent linear interpolation",
+    "selectionReason": "Trace geometry-driven candidate arrangement using a fixed linear distance-weight rule; not evidence of CBA/RRI response equivalence.",
+    "outputs": "RRI profile, volume, local and window-integrated weights, 360-angle statistics, shape distribution, Excel/CSV/JSON/PNG all use the existing linear branch.",
+    "coordinateSystem": "rebinned-theta; independent of whether a paired reference result is present",
+    "color": "single simulation channel red; row hues retain detector-row identity",
+    "migration": "fdk_method=hsieh becomes rri with a visible notice; original FDK remains optional",
+    "reproducibility": "Paired reconstructCba/reconstructCbaSeries APIs retained; reconstructRri/reconstructRriSeries promote their actual linear result and audits.",
+    "scope": "Numerical identity to the previous RRI branch; not equality to CBA, clinical validation, or manuscript-condition convergence."
   }
 }
