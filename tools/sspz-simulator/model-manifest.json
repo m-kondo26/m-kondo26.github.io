@@ -158,7 +158,7 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-16.2",
+  "webBuildVersion": "2026-09-16.3",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
@@ -221,7 +221,7 @@
     "numericalModelChanged": false
   },
   "linked3dWorkflow": {
-    "version": "2026-09-16.2",
+    "version": "2026-09-16.3",
     "angles": "360 start angles, base + 0..359 degrees, fixed object z; old short sweeps promoted",
     "inspection": "same selected start angle for actual row weights, diagram, SSPz, width cursor and images",
     "weightTrace": "CBA filtered acquired-row coefficients across image-average window; FDK virtual-flat row interpolation with separate geometric factor",
