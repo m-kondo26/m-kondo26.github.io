@@ -6,10 +6,11 @@ function initializeFdkWorkflow(panel){
   const block=(id,title)=>{const e=document.createElement('div');e.id=id;e.className='workflow-block';e.innerHTML=`<h2>${title}</h2>`;return e;};
   const geometry=block('fdk-geometry-step',fdkText('2　展開図と補間の重み','2  Unwrapped geometry and interpolation weights'));
   geometry.insertAdjacentHTML('beforeend',`<div class="state-inspector"><label for="fdk-inspect">${fdkText('表示する回転開始角度','Start angle to inspect')} <span id="fdk-inspect-label"></span></label><div class="state-controls"><button type="button" id="fdk-prev" disabled>−1°</button><input type="range" id="fdk-inspect" min="0" max="359" step="1" value="0" disabled><button type="button" id="fdk-next" disabled>+1°</button></div><p id="fdk-inspection-status" aria-live="polite"></p></div>`);
+  document.getElementById('fdk-geometry').width=900;document.getElementById('fdk-geometry').height=960;
   const firstCard=document.getElementById('fdk-geometry').closest('article');geometry.append(firstCard);
   firstCard.querySelector('h3').textContent=fdkText('2A　補間候補の配置：0～360°展開図','2A  Candidate arrangement: 0–360° unwrapped diagram');
   const weights=block('fdk-weight-step',fdkText('2B　選択されたデータと重み','2B  Selected data and weights'));
-  weights.insertAdjacentHTML('beforeend',`<p>${fdkText('同じ開始角度・同じ対象位置の重みです。画像の体軸方向平均化を指定した場合は、その幅全体の重みを合計します。','Weights refer to the same start angle and target location. If image-domain axial averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><canvas id="fdk-weights-cba" width="1000" height="850"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><canvas id="fdk-weights-rri" width="1000" height="850"></canvas></article></div><p id="fdk-weight-scope"></p>`);
+  weights.insertAdjacentHTML('beforeend',`<p>${fdkText('同じ開始角度・同じ対象位置の重みです。画像の体軸方向平均化を指定した場合は、その幅全体の重みを合計します。','Weights refer to the same start angle and target location. If image-domain axial averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">CBA</h3><canvas id="fdk-weights-cba" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
   const profile=block('fdk-profile-step',fdkText('3　選択角度のSSPzと全360条件','3  Selected SSPz and all 360 conditions'));
   profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('選択角度：半値の交点とFWHM','Selected angle: half-maximum crossings and FWHM')}</h3><canvas id="fdk-selected-profile" width="1200" height="800"></canvas></article>`);
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('全360条件の重ね合わせ','Overlay of all 360 conditions');
@@ -57,6 +58,7 @@ function selectFdkState(index,immediate=false){
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
+  document.getElementById('fdk-primary-weight-title').textContent=r.reference?'CBA':'FDK';
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-cba'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
@@ -68,45 +70,84 @@ function renderFdkSelected(){
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / axial mean ${(c.axialAverageMm??0).toFixed(2)} mm`;
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
+// Adapt the actual reconstruction audit to the established diagram renderer.
+// Only the scene data differ; palette, opacity, marker size and layout are shared.
 function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
-  if(!r.reference&&!zoom){fdkDrawGeometry(canvas,r);canvas.dataset.startIndex=selectedStateIndex;return;}
-  if(!audit){fdkDrawGeometry(canvas,r);return;}
+  if(!audit)return;
   const samples=audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
   const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
-  const position=(view,row)=>{const angle=c.phase+view*step;
-    if(r.reference){const t=-c.radius*Math.sin(angle),gamma=Math.asin(t/c.sourceRadius),L=Math.sqrt(c.sourceRadius**2-t*t)-c.radius*Math.cos(angle);return c.feed*(angle+gamma-c.phase)/(2*Math.PI)+(row-(c.rows-1)/2)*c.rowWidth*L/c.sourceRadius-r.zObject;}
-    const D=c.sourceRadius-c.radius*Math.cos(angle);return c.feed*view/c.viewSamples+(row+c.vOffset)*c.rowWidth*D/c.sourceRadius-r.zObject;
-  };
-  const rowMin=r.reference?0:Math.min(...samples.map(q=>q.row))-2,rowMax=r.reference?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
-  let extent=0;for(let v=first;v<=last;v++)for(const k of [rowMin,rowMax])extent=Math.max(extent,Math.abs(position(v,k)));
-  const limit=zoom?Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12:Math.ceil(extent*10)/10;
-  const a=fdkAxes(canvas,-limit,limit,360,0,'Data z relative to sphere (mm)',r.reference?'Rebinned angle offset (°)':'Source angle offset (°)',zoom?(reference?'(c)':'(b)'):'(a)',fdkAngleTicks,115);
-  const {ctx,s,b}=a,fold=v=>((v-base)%c.viewSamples+c.viewSamples)%c.viewSamples*360/c.viewSamples;
-  ctx.textAlign='center';ctx.font=`${23*s}px Arial`;ctx.fillStyle='#000';ctx.fillText(zoom?`${reference?'RRI':r.reference?'CBA':'FDK'} / start offset +${selectedStateIndex}° / axial mean ${(c.axialAverageMm??0).toFixed(2)} mm`:`${r.reference?'Rebinned detector rows':'Virtual flat rows'} / start offset +${selectedStateIndex}°`,(b.left+b.right)/2,50*s);
-  ctx.font=`${20*s}px Arial`;
-  if(zoom){ctx.textAlign='left';ctx.fillText('Weight',180*s,88*s);for(const [i,w] of [.25,.5,.75,1].entries()){const xx=(340+i*145)*s;ctx.fillStyle=reference?'#0033bb':'#bd0000';ctx.beginPath();ctx.arc(xx,81*s,10*s*Math.sqrt(w),0,2*Math.PI);ctx.fill();ctx.fillStyle='#000';ctx.fillText(String(w),xx+18*s,88*s);}}
-  else ctx.fillText('All candidate rows; bold points: selected data',(b.left+b.right)/2,85*s);
-  ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  ctx.strokeStyle='#607681';ctx.globalAlpha=zoom?.20:Math.max(.18,Math.min(.65,30/c.rows));ctx.lineWidth=.8*s;
-  for(let row=rowMin;row<=rowMax;row++){
-    ctx.beginPath();let previous=-1;for(let v=first;v<=last;v++){const yy=fold(v),xx=position(v,row);if(previous<0||yy<previous)ctx.moveTo(a.x(xx),a.y(yy));else ctx.lineTo(a.x(xx),a.y(yy));previous=yy;}ctx.stroke();
+  const physical=!zoom&&!r.reference;
+  const rowMin=r.reference||physical?0:Math.min(...samples.map(q=>q.row))-2;
+  const rowMax=r.reference||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
+  const rows=rowMax-rowMin+1,angles=[],axial=[],scales=[];
+  const fold=v=>((v-base)%c.viewSamples+c.viewSamples)%c.viewSamples*360/c.viewSamples;
+  for(let v=first;v<=last;v++){
+    const angle=c.phase+v*step;
+    angles.push(v===last&&fold(v)===0?360:fold(v));
+    if(r.reference){
+      const t=-c.radius*Math.sin(angle),gamma=Math.asin(t/c.sourceRadius);
+      axial.push(c.feed*(angle+gamma-c.phase)/(2*Math.PI));
+      scales.push((Math.sqrt(c.sourceRadius**2-t*t)-c.radius*Math.cos(angle))/c.sourceRadius);
+    }else{
+      axial.push(c.feed*v/c.viewSamples);
+      scales.push(physical?Math.hypot(c.sourceRadius*Math.cos(angle)-c.radius,c.sourceRadius*Math.sin(angle))/c.sourceRadius:(c.sourceRadius-c.radius*Math.cos(angle))/c.sourceRadius);
+    }
   }
-  ctx.globalAlpha=1;ctx.strokeStyle='#a00000';ctx.lineWidth=1.6*s;ctx.setLineDash([7*s,5*s]);ctx.beginPath();ctx.moveTo(a.x(0),b.top);ctx.lineTo(a.x(0),b.bottom);ctx.stroke();ctx.setLineDash([]);
+  const rowOffsets=Array.from({length:rows},(_,i)=>(r.reference||physical?i-(c.rows-1)/2:rowMin+i+c.vOffset)*c.rowWidth);
+  let extent=0;for(let i=0;i<angles.length;i++)for(const row of [0,rows-1])extent=Math.max(extent,Math.abs(axial[i]+scales[i]*rowOffsets[row]-r.zObject));
+  const zoomLimit=Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12;
   const stride=Math.max(1,Math.ceil(c.viewSamples/72));
-  for(const q of samples){if(((q.view-base)%stride+stride)%stride)continue;const w=reference?q.referenceWeight:q.weight;if(!(w>0))continue;ctx.fillStyle=reference?'rgba(0,51,187,.8)':'rgba(190,0,0,.8)';ctx.beginPath();ctx.arc(a.x(q.z),a.y(fold(q.view)),(zoom?10:4)*s*Math.sqrt(w),0,2*Math.PI);ctx.fill();}
-  ctx.restore();canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
+  const trace={id:'acquired',family:'direct',angles,axial,scales};
+  const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
+    interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
+    traceGeometry:{...trace,rowOffsets,feed:c.feed,turns:[0]},traceFamilies:[trace],
+    weightedPoints:zoom?samples.filter(q=>((q.view-base)%stride+stride)%stride===0).map(q=>({
+      x:q.z,y:fold(q.view),row:q.row-rowMin,weight:reference?q.referenceWeight:q.weight,
+      referenceViewIndex:q.view,absoluteViewIndex:q.view,traceFamilyId:'acquired',dataKind:'filtered-data'
+    })):[],
+    referenceViewSamples:c.viewSamples,renderedAngleSamples:Math.ceil(c.viewSamples/stride),acquiredTraceSamples:angles.length,
+    xAxisLabel:fdkText('候補列中心  zᵢ − z₀  (mm)','Candidate row centre  zᵢ − z₀  (mm)'),
+    yAxisLabel:r.reference?fdkText('再配列後の角度差  θ  (°)','Rebinned angle offset  θ  (°)'):fdkText('線源角度差  β  (°)','Source angle offset  β  (°)'),
+    directLegendLabel:r.reference?fdkText('再配列データ ○','Rebinned data ○'):fdkText('取得データ ○','Acquired data ○'),
+    weightLegendLabel:fdkText('合計重み w','Total weight w'),
+    angleCoordinate:r.reference?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
+  };
+  if(!r.reference&&zoom){
+    diagram.rowLegendLabel=fdkText('仮想平面列','Virtual row');
+    diagram.rowLabels=Array.from({length:rows},(_,i)=>rowMin+i);
+    diagram.directLegendLabel=fdkText('仮想平面データ ○','Flat-grid data ○');
+    diagram.weightLegendNote=fdkText('仮想平面上の行補間重み。軌道の重なりは混色。','Flat-grid row weights; trace overlaps blend.');
+  }
+  canvas.dataset.renderScale=String(canvas.width/900);
+  drawDiagram(canvas,diagram,zoom?'zoom':'overview');
+  for(const key of Object.keys(canvas.dataset))if(canvas.dataset[key]==='undefined')delete canvas.dataset[key];
+  canvas.dataset.renderState='ready';
+  canvas.dataset.complementaryMarkerShape='not-applicable-in-own-angle-coordinate';
+  canvas.dataset.complementaryLineStyle='not-applicable-in-own-angle-coordinate';
+  canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
+  canvas.dataset.markerEncoding='fixed-radius;row-colour;weight-fill';
+  canvas.dataset.familyEncoding='each sample at its own acquired angle; no direct-reference folding';
 }
 function fdkArrow(a,fw,level,color){const {ctx,s}=a,yy=a.y(level);ctx.strokeStyle=color;ctx.lineWidth=2*s;ctx.setLineDash([5*s,5*s]);for(const v of [fw.left,fw.right]){ctx.beginPath();ctx.moveTo(a.x(v),a.b.bottom);ctx.lineTo(a.x(v),yy);ctx.stroke();}ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(a.x(fw.left),yy);ctx.lineTo(a.x(fw.right),yy);for(const [v,d] of [[fw.left,1],[fw.right,-1]]){ctx.moveTo(a.x(v)+d*9*s,yy-6*s);ctx.lineTo(a.x(v),yy);ctx.lineTo(a.x(v)+d*9*s,yy+6*s);}ctx.stroke();}
 function drawFdkSelectedProfile(canvas){
   const r=fdkResult,groups=fdkGroups(r),low=Math.min(0,...groups.map(([,g])=>Math.min(...g.profiles[selectedStateIndex].profile)));
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,1.02,'z position (mm)','Normalized SSPz','(d)',low<0?[Math.floor(low*10)/10,0,.25,.5,.75,1]:[0,.25,.5,.75,1],120);
-  groups.forEach(([name,g],i)=>{const p=g.profiles[selectedStateIndex],color=i?'#0033bb':'#bd0000';fdkDrawLines(a,g.z,[p.profile],color);fdkArrow(a,p.fwhm,.5,color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.font=`${23*a.s}px Arial`;a.ctx.fillText(`${name} / +${selectedStateIndex}°: FWHM ${p.fwhm.width.toFixed(2)} mm; FWTM ${p.fwtm.width.toFixed(2)} mm`,(a.b.left+a.b.right)/2,(50+i*35)*a.s);});canvas.dataset.startIndex=selectedStateIndex;
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,1.02,'z position (mm)','Normalized SSPz','(d)',low<0?[Math.floor(low*10)/10,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],120);
+  groups.forEach(([name,g],i)=>{const p=g.profiles[selectedStateIndex],color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;fdkDrawLines(a,g.z,[p.profile],color);fdkArrow(a,p.fwhm,.5,color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.font=`${23*a.s}px Arial`;a.ctx.fillText(`${name} / +${selectedStateIndex}°: FWHM ${p.fwhm.width.toFixed(2)} mm; FWTM ${p.fwtm.width.toFixed(2)} mm`,(a.b.left+a.b.right)/2,(50+i*35)*a.s);});canvas.dataset.startIndex=selectedStateIndex;
 }
-function drawFdkTail(canvas){const r=fdkResult,low=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,.2,'z position (mm)','Normalized SSPz','(f)',null,72);for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,r.z,g.profiles.map(p=>p.profile),i?'rgba(0,51,187,.45)':'rgba(190,0,0,.45)');a.ctx.textAlign='center';a.ctx.fillStyle='#000';a.ctx.fillText('All 360 start angles; native samples joined by straight lines',(a.b.left+a.b.right)/2,48*a.s);}
+function drawFdkTail(canvas){
+  const r=fdkResult,a=fdkAxes(canvas,r.z[0],r.z.at(-1),PROFILE_TAIL_DISPLAY_BOUNDS.yMin,PROFILE_TAIL_DISPLAY_BOUNDS.yMax,'z position (mm)','Normalized SSPz','(f)',[-3,-2,-1,0],110,null,v=>10**v);
+  const {ctx,b}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
+  for(const [i,[,g]] of fdkGroups(r).entries()){
+    ctx.strokeStyle=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;ctx.globalAlpha=.13;ctx.lineWidth=1.1;
+    for(const p of g.profiles)strokeNativeProfile(ctx,r.z,p.profile,a.x,a.y,{tailView:true});
+  }
+  ctx.restore();drawFdkProfileLegend(a,r);
+  canvas.dataset.profileOpacity='0.13';canvas.dataset.profileLineWidth='1.1';canvas.dataset.yScale='log10';canvas.dataset.tailFloor='0.001';
+}
 function drawFdkSweep(canvas){
   const r=fdkResult,key=document.getElementById('fdk-width-metric').value,values=fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>p[key].width)),lo=Math.min(...values),hi=Math.max(...values),pad=Math.max(.01,(hi-lo)*.1),a=fdkAxes(canvas,0,360,Math.max(0,Math.floor((lo-pad)*100)/100),Math.ceil((hi+pad)*100)/100,'Start-angle offset (°)',`${key.toUpperCase()} (mm)`,'(g)',null,95,fdkAngleTicks);
-  for(const [i,[name,g]] of fdkGroups(r).entries()){const color=i?'#0033bb':'#bd0000',ys=g.profiles.map(p=>p[key].width);fdkDrawLines(a,ys.map((_,j)=>j),[ys],color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.fillText(`${name}: ${Math.min(...ys).toFixed(2)}–${Math.max(...ys).toFixed(2)} mm`,a.b.left+(i?.73:.27)*(a.b.right-a.b.left),53*a.s);a.ctx.beginPath();a.ctx.arc(a.x(selectedStateIndex),a.y(ys[selectedStateIndex]),5*a.s,0,2*Math.PI);a.ctx.fill();}
+  for(const [i,[name,g]] of fdkGroups(r).entries()){const color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR,ys=g.profiles.map(p=>p[key].width);fdkDrawLines(a,ys.map((_,j)=>j),[ys],color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.fillText(`${name}: ${Math.min(...ys).toFixed(2)}–${Math.max(...ys).toFixed(2)} mm`,a.b.left+(i?.73:.27)*(a.b.right-a.b.left),53*a.s);a.ctx.beginPath();a.ctx.arc(a.x(selectedStateIndex),a.y(ys[selectedStateIndex]),5*a.s,0,2*Math.PI);a.ctx.fill();}
   a.ctx.strokeStyle='#555';a.ctx.setLineDash([5*a.s,5*a.s]);a.ctx.beginPath();a.ctx.moveTo(a.x(selectedStateIndex),a.b.top);a.ctx.lineTo(a.x(selectedStateIndex),a.b.bottom);a.ctx.stroke();a.ctx.setLineDash([]);canvas.dataset.startIndex=selectedStateIndex;
 }
 function addFdkWorkflowSheets(sheets){
@@ -117,12 +158,12 @@ function addFdkWorkflowSheets(sheets){
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm','weight','reference_weight','geometric_weight','filtered_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,q.referenceWeight,q.geometricWeight??1,q.filteredValue])]]);
 }
 async function exportFdkWorkflowCanvas(id){
-  if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*source.height/source.width);
+  if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id==='fdk-geometry'||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
   if(id==='fdk-geometry')drawFdkCandidateDiagram(c,fdkSelectedResult,false);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'));
   else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else if(id==='fdk-tail')drawFdkTail(c);
   else if(id==='fdk-sweep')drawFdkSweep(c);
-  else {const limit=Math.ceil(Math.max(.02,...fdkGroups(fdkResult).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02,a=fdkAxes(c,fdkResult.z[0],fdkResult.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(h)');for(const [i,[,g]] of fdkGroups(fdkResult).entries())fdkDrawLines(a,g.z,g.meanDifference,i?'#0033bb':'#bd0000');}
+  else drawFdkDifference(c,fdkResult);
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }

@@ -701,7 +701,7 @@ function drawDetectorRowLegend(ctx, diagram, left, y, width) {
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
   ctx.font = `26px ${FIGURE_FONT}`;
-  const label = localizedText("検出器列", "Detector row");
+  const label = diagram.rowLegendLabel ?? localizedText("検出器列", "Detector row");
   ctx.fillText(label, left, y);
   const start = left + ctx.measureText(label).width + 24;
   const cell = (left + width - start) / count;
@@ -712,7 +712,7 @@ function drawDetectorRowLegend(ctx, diagram, left, y, width) {
     ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + 24, y); ctx.stroke();
     ctx.fillStyle = INK;
-    ctx.fillText(String(row + 1), x0 + 31, y);
+    ctx.fillText(String(diagram.rowLabels?.[row] ?? row + 1), x0 + 31, y);
   });
   ctx.restore();
 }
@@ -736,7 +736,7 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
-  const items = [{ label: localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK }];
+  const items = [{ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK }];
   if (paired) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK });
   items.push({ label: localizedText("目的断面", "Target plane"), dashed: false, color: RED });
   ctx.save();
@@ -762,7 +762,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  const weightLabel = localizedText("合計重み w (FW=0)", "Total weight w (FW=0)");
+  const weightLabel = diagram.weightLegendLabel ?? localizedText("合計重み w (FW=0)", "Total weight w (FW=0)");
   const markerStart = left + width * 0.43;
   setFittedFigureFont(ctx, weightLabel, 26, 24, markerStart - left - 20);
   ctx.fillText(weightLabel, left, top);
@@ -780,7 +780,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width);
   ctx.textAlign = "left";
   ctx.fillStyle = MUTED;
-  const note = localizedText("同じ取得データの重みを合算。軌道の重なりは混色。", "Weights sum per acquired sample; trace overlaps blend.");
+  const note = diagram.weightLegendNote ?? localizedText("同じ取得データの重みを合算。軌道の重なりは混色。", "Weights sum per acquired sample; trace overlaps blend.");
   setFittedFigureFont(ctx, note, 24, 22, width);
   ctx.fillText(note, left, top + 114);
   ctx.restore();
@@ -835,7 +835,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = INK;
-  const scope = localizedText(`全${diagram.totalRows}列の候補軌道`, `Candidate trajectories: all ${diagram.totalRows} rows`);
+  const scope = diagram.overviewLegendLabel ?? localizedText(`全${diagram.totalRows}列の候補軌道`, `Candidate trajectories: all ${diagram.totalRows} rows`);
   setFittedFigureFont(ctx, scope, 26, 24, width);
   ctx.fillText(scope, left, top);
   drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
@@ -855,8 +855,8 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   const xAxis = symmetricNiceAxis(requiredXLimit, 3);
   const xLimit = xAxis.xMax;
   const plot = axisContext(canvas, { xMin: xAxis.xMin, xMax: xAxis.xMax, yMin: 0, yMax: 360 }, {
-    x: "候補列中心  zᵢ − z₀  (mm)",
-    y: localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
+    x: diagram.xAxisLabel ?? "候補列中心  zᵢ − z₀  (mm)",
+    y: diagram.yAxisLabel ?? localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
     topMargin: 32,

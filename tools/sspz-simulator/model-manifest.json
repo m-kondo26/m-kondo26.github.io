@@ -158,7 +158,7 @@
     "thicknessMapping": "FW and T are independent; no FWHM fit or scanner calibration",
     "legacyInitialization": "Missing FW takes the initial numerical value T; this is explicitly uncalibrated, not a FW=T identity."
   },
-  "webBuildVersion": "2026-09-16.1",
+  "webBuildVersion": "2026-09-16.2",
   "threeDimensionalFbp": {
     "version": "2026-09-14.1",
     "core": "fdk-core.js",
@@ -221,13 +221,17 @@
     "numericalModelChanged": false
   },
   "linked3dWorkflow": {
-    "version": "2026-09-16.1",
+    "version": "2026-09-16.2",
     "angles": "360 start angles, base + 0..359 degrees, fixed object z; old short sweeps promoted",
     "inspection": "same selected start angle for actual row weights, diagram, SSPz, width cursor and images",
     "weightTrace": "CBA filtered acquired-row coefficients across image-average window; FDK virtual-flat row interpolation with separate geometric factor",
     "sampleIdentity": "unwrapped view and row; folded angular display retains different-turn samples",
     "exports": "all profiles, widths and deviations; selected window weights and volumes; same-renderer 600-dpi figures",
     "reconstructionEquationsChanged": false,
-    "checks": "tests/fdk-workflow.mjs; four-row numeric regression; browser 360-angle and selected-angle/export checks"
+    "checks": "tests/fdk-workflow.mjs; four-row numeric regression; browser 360-angle and selected-angle/export checks",
+    "drawing": "Shared original drawDiagram, axisContext, drawAxes, row palette, fixed-radius weight-fill markers and native-sample strokes; 900x960 diagrams with 650-unit data height and footer key; 80-mm 600-dpi diagram export",
+    "overlay": "Native linear segments, opacity 0.13, width 1.1 logical pixels; selected curve width 4; log-tail display 0.001 to 1; CBA/FDK red and RRI blue match the accepted density-map channels",
+    "coordinateBoundary": "Each 3D sample is shown at its own acquisition/rebinned angle; original direct-reference complementary folding and glyphs are not falsely assigned to these scenes. Physical CBA rows and FDK virtual-flat rows are labeled distinctly.",
+    "visualChecks": "Japanese CBA four-row full user configuration; English FDK 80 rows; screen and actual 600-dpi PNG inspection; existing marker/profile renderer checks; unchanged reconstruction and shape-map source hashes"
   }
 }

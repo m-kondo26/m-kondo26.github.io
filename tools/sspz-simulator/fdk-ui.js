@@ -152,40 +152,46 @@ function runFdkSimulation(){
     }
   };worker.onerror=e=>fail(e.message);worker.postMessage({type:'fdk-run',params});
 }
-function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=72,xTicks=null){
-  const ctx=canvas.getContext('2d'),s=canvas.width/1000,w=canvas.width,h=canvas.height;
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.font=`${25*s}px Arial`;ctx.fillStyle='#000';ctx.textAlign='left';ctx.fillText(panel,18*s,30*s);
-  const b={left:130*s,right:w-35*s,top:top*s,bottom:h-105*s};
-  const x=v=>b.left+(v-xmin)/(xmax-xmin)*(b.right-b.left),y=v=>b.bottom-(v-ymin)/(ymax-ymin)*(b.bottom-b.top);
+// Reuse the original figure axes and native-sample stroke implementation.
+const FDK_PRIMARY_COLOR='#ff0000',FDK_REFERENCE_COLOR='#0000ff';
+function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=72,xTicks=null,yFormatter=null){
+  canvas.dataset.renderScale=String(canvas.width/1000);
   const label=v=>Math.abs(v)<1e-10?'0':Math.abs(v)>=100?v.toFixed(0):Number(v.toFixed(2)).toString();
-  ctx.font=`${23*s}px Arial`;
-  for(const vx of xTicks??SSPZShapeDisplay.ticks(xmin,xmax)){
-    ctx.strokeStyle='#d6d6d6';ctx.lineWidth=s;ctx.beginPath();ctx.moveTo(x(vx),b.top);ctx.lineTo(x(vx),b.bottom);ctx.stroke();
-    ctx.fillStyle='#000';ctx.textAlign='center';ctx.fillText(label(vx),x(vx),b.bottom+32*s);
-  }
-  for(const vy of yTicks??SSPZShapeDisplay.ticks(Math.min(ymin,ymax),Math.max(ymin,ymax))){
-    ctx.strokeStyle='#d6d6d6';ctx.beginPath();ctx.moveTo(b.left,y(vy));ctx.lineTo(b.right,y(vy));ctx.stroke();ctx.fillStyle='#000';ctx.textAlign='right';ctx.fillText(label(vy),b.left-14*s,y(vy)+8*s);
-  }
-  ctx.strokeStyle='#000';ctx.lineWidth=1.6*s;ctx.strokeRect(b.left,b.top,b.right-b.left,b.bottom-b.top);
-  ctx.textAlign='center';ctx.font=`${27*s}px Arial`;ctx.fillText(xlabel,(b.left+b.right)/2,h-26*s);
-  ctx.save();ctx.translate(35*s,(b.top+b.bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText(ylabel,0,0);ctx.restore();
-  return {ctx,s,b,x,y};
+  const plot=axisContext(canvas,{xMin:xmin,xMax:xmax,yMin:ymin,yMax:ymax},{x:xlabel,y:ylabel,xFormatter:label,yFormatter:yFormatter??label,topMargin:top,leftMargin:130,rightMargin:35,bottomMargin:105});
+  drawAxes(plot,xTicks??SSPZShapeDisplay.ticks(xmin,xmax),yTicks??SSPZShapeDisplay.ticks(Math.min(ymin,ymax),Math.max(ymin,ymax)));
+  plot.ctx.save();plot.ctx.font=`700 25px ${FIGURE_FONT}`;plot.ctx.fillStyle=INK;plot.ctx.textAlign='left';plot.ctx.textBaseline='alphabetic';plot.ctx.fillText(panel,18,30);plot.ctx.restore();
+  const b={left:plot.margin.left,right:plot.margin.left+plot.innerWidth,top:plot.margin.top,bottom:plot.margin.top+plot.innerHeight};
+  canvas.dataset.axisStyle='original-shared-axisContext-drawAxes';
+  canvas.dataset.renderState='ready';
+  return {ctx:plot.ctx,s:1,b,x:plot.x,y:plot.y};
 }
-function fdkDrawLines(a,xs,series,color=null){
-  const {ctx,s,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  for(const values of series){ctx.strokeStyle=color??(series.length>1?'rgba(209,59,50,.78)':'#d13b32');ctx.lineWidth=2*s;ctx.beginPath();values.forEach((v,i)=>i?ctx.lineTo(x(xs[i]),y(v)):ctx.moveTo(x(xs[i]),y(v)));ctx.stroke();}ctx.restore();
+function fdkDrawLines(a,xs,series,color=FDK_PRIMARY_COLOR){
+  const {ctx,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
+  ctx.strokeStyle=color;ctx.globalAlpha=series.length>1?.13:1;ctx.lineWidth=series.length>1?1.1:4;
+  for(const values of series)strokeNativeProfile(ctx,xs,values,x,y);
+  ctx.restore();
+}
+function drawFdkProfileLegend(a,r){
+  a.ctx.save();a.ctx.textAlign='center';a.ctx.textBaseline='alphabetic';a.ctx.font=`24px ${FIGURE_FONT}`;
+  fdkGroups(r).forEach(([name,g],i)=>{const q=fdkWidthStats(g);a.ctx.fillStyle=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;a.ctx.fillText(`${name}: FWHM ${fdkWidthAnnotation(q.mean,q.sd)}`,(a.b.left+a.b.right)/2,48+i*35);});
+  a.ctx.restore();
 }
 function fdkDrawProfile(canvas,r){
-  const ymin=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),low=ymin<0?Math.floor(ymin*10)/10:0,a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.03,'z position (mm)','Normalized SSPz','(e)',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],r.reference?128:90);
-  if(r.reference)fdkDrawLines(a,r.z,r.reference.profiles.map(p=>p.profile),'#0033bb');
-  fdkDrawLines(a,r.z,r.profiles.map(p=>p.profile));
-  const widths=r.profiles.map(p=>p.fwhm.width),mean=widths.reduce((s,v)=>s+v,0)/widths.length;
-  const sd=widths.length>1?Math.sqrt(widths.reduce((s,v)=>s+(v-mean)**2,0)/(widths.length-1)):null;
-  a.ctx.font=`${25*a.s}px Arial`;a.ctx.textAlign='center';a.ctx.fillStyle='#000';
-  a.ctx.fillStyle='#b40000';a.ctx.fillText(`${r.reference?'CBA: ':''}FWHM ${fdkWidthAnnotation(mean,sd)}`,(a.b.left+a.b.right)/2,61*a.s);
-  if(r.reference){const q=fdkWidthStats(r.reference);a.ctx.fillStyle='#0033bb';a.ctx.fillText(`RRI: FWHM ${fdkWidthAnnotation(q.mean,q.sd)}`,(a.b.left+a.b.right)/2,99*a.s);}
-  const fw=r.profiles[Math.min(selectedStateIndex,r.profiles.length-1)].fwhm,yy=a.y(.5);a.ctx.strokeStyle='#000';a.ctx.lineWidth=1.5*a.s;a.ctx.beginPath();a.ctx.moveTo(a.x(fw.left),yy);a.ctx.lineTo(a.x(fw.right),yy);
-  for(const [v,d] of [[fw.left,1],[fw.right,-1]]){a.ctx.moveTo(a.x(v)+d*9*a.s,yy-5*a.s);a.ctx.lineTo(a.x(v),yy);a.ctx.lineTo(a.x(v)+d*9*a.s,yy+5*a.s);}a.ctx.stroke();
+  const ymin=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),low=ymin<0?Math.floor(ymin*10)/10:0;
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.04,'z position (mm)','Normalized SSPz','(e)',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
+  for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,r.z,g.profiles.map(p=>p.profile),i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
+  a.ctx.save();a.ctx.strokeStyle=MUTED;a.ctx.lineWidth=1;a.ctx.setLineDash([5,4]);
+  for(const level of [.5,.1]){a.ctx.beginPath();a.ctx.moveTo(a.b.left,a.y(level));a.ctx.lineTo(a.b.right,a.y(level));a.ctx.stroke();}a.ctx.restore();
+  drawFdkProfileLegend(a,r);
+  const fw=r.profiles[Math.min(selectedStateIndex,r.profiles.length-1)].fwhm;fdkArrow(a,fw,.5,INK);
+  canvas.dataset.profileOpacity='0.13';canvas.dataset.profileLineWidth='1.1';canvas.dataset.profileInterpolation='native-sample-linear';
+}
+function drawFdkDifference(canvas,r){
+  const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02;
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(h)');
+  for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,g.z,g.meanDifference,i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
+  a.ctx.textAlign='center';a.ctx.fillStyle=INK;a.ctx.font=`21px ${FIGURE_FONT}`;a.ctx.fillText(r.reference?'CBA (red) / RRI (blue); each minus its own mean':'Each profile minus the mean SSPz',(a.b.left+a.b.right)/2,49);
+  canvas.dataset.profileOpacity='0.13';canvas.dataset.yMin=String(-limit);canvas.dataset.yMax=String(limit);
 }
 function fdkDrawGeometry(canvas,r){
   const c=r.config,feed=c.feed,step=2*Math.PI/c.viewSamples;
@@ -232,7 +238,7 @@ function renderFdkResult(r){
     document.getElementById('fdk-shape-summary').textContent=fdkShapeGroups.map(g=>`${g.name}: ${g.analysis.valid.length} / ${r.profiles.length}`).join(' · ')+fdkText(' 条件。濃さ：ビン内の割合。',' conditions. Intensity: fraction per bin.')+(r.profiles.length===1?fdkText('1条件では変動を評価できません。条件数を増やしてください。',' Variation cannot be assessed from one condition; increase the number of start angles.'):'');
   }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-summary').textContent=error.message;}
   document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
-  if(r.profiles.length>1){const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02,a=fdkAxes(document.getElementById('fdk-difference'),r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(h)');if(r.reference)fdkDrawLines(a,r.z,r.reference.meanDifference,'#0033bb');fdkDrawLines(a,r.z,r.meanDifference);if(r.reference){a.ctx.textAlign='center';a.ctx.fillStyle='#000';a.ctx.fillText('Blue: RRI / red: CBA; each minus its own mean',(a.b.left+a.b.right)/2,49*a.s);}}
+  if(r.profiles.length>1)drawFdkDifference(document.getElementById('fdk-difference'),r);
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
