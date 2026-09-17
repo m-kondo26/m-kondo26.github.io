@@ -13,6 +13,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Pending/status panels fit narrow screens; completed chart dimensions stay intact. */
+canvas[data-render-state="loading"], canvas[data-render-state="cancelled"],
+canvas[data-render-state="error"], canvas[data-render-state="idle"] { min-width: 0 !important; }
 body {
   margin: 0;
   font-family: Inter, "Noto Sans JP", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;

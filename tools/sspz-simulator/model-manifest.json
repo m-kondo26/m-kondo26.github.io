@@ -313,7 +313,7 @@
   },
   "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
   "activeBrowserModel": {
-    "version": "2026-09-17.8",
+    "version": "2026-09-17.9",
     "urlSchema": 11,
     "core": "axial-response-core.js",
     "sha256": "f8fe82a19a982e1b0b2c9f49125fae5d1e40fe35082c1bd103252e4986c6c60c",
@@ -358,5 +358,10 @@
       "verification": "tests/axial-paired-diagram.mjs",
       "unchanged": "SSPz calculation and z-FFS physical-view display"
     }
+  },
+  "loadingDisplay": {
+    "version": "2026-09-17.9",
+    "behavior": "Three sequentially bouncing and fading dots on every pending canvas. One shared animation loop at up to 25 fps; off-screen and hidden canvases are not repainted. Respects reduced motion and stops on completion, cancellation, errors, settings changes and worker replacement.",
+    "numericalChange": false
   }
 }

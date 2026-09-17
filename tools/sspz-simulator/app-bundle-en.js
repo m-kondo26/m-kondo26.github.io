@@ -3119,6 +3119,7 @@ function selectFdkState(index,immediate=false){
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
+  clearCanvasStatusAnimations();
   document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(r);
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('','RRI: linear row interpolation');
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
@@ -3383,9 +3384,10 @@ function initializeFdkUi(initial){
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
   const axialViewHelp=viewHelp?.textContent;
   function modeChanged(){
+    const hadResultOrPending=!!fdkResult||loadingCanvasStatuses.size>0;
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
-    if(fdkResult){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'));}
+    if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'),'idle');}
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
@@ -3454,7 +3456,7 @@ function runFdkSimulation(){
       }
       fdkResult=m.result;renderFdkResult(fdkResult);progress.value=1;setBusy(false);fdkToggleDownloads(true);status.textContent=fdkText('','Completed ')+((performance.now()-startedAt)/1000).toFixed(1)+' s / 360 angles';selectFdkState(selectedStateIndex,true);
     }else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest){fdkSelectedResult=m.result;renderFdkSelected();}}
-    else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){document.getElementById('fdk-inspection-status').textContent=m.message;}}
+    else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
     else if(m.type==='cancelled'){setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
       let text=m.message;
@@ -3639,8 +3641,12 @@ let legacyInputMigrated = false;
 let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
+const loadingCanvasStatuses = new Map();
+const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+let canvasStatusAnimation = null;
+let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.8 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-17.9 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -3802,6 +3808,7 @@ function paramsFromUrl() {
 }
 
 function setBusy(busy) {
+  if (!busy) clearCanvasStatusAnimations();
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
   form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
@@ -3821,13 +3828,72 @@ function setBusy(busy) {
   }
 }
 
+function clearCanvasStatusAnimations() {
+  if (canvasStatusAnimation !== null) cancelAnimationFrame(canvasStatusAnimation);
+  canvasStatusAnimation = null;
+  for (const canvas of loadingCanvasStatuses.keys()) {
+    canvas.removeAttribute("aria-busy");
+    canvas.dataset.renderState = "ready";
+  }
+  loadingCanvasStatuses.clear();
+}
+
+function scheduleCanvasStatusAnimation() {
+  if (canvasStatusAnimation !== null || !loadingCanvasStatuses.size || loadingMotionPreference.matches) return;
+  canvasStatusAnimation = requestAnimationFrame(animateCanvasStatuses);
+}
+
+function animateCanvasStatuses(now) {
+  canvasStatusAnimation = null;
+  // One shared loop, capped at 25 fps. Hidden/off-screen plots need no repaint.
+  if (!document.hidden && now - lastCanvasAnimationPaint >= 40) {
+    lastCanvasAnimationPaint = now;
+    for (const [canvas, message] of loadingCanvasStatuses) {
+      if (!canvas.isConnected || canvas.dataset.renderState !== "loading") {
+        loadingCanvasStatuses.delete(canvas);
+        continue;
+      }
+      const box = canvas.getBoundingClientRect();
+      if (box.width && box.height && box.bottom > 0 && box.top < window.innerHeight && box.right > 0 && box.left < window.innerWidth) {
+        paintCanvasStatus(canvas, message.title, message.detail, "loading", now);
+      }
+    }
+  }
+  scheduleCanvasStatusAnimation();
+}
+
+loadingMotionPreference.addEventListener("change", () => {
+  if (canvasStatusAnimation !== null) cancelAnimationFrame(canvasStatusAnimation);
+  canvasStatusAnimation = null;
+  for (const [canvas, message] of loadingCanvasStatuses) paintCanvasStatus(canvas, message.title, message.detail, "loading");
+  scheduleCanvasStatusAnimation();
+});
+
 function drawCanvasStatus(canvas, title, detail, state = "loading") {
+  canvas.dataset.renderState = state;
+  if (state === "loading") {
+    canvas.setAttribute("aria-busy", "true");
+    loadingCanvasStatuses.set(canvas, { title, detail });
+  } else {
+    canvas.removeAttribute("aria-busy");
+    loadingCanvasStatuses.delete(canvas);
+    if (!loadingCanvasStatuses.size && canvasStatusAnimation !== null) {
+      cancelAnimationFrame(canvasStatusAnimation);
+      canvasStatusAnimation = null;
+    }
+  }
+  paintCanvasStatus(canvas, title, detail, state);
+  scheduleCanvasStatusAnimation();
+}
+
+function paintCanvasStatus(canvas, title, detail, state, now = performance.now()) {
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
   const accent = state === "error" ? RED : state === "cancelled" ? MUTED : BLUE;
-  const titleSize = Math.max(22, Math.min(30, width * 0.03));
-  const detailSize = Math.max(15, Math.min(20, width * 0.02));
+  const displayScale = width / Math.max(1, canvas.clientWidth || width);
+  const titleSize = Math.max(22, Math.min(30, width * 0.03), 18 * displayScale);
+  const detailSize = Math.max(15, Math.min(20, width * 0.02), 14 * displayScale);
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -3840,13 +3906,16 @@ function drawCanvasStatus(canvas, title, detail, state = "loading") {
 
   const centerX = width / 2;
   const centerY = height / 2;
-  const dotRadius = Math.max(5, Math.min(8, width / 120));
+  const dotRadius = Math.max(5, Math.min(8, width / 120), 5 * displayScale);
   const dotGap = dotRadius * 3;
   [-1, 0, 1].forEach((offset, index) => {
-    ctx.globalAlpha = state === "loading" ? 0.4 + index * 0.3 : 0.75;
+    const moving = state === "loading" && !loadingMotionPreference.matches;
+    const phase = ((now / 1100 - index * 0.18) % 1 + 1) % 1;
+    const lift = moving ? Math.max(0, Math.sin(phase * Math.PI * 2)) : 0;
+    ctx.globalAlpha = moving ? 0.35 + 0.65 * lift : state === "loading" ? 0.4 + index * 0.3 : 0.75;
     ctx.fillStyle = accent;
     ctx.beginPath();
-    ctx.arc(centerX + offset * dotGap, centerY - titleSize * 1.65, dotRadius, 0, Math.PI * 2);
+    ctx.arc(centerX + offset * dotGap, centerY - titleSize * 1.65 - lift * dotRadius * 1.8, dotRadius, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.globalAlpha = 1;
@@ -3860,9 +3929,6 @@ function drawCanvasStatus(canvas, title, detail, state = "loading") {
   ctx.fillText(detail, centerX, centerY + detailSize * 1.55, width * 0.82);
   ctx.restore();
 
-  canvas.dataset.renderState = state;
-  if (state === "loading") canvas.setAttribute("aria-busy", "true");
-  else canvas.removeAttribute("aria-busy");
 }
 
 function setResultPlaceholder(state, title, detail) {
@@ -3891,6 +3957,7 @@ function showCalculatingState(detail = "Generating figures for the current condi
 }
 
 function markResultCanvasesReady() {
+  clearCanvasStatusAnimations();
   document.querySelectorAll(RESULT_CANVAS_SELECTOR).forEach(canvas => {
     canvas.dataset.renderState = "ready";
     canvas.removeAttribute("aria-busy");
@@ -3908,6 +3975,7 @@ function clearError() {
 }
 
 function releaseWorker() {
+  clearCanvasStatusAnimations();
   if (worker) worker.terminate();
   worker = null;
   if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
