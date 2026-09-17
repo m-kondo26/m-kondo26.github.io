@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-17.9">
+  <link rel="stylesheet" href="styles.css?v=2026-09-17.10">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -246,7 +246,7 @@
         <p class="section-note">Inspect tails, asymmetry, and the complete profile rather than width alone.</p>
       </div>
       <details class="reading-details"><summary>Details</summary><p id="profile-model-note" class="model-note">Rectangular-weight filter interpolation follows Eq. (6) of Taguchi et al. The response is evaluated by moving the reconstruction plane past a fixed thin object. Configured thickness T defines rectangular averaging width FW. It is not calibrated to scanner nominal thickness; FWHM is measured from the calculated response.</p>
-      </details><details class="reading-details"><summary>Details</summary><p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 0.1% in logarithmic coordinates.</p>
+      </details><details class="reading-details"><summary>Details</summary><p id="profile-display-note" class="model-note compact-note">SSPz curves join adjacent calculated samples with straight segments, without spline interpolation, smoothing, or point decimation. Screen and 600 dpi exports use the same drawing method. Low-amplitude tails join samples at or above 1% in logarithmic coordinates.</p>
 
       </details><div class="subsection-heading">
         <div>
@@ -277,8 +277,8 @@
 
       <div class="subsection-heading">
         <div><strong>3B  Low-amplitude SSPz tails</strong></div>
-        <p class="section-summary">Logarithmic view of the cone-geometry SSPz tails down to 0.1%.</p><details class="reading-details"><summary>Details</summary><p>The filter-interpolated SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 0.1% are not drawn.</p>
-      <span>Log-scale display at or above 0.1%</span></details></div>
+        <p class="section-summary">Logarithmic view of the cone-geometry SSPz tails down to 1%.</p><details class="reading-details"><summary>Details</summary><p>The filter-interpolated SSPz curves with cone-geometry scaling from 3A are displayed with a logarithmic vertical axis. This separates broad low-amplitude tails, which may persist even when FWHM is nearly constant, from the central profile. Values below 1% are not drawn.</p>
+      <span>Log-scale display at or above 1%</span></details></div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
           <div class="chart-title"><h3>With cone geometry</h3><details class="reading-details"><summary>Details</summary><span>Fan-beam condition; low-amplitude tails</span></details></div>
@@ -481,10 +481,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-17.9 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-17.10 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-17.9"></script>
-  <script src="app-bundle-en.js?v=2026-09-17.9"></script>
+  <script src="worker-source-en.js?v=2026-09-17.10"></script>
+  <script src="app-bundle-en.js?v=2026-09-17.10"></script>
 </body>
 </html>

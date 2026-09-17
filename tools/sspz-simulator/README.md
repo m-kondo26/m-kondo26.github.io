@@ -1,3 +1,7 @@
+## Tail display (2026-09-17)
+
+The public logarithmic tail view now shows normalized SSPz from 0.01 to 1 (1% to 100%), on screen and in 600-dpi PNG exports. This is a display threshold, not a contribution fraction or a truncation of the calculated profiles. Full numerical exports, FWHM and FWTM are unchanged. Profile display version: 2026-09-17.1. Earlier dated entries below describe prior releases.
+
 ## Current browser: shared axial interpolation response (2026-09-17.6)
 
 The public comparison now uses common point acquisition, finite detector aperture, rowwise rebinning, angle/state definitions, rectangular T averaging and normalization. It compares merged candidate selection with RRI-equivalent linear row interpolation, plus a separate nondivergent reference. There is no transverse ramp or reconstructed image volume. This is a new numerical model, not an unchanged FBP SSP. See [AXIAL_RESPONSE_METHOD.md](AXIAL_RESPONSE_METHOD.md).

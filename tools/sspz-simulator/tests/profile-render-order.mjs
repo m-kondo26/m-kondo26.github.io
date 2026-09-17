@@ -196,7 +196,7 @@ const results = specs.map(spec => checkDrawing(currentRuntime, spec));
 const nativeZ = Array.from({ length: 1103 }, (_, index) => -2.4 + 4.8 * (index / 1102) ** 1.07);
 function nativeValues(state = 0) {
   return nativeZ.map((_, index) => index === 501 ? 1
-    : index === 500 ? 0.001
+    : index === 500 ? 0.01
     : [0, 503, 1102].includes(index) ? 0.0004
       : 0.008 + (index % 19) * 0.003 + state * 0.00001);
 }
@@ -236,7 +236,7 @@ function checkNativeDrawing(runtime, spec) {
     const expected = [];
     let active = false;
     for (let index = 0; index < zs.length; index += 1) {
-      if (tail && values[index] < 0.001) { active = false; continue; }
+      if (tail && values[index] < 0.01) { active = false; continue; }
       expected.push({ op: active ? "L" : "M", x: plot.x(zs[index]),
         y: plot.y(tail ? Math.log10(values[index]) : values[index]) });
       active = true;
@@ -250,7 +250,7 @@ function checkNativeDrawing(runtime, spec) {
     }
     checkedPoints += expected.length;
   }
-  assert.equal(canvas.dataset.profileDisplayVersion, "2026-09-08.1");
+  assert.equal(canvas.dataset.profileDisplayVersion, "2026-09-17.1");
   assert.equal(canvas.dataset.profileInterpolation, "native-samples-piecewise-linear");
   for (const field of ["profileSpline", "profileSmoothing", "profileDecimation"]) assert.equal(canvas.dataset[field], "none");
   assert.equal(canvas.dataset.profileDisplayGrid, "original-calculated-z-values");

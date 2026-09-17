@@ -35,12 +35,12 @@ const PAIR_TYPE_COLORS = Object.freeze([
 const ROW_COLORS = ["#0072b2", "#d55e00", "#009e73", "#e69f00", "#cc79a7", "#56b4e9", "#000000", "#777777"];
 const FIGURE_FONT = "Arial, Helvetica, sans-serif";
 const PUBLICATION_DPI = 600;
-const PROFILE_DISPLAY_VERSION = "2026-09-08.1";
+const PROFILE_DISPLAY_VERSION = "2026-09-17.1";
 const PUBLICATION_WIDTH_MM = Object.freeze({ panel: 80, full: 180 });
-// The log-tail plot still renders values only at or above 0.1%.  These limits
-// add print-space around the 100% peak and the 0.1% endpoints so neither is
+// The log-tail plot still renders values only at or above 1%.  These limits
+// add print-space around the 100% peak and the 1% endpoints so neither is
 // hidden by the plot frame in the 80-mm publication export.
-const PROFILE_TAIL_DISPLAY_BOUNDS = Object.freeze({ yMin: -3.08, yMax: 0.08 });
+const PROFILE_TAIL_DISPLAY_BOUNDS = Object.freeze({ yMin: -2.08, yMax: 0.08, minimum: 0.01 });
 const RESULT_CANVAS_SELECTOR = "canvas";
 
 const form = document.querySelector("#parameter-form");
@@ -81,7 +81,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.9 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-17.10 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -1647,12 +1647,12 @@ function strokeNativeProfile(ctx, z, values, x, y, { offset = 0, tailView = fals
   let active = false;
   for (let index = 0; index < z.length; index += 1) {
     const value = values[offset + index];
-    if (!Number.isFinite(z[index]) || !Number.isFinite(value) || (tailView && value < 0.001)) {
+    if (!Number.isFinite(z[index]) || !Number.isFinite(value) || (tailView && value < PROFILE_TAIL_DISPLAY_BOUNDS.minimum)) {
       active = false;
       continue;
     }
     const px = x(z[index]);
-    const py = y(tailView ? Math.log10(Math.max(0.001, value)) : value);
+    const py = y(tailView ? Math.log10(value) : value);
     if (!active) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     active = true;
   }
@@ -1773,7 +1773,7 @@ function configuredOverlayBounds(result, threshold, minimumHalfSpan, conditions 
 
 function configuredOverlayAxes(result) {
   const core = configuredOverlayBounds(result, 0.1, 0.5 * result.params.rowWidth);
-  const tail = configuredOverlayBounds(result, 0.001, core.xMax, ["on"]);
+  const tail = configuredOverlayBounds(result, PROFILE_TAIL_DISPLAY_BOUNDS.minimum, core.xMax, ["on"]);
   return { core, tail };
 }
 
@@ -1801,7 +1801,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
     y: tailView ? "正規化SSPz（対数）" : "正規化SSPz",
     xFormatter: xAxis.formatter,
     yFormatter: tailView
-      ? value => ({ "-3": "0.1%", "-2": "1%", "-1": "10%", "0": "100%" }[String(value)] ?? "")
+      ? value => ({ "-2": "1%", "-1": "10%", "0": "100%" }[String(value)] ?? "")
       : value => value.toFixed(1),
     topMargin: publicationMode ? 116 : 126,
     leftMargin: tailView ? 158 : undefined,
@@ -1809,7 +1809,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
 
   // The 100% plateau can coincide exactly with a gridline. Keep the grid
   // behind every individual SSPz in both the screen and publication paths.
-  drawAxes(plot, xAxis.ticks, tailView ? [-3, -2, -1, 0] : [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
+  drawAxes(plot, xAxis.ticks, tailView ? [-2, -1, 0] : [0, 0.2, 0.4, 0.6, 0.8, 1.0]);
   plot.ctx.save();
   plot.ctx.beginPath();
   plot.ctx.rect(plot.margin.left, plot.margin.top, plot.innerWidth, plot.innerHeight);
@@ -1817,7 +1817,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
 
   // Draw all 360 configured-output states as separate paths, without a
   // summary band or state decimation. The core view is linear and restricted
-  // to >=10%; the tail view is logarithmic and restricted to >=0.1%.
+  // to >=10%; the tail view is logarithmic and restricted to >=1%.
   for (let stateIndex = 0; stateIndex < overlay.stateCount; stateIndex += 1) {
     const complete = condition.coverage[stateIndex] >= 1 - 1e-7;
     const offset = stateIndex * overlay.zCount;
@@ -1896,7 +1896,7 @@ function drawProfileOverlay(canvas, result, coneOn, viewMode, xAxis = configured
   canvas.dataset.responseCoordinate = "reconstruction-plane-minus-fixed-object-mm";
   canvas.dataset.viewMode = viewMode;
   if (tailView) {
-    canvas.dataset.renderedMinimum = "0.001";
+    canvas.dataset.renderedMinimum = String(PROFILE_TAIL_DISPLAY_BOUNDS.minimum);
     canvas.dataset.displayYMinLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMin);
     canvas.dataset.displayYMaxLog10 = String(PROFILE_TAIL_DISPLAY_BOUNDS.yMax);
   }

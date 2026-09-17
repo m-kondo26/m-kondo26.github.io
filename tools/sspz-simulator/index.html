@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-17.9">
+  <link rel="stylesheet" href="styles.css?v=2026-09-17.10">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -246,7 +246,7 @@
         <p class="section-note">幅だけでなく、裾・非対称性・形状全体を同時に確認します。</p>
       </div>
       <details class="reading-details"><summary>詳しい説明</summary><p id="profile-model-note" class="model-note">Taguchiらの式（6）に基づく矩形重みのフィルタ補間を適用します。固定した薄い物体に対して再構成面を動かした応答を求めます。設定厚Tを矩形平均化幅FWとして使います。装置の設定厚との対応は校正しておらず、FWHMは計算結果から求めます。</p>
-      </details><details class="reading-details"><summary>詳しい説明</summary><p id="profile-display-note" class="model-note compact-note">SSPzは計算済みの隣接点を直線で結びます。スプライン補間・平滑化・点の間引きは行いません。画面と600 dpi保存で同じ描画方法を使います。低振幅裾は0.1%以上の点を対数座標で結びます。</p>
+      </details><details class="reading-details"><summary>詳しい説明</summary><p id="profile-display-note" class="model-note compact-note">SSPzは計算済みの隣接点を直線で結びます。スプライン補間・平滑化・点の間引きは行いません。画面と600 dpi保存で同じ描画方法を使います。低振幅裾は1%以上の点を対数座標で結びます。</p>
 
       </details><div class="subsection-heading">
         <div>
@@ -277,8 +277,8 @@
 
       <div class="subsection-heading">
         <div><strong>3B　フィルタ補間後の低振幅裾</strong></div>
-        <p class="section-summary">コーン幾何ありのSSPzを、0.1%以上の裾まで対数表示します。</p><details class="reading-details"><summary>詳しい説明</summary><p>3Aのうちコーン幾何を反映したフィルタ補間後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。0.1%未満は描画しません。</p>
-      <span>0.1%以上を対数表示</span></details></div>
+        <p class="section-summary">コーン幾何ありのSSPzを、1%以上の裾まで対数表示します。</p><details class="reading-details"><summary>詳しい説明</summary><p>3Aのうちコーン幾何を反映したフィルタ補間後SSPzを、縦軸だけ対数に変えて表示します。FWHMがほぼ一定でも残り得る広い低振幅裾を、中心形状から分離して確認するための図です。1%未満は描画しません。</p>
+      <span>1%以上を対数表示</span></details></div>
       <div class="chart-grid single-panel">
         <article class="chart-card">
           <div class="chart-title"><h3>コーン幾何を反映する</h3><details class="reading-details"><summary>詳しい説明</summary><span>ファンビーム条件・低振幅裾</span></details></div>
@@ -481,10 +481,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-17.9 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-17.10 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-17.9"></script>
-  <script src="app-bundle.js?v=2026-09-17.9"></script>
+  <script src="worker-source.js?v=2026-09-17.10"></script>
+  <script src="app-bundle.js?v=2026-09-17.10"></script>
 </body>
 </html>

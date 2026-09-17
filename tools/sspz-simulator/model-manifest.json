@@ -2,8 +2,8 @@
   "modelName": "CT unwrapped-diagram and SSPz geometry reference",
   "modelVersion": "2026-09-17.4",
   "diagramDisplayVersion": "2026-09-16.1",
-  "profileDisplayVersion": "2026-09-08.1",
-  "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The unchanged log-tail rule omits values below 0.001, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
+  "profileDisplayVersion": "2026-09-17.1",
+  "profileDisplayConvention": "Selected-state and all-360-state SSPz screen/600-dpi painters share one native-sample straight-line path. All original calculated z coordinates and values are used, with no display resampling, spline, smoothing, or point/state decimation. The log-tail display omits values below 0.01, breaks paths across those samples, and joins retained points in log10 coordinates. Model calculation, normalization, coordinates, width metrics, and numerical model version are unchanged.",
   "purpose": "Visualize acquired-row geometry separately from an ideal axial response using Taguchi and Aradate (1998) Eq. (6) rectangular filter interpolation. The response fixes a thin object and moves the reconstruction plane; 360 curves change the object position within one helical table feed. This is not complete image reconstruction or scanner-specific nominal-thickness prediction.",
   "referenceImplementation": {
     "fileName": "展開図_SSP位置依存性_Schaller_φ点数可変.py",
@@ -63,7 +63,7 @@
     "result-side inspection of one selected model state without treating that state as an acquisition input",
     "filter-interpolated-only symmetric horizontal scaling for the selected-state SSPz detail, derived from the response at or above 10 percent",
     "public radial-position range from 0 to 250 mm, including the geometric edge of a 500-mm field of view",
-    "filter-interpolated SSPz split into a linear center-shape view at or above 10 percent and a separate logarithmic low-amplitude-tail view at or above 0.1 percent, with off/on comparisons sharing a domain only within the same view role",
+    "filter-interpolated SSPz split into a linear center-shape view at or above 10 percent and a separate logarithmic low-amplitude-tail view at or above 1 percent, with off/on comparisons sharing a domain only within the same view role",
     "Taguchi and Aradate Eq. (6) local candidate reselection at z_r+i*FW/K for i=-I,...,I and K=2I+1, followed by a normalized finite rectangular-weight average",
     "fixed thin-object acquired row-aperture values, moving-plane adjacent-sample interpolation, piecewise-linear aggregation, and finite shifted-sum evaluation",
     "independent FW and reference T inputs; missing legacy FW initialized numerically to T without scanner calibration",
@@ -120,7 +120,7 @@
   ],
   "scanCalculationConvention": "Direct views cover 0 <= beta < 360 degrees. Fan-beam complementary angles use beta+180 degrees+2gamma and their two acquired angular neighbors. Each local resampling coordinate z_f has its own direct/complementary adjacent-candidate selection and normalized linear weights. Angular branches are convexly combined and K resampling values equally averaged. The thin object and its acquired row-aperture samples remain fixed while the reconstruction plane z_r moves. Linear aggregation of the rebracketed piecewise-linear response is used before the finite shifted sum; this is not postconvolution of the former fixed-plane candidate kernel. Browser T sets rectangular averaging width FW; FWHM remains an output. The direct-only comparator omits complementary samples but uses the same moving-plane/filter response definition.",
   "angleConvention": "The diagram uses a model-relative tube angle beta with 0 degrees at the top and 360 degrees at the bottom. It is not a measured absolute tube angle. The drawn endpoint at 360 degrees closes the displayed helix period but is not double-counted in SSPz integration.",
-  "overlayConvention": "The overlay samples 360 fixed-object positions within one table feed. Each curve fixes that object and moves the reconstruction plane, is individually peak-normalized, and uses z_reconstruction-z_object without peak or centroid alignment. All states and all calculated z samples are rendered. Center panels share a >=10% derived horizontal domain; the cone-on log-tail panel uses values >=0.1%. Display thresholds do not truncate the calculated or exported response.",
+  "overlayConvention": "The overlay samples 360 fixed-object positions within one table feed. Each curve fixes that object and moves the reconstruction plane, is individually peak-normalized, and uses z_reconstruction-z_object without peak or centroid alignment. All states and all calculated z samples are rendered. Center panels share a >=10% derived horizontal domain; the cone-on log-tail panel uses values >=1%. Display thresholds do not truncate the calculated or exported response.",
   "candidateDisplayConvention": "The all-N-row direct and complementary acquired-view trajectories and geometric coordinates are unchanged. Cone-off uses q=1 and a 180-degree complementary angle; cone-on uses fan-angle correspondence and each acquired family's own distance scaling. T and FW do not remove the displayed row population. Section 2B markers/weights and Section 2C gaps refer to local FW=0 interpolation at the selected central position, not all acquired samples contributing across a thick-slice filter. The geometry reference plane passes through the object position selected for SSPz. Same acquired samples may reappear in different angular correspondences; displayed counts are not independent data counts.",
   "acquisitionGeometryFigureConvention": "The Section 3C introductory figure is a pre-weight acquisition-geometry display for the currently inspected state. It shows a not-to-scale orthographic focal-spot helix, target plane, one direct acquired view, the two acquired complementary views bracketing the ideal beta plus 180 degrees plus 2 gamma angle, and every detector-row center mapped to the longitudinal line through the evaluation point. Nine representative row rays are drawn in the 3-D panel only for legibility; the adjacent longitudinal panel and numerical calculation retain all rows. A physical detector plane is not inferred because detector-to-isocenter distance is not an input. Color, opacity, and line width encode geometric role only. Circle and triangle markers identify candidates nearest the target plane for explanation; they do not assert use or weight. Schaller AAI h(z), weight normalization, filtering, and backprojection are not applied in this figure.",
   "weightDisplayConvention": "Section 2B fixed-size circle/triangle markers and saturation encode normalized local FW=0 endpoint weights at the selected central plane, including angular branch weights. Contributions sharing referenceViewIndex, absoluteViewIndex, and detector row are summed before drawing one opaque glyph. Distinct physical samples at coincident coordinates remain separate. Both family roles are retained if one acquired sample acts as direct and complementary, shown by a small circle inside a triangle. Hue identifies detector row; only trajectory lines use multiply blending to indicate overlap, with opacity and stroke width reduced by sqrt(24/max(24,N)) and a minimum stroke width. Blended line color is neither a new detector row nor a numerical weight. These are not the aggregated thick-slice filter weights. Equal-z ties share endpoint weight as an explicit idealized convention.",
@@ -313,7 +313,7 @@
   },
   "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
   "activeBrowserModel": {
-    "version": "2026-09-17.9",
+    "version": "2026-09-17.10",
     "urlSchema": 11,
     "core": "axial-response-core.js",
     "sha256": "f8fe82a19a982e1b0b2c9f49125fae5d1e40fe35082c1bd103252e4986c6c60c",
@@ -363,5 +363,12 @@
     "version": "2026-09-17.9",
     "behavior": "Three sequentially bouncing and fading dots on every pending canvas. One shared animation loop at up to 25 fps; off-screen and hidden canvases are not repainted. Respects reduced motion and stops on completion, cancellation, errors, settings changes and worker replacement.",
     "numericalChange": false
+  },
+  "tailDisplay": {
+    "version": "2026-09-17.1",
+    "minimumNormalizedResponse": 0.01,
+    "maximumNormalizedResponse": 1,
+    "axis": "log10",
+    "scope": "Screen and 600-dpi PNG; visibility threshold only. Full calculated/exported profiles and width metrics are retained. This normalized ordinate is not an integrated contribution fraction."
   }
 }
