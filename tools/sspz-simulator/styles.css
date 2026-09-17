@@ -404,6 +404,11 @@ footer p { margin: 0.2rem 0; }
 .fdk-controls { grid-column: 1 / -1; border-top: 1px solid #d0d4d7; padding-top: 18px; }
 #fdk-panel { margin-top: 28px; }
 #fdk-panel canvas { width: 100%; height: auto; aspect-ratio: auto; }
+/* Limit the on-screen figure scale after the workflow changed to one column.
+   Canvas pixels and 600-dpi exports retain their independent dimensions. */
+#fdk-panel .chart-card { width: 100%; max-width: 900px; margin-inline: auto; }
+#fdk-geometry-step > .chart-card,
+#fdk-weight-step .chart-card { max-width: 720px; }
 #fdk-panel h3 { font-size: 1rem; margin: 0 0 8px; }
 .workflow-block { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccd2d6; }
 .workflow-block > h2 { margin-bottom: 1rem; }

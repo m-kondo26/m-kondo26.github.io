@@ -1,3 +1,7 @@
+## On-screen figure size (2026-09-17.12)
+
+Single-column diagram cards are capped at 720 CSS pixels and other result cards at 900 CSS pixels. This prevents the 900-pixel diagram canvas from being enlarged to the full 1440-pixel page width. Cards remain responsive; narrow screens retain local scrolling for legible completed-chart labels. Canvas resolution, aspect ratios, numerical results and 600-dpi exports are unchanged.
+
 ## Diagram grid layers (2026-09-17.11)
 
 Unwrapped diagrams draw the gray major-tick grid behind trajectories, weight markers and the target plane, on screen and in 600-dpi PNG exports. The black frame, ticks and axis labels remain in the foreground. The pale extent band, row colours, marker weights and numerical results are unchanged.

@@ -313,7 +313,7 @@
   },
   "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
   "activeBrowserModel": {
-    "version": "2026-09-17.11",
+    "version": "2026-09-17.12",
     "urlSchema": 11,
     "core": "axial-response-core.js",
     "sha256": "f8fe82a19a982e1b0b2c9f49125fae5d1e40fe35082c1bd103252e4986c6c60c",
@@ -353,6 +353,9 @@
     "diagram": {
       "version": "2026-09-17.8",
       "gridDisplayVersion": "2026-09-17.11",
+      "screenLayoutVersion": "2026-09-17.12",
+      "screenCardMaxWidthCssPx": 720,
+      "otherResultCardMaxWidthCssPx": 900,
       "layerOrder": "extent band; gray grid; trajectories; weight markers; target plane; black frame/ticks/labels; footer legend",
       "defaultOffCoordinate": "common direct-side rebinned theta; complementary family at theta+pi",
       "encoding": "direct solid/circle; complementary dashed/triangle; detector-row colour",
