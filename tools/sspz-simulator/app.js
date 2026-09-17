@@ -81,7 +81,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.12 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-17.13 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -826,7 +826,7 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
   lines.forEach((value, index) => ctx.fillText(value, left, y + index * lineHeight));
 }
 
-function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
+function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = true) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
   const items = [{ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK }];
   if (paired) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK });
@@ -843,8 +843,10 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width) {
     ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = INK;
-    setFittedFigureFont(ctx, item.label, 26, 22, columnWidth - 44);
-    ctx.fillText(item.label, start + 40, y);
+    // A geometry-only overview has trajectories but no selected-point glyphs.
+    const label = includeMarkers ? item.label : item.label.replace(/\s*[○△]/g, "");
+    setFittedFigureFont(ctx, label, 26, 22, columnWidth - 44);
+    ctx.fillText(label, start + 40, y);
   });
   ctx.restore();
 }
@@ -931,7 +933,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   setFittedFigureFont(ctx, scope, 26, 24, width);
   ctx.fillText(scope, left, top);
   drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
-  drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width);
+  drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width, false);
   ctx.textAlign = "left";
   ctx.fillStyle = MUTED;
   const band = localizedText("淡色帯：拡大図の表示範囲（設定厚Tとは別）", "Shaded band: zoomed range, independent of thickness T");

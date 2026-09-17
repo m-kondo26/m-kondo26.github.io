@@ -1,3 +1,7 @@
+## Overview legend (2026-09-17.13)
+
+The geometry-only overview identifies direct and complementary trajectories by solid and dashed lines, without circle/triangle symbols. The selected-weight diagram retains these marker symbols. This applies to the screen and 600-dpi exports in both languages.
+
 ## On-screen figure size (2026-09-17.12)
 
 Single-column diagram cards are capped at 720 CSS pixels and other result cards at 900 CSS pixels. This prevents the 900-pixel diagram canvas from being enlarged to the full 1440-pixel page width. Cards remain responsive; narrow screens retain local scrolling for legible completed-chart labels. Canvas resolution, aspect ratios, numerical results and 600-dpi exports are unchanged.
