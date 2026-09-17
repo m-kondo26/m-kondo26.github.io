@@ -24,6 +24,7 @@ function initializeFdkWorkflow(panel){
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('選択角度の再構成画像','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
   const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,widths,shape,images);
+  initializeAxialMovie(weights);
   // The old first-angle-only audit is superseded by the linked window audit.
   document.getElementById('cba-samples-wrap').hidden=true;
   document.getElementById('cba-samples-wrap').style.display='none';
@@ -39,11 +40,13 @@ function initializeFdkWorkflow(panel){
   }
 }
 function fdkWorkflowAvailability(on){
+  if(!on)disableAxialMovie();
   for(const id of ['fdk-inspect','fdk-prev','fdk-next','fdk-width-metric','fdk-width-csv'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
 function selectFdkState(index,immediate=false){
   if(!fdkResult)return;
+  stopAxialMovie();
   selectedStateIndex=((Math.round(index)%360)+360)%360;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkSelectedResult=null;
   document.getElementById('fdk-inspect').value=selectedStateIndex;
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
@@ -78,6 +81,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   renderZffsSelected();
+  syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.

@@ -68,6 +68,30 @@ The chapter separates FDK projection preweighting, transverse ramp filtering, an
 
 ## Verification and version boundary
 
+### Interactive playback (Web 2026-09-18.1)
+
+Playback is a display audit and does not alter the SSP calculation. The plane
+sweep keeps the start phase and the centre of the T window fixed, moves an
+evaluation plane from -T/2 to +T/2, and displays its selected candidates. A
+second panel accumulates the native-grid piecewise-linear integral from -T/2
+to the moving plane, always dividing by the full T. Its last frame reproduces
+the existing full-window coefficients. The SSP panel always shows the final
+full-view, full-T profile, not a partially accumulated or display-sampled SSP.
+
+The start-angle mode compares the already calculated acquisition conditions,
+one degree per frame. It is not tube rotation within one scan. The animation
+has its own labelled start angle; a button applies it to the other figures.
+Playback is off until requested and stops on pause, the last frame, hidden
+page, changed settings, new calculation, or error. The display-angle lattice
+is closed under a half-turn, so both roles of the same rebinned view/row are
+retained. Role categories use full-T coefficients and do not duplicate a
+datum's total weight. Optional z-FFS retains focal-state identity.
+
+`tests/axial-animation.mjs` checks native-integral coefficients, partial-window
+normalization, direct/complementary role sums, exact agreement with existing
+weight audits, focal switching, multirow cases, cancellation and non-mutation.
+These are display/implementation checks, not scanner validation.
+
 `tests/axial-response.mjs` checks independent all-row weight enumeration, Cartesian rays from the chapter, direct all-row response summation, exact response/weight-trace closure, selected-phase/series identity, and 4/80/160/320-row cases. These establish implementation consistency, not clinical or scanner validation. Results and cases are in `tests/axial-response-verification.json`.
 
 Excel/CSV retain unrounded values. The selected-weight sheet stores unfiltered rebinned data and a separate angular-mean factor: summing `weight * unfiltered_acquired_value * angular_mean_factor` reproduces the target point's unnormalized response after T averaging. Diagram markers subsample angles for legibility; the export retains all computed weights.

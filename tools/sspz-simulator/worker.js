@@ -11,10 +11,12 @@ import {
 import { reconstructFdkSeries, reconstructFdk } from "./fdk-core.js";
 import { reconstructRriSeries, reconstructRri } from "./cba-core.js";
 import { computeAxialResponseSeries, computeAxialResponse } from "./axial-response-core.js";
+import { createAxialAnimationAudit } from "./axial-animation-core.js";
 
 let cancelled = false;
 let activeContext = null;
 let fdkContext=null, fdkInspectionToken=0;
+let axialAnimationToken=0;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
 function overlaySampleIndices(length) {
@@ -108,7 +110,7 @@ self.onmessage = async event => {
   const message = event.data;
   if (message.type === 'fdk-run') {
     cancelled = false;
-    fdkContext=null;fdkInspectionToken++;
+    fdkContext=null;fdkInspectionToken++;axialAnimationToken++;
     try {
       const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
@@ -120,6 +122,17 @@ self.onmessage = async event => {
     } catch(error) {
       self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
     }
+    return;
+  }
+  if(message.type==='axial-animation-cancel'){axialAnimationToken++;return;}
+  if(message.type==='axial-animation'){
+    const token=++axialAnimationToken,context=fdkContext;if(!context)return;
+    try{
+      const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
+      const config={...context.first.config,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount};
+      const audit=await createAxialAnimationAudit(config,{frameCount:message.mode==='thickness'?41:1,cancelled:()=>cancelled||token!==axialAnimationToken});
+      if(token===axialAnimationToken)self.postMessage({type:'axial-animation',index,requestId:message.requestId,audit});
+    }catch(error){if(token===axialAnimationToken)self.postMessage({type:'axial-animation-error',requestId:message.requestId,message:error.message});}
     return;
   }
   if(message.type==='fdk-inspect'){

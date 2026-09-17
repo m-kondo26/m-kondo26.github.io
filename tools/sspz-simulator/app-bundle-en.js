@@ -2731,6 +2731,15 @@ function summarizeSweep(rows, coneOn) {
   };
 }
 
+const CBA_TAU=2*Math.PI;
+function cbaCoordinates(c,theta,x,y,z){
+  const t=-x*Math.sin(theta)+y*Math.cos(theta),along=x*Math.cos(theta)+y*Math.sin(theta);
+  const gamma=Math.asin(t/c.sourceRadius),beta=theta+gamma;
+  const L=Math.sqrt(c.sourceRadius*c.sourceRadius-t*t)-along;
+  const sourceZ=c.feed*(beta-c.phase)/CBA_TAU,w=c.sourceRadius*(z-sourceZ)/L;
+  const row=w/c.rowWidth+(c.rows-1)/2,n=Math.floor(row);
+  return {t,along,gamma,beta,L,sourceZ,w,n,delta:row-n};
+}
 // Two alternating axial focal positions with a fixed cylindrical detector.
 // The quarter-row default follows the isocentre interlacing in Mori (2008),
 // Fig. 4 / Eqs. 19-22. Pure axial motion is an explicit idealization.
@@ -2770,6 +2779,22 @@ function zffsRebinStencil(c,theta,focus){
   }
   return {beta,gamma,stencil:out};
 }
+
+// Display-only audit. Reuse the numerical model's candidate selectors and
+// piecewise-linear T integral; never reconstruct a substitute SSP for playback.
+function axialAnimationGroups(c,view){
+  const V=c.viewSamples,groups=[];
+  for(let direction=0;direction<2;direction++){
+    const v=view+direction*V/2,theta=c.phase+v*(2*Math.PI/V);
+    const q=c.axialRule==='parallel'?{sourceZ:c.feed*v/V,L:c.sourceRadius}:cbaCoordinates(c,theta,c.radius,0,0);
+    for(let focus=0;focus<(c.zFfsEnabled?2:1);focus++){
+      const origin=q.sourceZ+(c.zFfsEnabled?zffsShift(c,focus)*(1-q.L/c.zFfsSourceDetectorMm):0);
+      groups.push({...q,origin,sourceZ:origin,spacing:c.rowWidth*q.L/c.sourceRadius,view:v,focus,direction});
+    }
+  }
+  return groups;
+}
+
 
 // Presentation/export only: does not alter the acquisition or response model.
 globalThis.SSPZShape = (() => {
@@ -3057,6 +3082,170 @@ async function exportZffsPanels(){
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_zFFS_4panels_600dpi.png',await pngWithResolution(blob,600),'image/png');
 }
 
+// Optional, user-started flipbook. Its phase is explicitly local to this block;
+// the original complete-view profiles provide every SSP frame.
+const axialMovie={audit:null,index:0,frame:0,mode:'thickness',playing:false,timer:null,request:0,pending:false,background:null,cache:new Map()};
+function initializeAxialMovie(after){
+  const section=document.createElement('section');section.id='axial-movie';section.className='workflow-block';
+  section.innerHTML=`<h2>${fdkText('','2C  From candidates to SSPz: interactive playback')}</h2>
+  <p>${fdkText('','1. Move through width T and accumulate weights.  2. Change the start angle and compare SSPz.')}</p>
+  <div class="axial-movie-controls">
+    <label>${fdkText('','Playback mode')}<select id="axial-movie-mode"><option value="thickness">${fdkText('','1. Plane sweep within T')}</option><option value="phase">${fdkText('','2. Tube start angle')}</option></select></label>
+    <label>${fdkText('','Playback speed')}<select id="axial-movie-speed"><option value="500">${fdkText('','Slow')}</option><option value="200" selected>${fdkText('','Normal')}</option><option value="100">${fdkText('','Fast')}</option></select></label>
+    <button type="button" id="axial-movie-play" disabled>${fdkText('','▶ Play')}</button>
+    <button type="button" id="axial-movie-prev" disabled>${fdkText('','Previous frame')}</button>
+    <button type="button" id="axial-movie-next" disabled>${fdkText('','Next frame')}</button>
+    <button type="button" id="axial-movie-reset" disabled>${fdkText('','Rewind')}</button>
+  </div>
+  <label class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
+  <p id="axial-movie-status" role="status"></p>
+  <label class="axial-movie-role-control">${fdkText('','Role categories in (b)')}<select id="axial-movie-role"><option value="all">${fdkText('','All')}</option><option value="direct">${fdkText('','Used only as direct data')}</option><option value="complementary">${fdkText('','Used only as complementary data')}</option><option value="both">${fdkText('','Used in both roles')}</option></select></label>
+  <div class="axial-movie-grid">
+    <article class="chart-card"><h3>${fdkText('','(a) Candidates and weights at the moving plane')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-instant" width="900" height="960"></canvas></div></article>
+    <article class="chart-card"><h3 id="axial-movie-total-title">${fdkText('','(b) Weights accumulated within T')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-total" width="900" height="960"></canvas></div></article>
+  </div>
+  <p id="axial-movie-detail">${fdkText('','Click a weight marker to inspect both roles of the same datum.')}</p>
+  <article class="chart-card axial-movie-ssp"><h3>${fdkText('','(c) Model SSPz at the same start angle: after the complete T average')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-profile" width="1200" height="540"></canvas></div></article>
+  <p id="axial-movie-note"></p>
+  <button type="button" class="secondary" id="axial-movie-apply" disabled>${fdkText('','Show this start angle in the other figures')}</button>
+  <details class="reading-details"><summary>${fdkText('','How to read the animation')}</summary><p>${fdkText('','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Role categories refer to the full window; aggregate weights are not duplicated into both roles.')}</p><p>${fdkText('','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
+  after.after(section);
+  const el=id=>document.getElementById('axial-movie-'+id);
+  el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
+  el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{axialMovie.playing=true;el('play').textContent=fdkText('','Ⅱ Pause');if(axialMovie.mode==='thickness'&&axialMovie.frame===40)axialMovie.frame=-1;scheduleAxialMovie();}};
+  el('prev').onclick=()=>{stopAxialMovie();advanceAxialMovie(-1);};el('next').onclick=()=>{stopAxialMovie();advanceAxialMovie(1);};
+  el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
+  el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
+  el('role').onchange=()=>renderAxialMovie();el('apply').onclick=()=>{stopAxialMovie();selectFdkState(axialMovie.index,true);};
+  el('total').onclick=event=>inspectAxialMovieMarker(event);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopAxialMovie();});
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduced.matches)el('speed').value='500';
+  reduced.addEventListener('change',()=>{stopAxialMovie();if(reduced.matches)el('speed').value='500';});
+}
+function stopAxialMovie(){
+  axialMovie.playing=false;clearTimeout(axialMovie.timer);axialMovie.timer=null;
+  const button=document.getElementById('axial-movie-play');if(button)button.textContent=fdkText('','▶ Play');
+}
+function disableAxialMovie(){
+  stopAxialMovie();axialMovie.request++;axialMovie.pending=false;axialMovie.audit=null;axialMovie.background=null;axialMovie.cache.clear();
+  worker?.postMessage({type:'axial-animation-cancel'});
+  document.querySelectorAll('#axial-movie button, #axial-movie input').forEach(e=>e.disabled=true);
+  const e=document.getElementById('axial-movie-status');if(e)e.textContent=fdkText('','Available after calculation.');
+}
+function syncAxialMovie(){
+  if(!fdkResult?.profiles?.length)return;
+  stopAxialMovie();axialMovie.frame=0;requestAxialMovie(selectedStateIndex);
+}
+function requestAxialMovie(index){
+  if(!fdkResult?.profiles?.length||!worker)return;
+  clearTimeout(axialMovie.timer);axialMovie.index=((index%fdkResult.profiles.length)+fdkResult.profiles.length)%fdkResult.profiles.length;
+  axialMovie.request++;axialMovie.pending=true;
+  document.getElementById('axial-movie-status').textContent=fdkText('','Preparing candidate frames… (Pause remains available)');
+  const key=axialMovie.mode+':'+axialMovie.index;
+  if(axialMovie.cache.has(key)){receiveAxialMovie({requestId:axialMovie.request,index:axialMovie.index,audit:axialMovie.cache.get(key)});return;}
+  worker.postMessage({type:'axial-animation',index:axialMovie.index,mode:axialMovie.mode,requestId:axialMovie.request});
+}
+function receiveAxialMovie(message){
+  if(message.requestId!==axialMovie.request)return;
+  axialMovie.audit=message.audit;axialMovie.pending=false;axialMovie.background=null;
+  const key=axialMovie.mode+':'+message.index;axialMovie.cache.set(key,message.audit);
+  while(axialMovie.cache.size>4)axialMovie.cache.delete(axialMovie.cache.keys().next().value);
+  document.querySelectorAll('#axial-movie button, #axial-movie input').forEach(e=>e.disabled=false);
+  renderAxialMovie();scheduleAxialMovie();
+}
+function failAxialMovie(message){
+  if(message.requestId!==axialMovie.request)return;
+  stopAxialMovie();axialMovie.pending=false;document.getElementById('axial-movie-status').textContent=message.message;
+}
+function scheduleAxialMovie(){
+  clearTimeout(axialMovie.timer);if(!axialMovie.playing||axialMovie.pending||document.hidden)return;
+  axialMovie.timer=setTimeout(()=>advanceAxialMovie(1),Number(document.getElementById('axial-movie-speed').value));
+}
+function advanceAxialMovie(delta){
+  if(!axialMovie.audit)return;
+  if(axialMovie.mode==='phase'){
+    const next=axialMovie.index+delta;
+    if(next>=fdkResult.profiles.length||next<0){stopAxialMovie();return;}
+    requestAxialMovie(next);
+  }else{
+    const next=axialMovie.frame+delta;
+    if(next>=axialMovie.audit.frames.length||next<0){stopAxialMovie();return;}
+    axialMovie.frame=next;renderAxialMovie();scheduleAxialMovie();
+  }
+}
+function axialMovieBackground(audit){
+  const c=audit.config,V=c.viewSamples,angles=[],families=[];
+  const segments=Math.min(V,360),firstGroups=axialAnimationGroups(c,audit.base);
+  firstGroups.forEach(g=>families.push({id:(g.direction?'complementary-':'direct-')+g.focus,family:g.direction?'complementary':'direct',angles,axial:[],scales:[]}));
+  let min=Infinity,max=-Infinity;
+  for(let i=0;i<=segments;i++){
+    angles.push(360*i/segments);
+    axialAnimationGroups(c,audit.base+V*i/segments).forEach((g,j)=>{
+      families[j].axial.push(g.origin);families[j].scales.push(g.spacing/c.rowWidth);
+      for(const row of [0,c.rows-1]){const z=g.origin+(row-(c.rows-1)/2)*g.spacing-audit.zObject;min=Math.min(min,z);max=Math.max(max,z);}
+    });
+  }
+  const limit=symmetricNiceAxis(audit.xHalfSpan,3).xMax;
+  const turnMin=Math.ceil((-limit-max)/c.feed),turnMax=Math.floor((limit-min)/c.feed);
+  const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
+  const diagram={totalRows:c.rows,z0:audit.zObject,zoomXLimit:audit.xHalfSpan,overviewXLimit:audit.xHalfSpan,
+    interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:families,
+    traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],
+    xAxisLabel:fdkText('','Candidate row centre  zᵢ − z₀  (mm)'),
+    yAxisLabel:fdkText('','Direct-side angle offset  θ  (°)'),
+    directLegendLabel:fdkText('','Direct ○'),weightLegendLabel:fdkText('','Weight w'),
+    weightLegendNote:fdkText('','Red: averaging centre; blue: plane within T'),
+    referenceViewSamples:V,renderedAngleSamples:audit.angleSamplesPerTurn};
+  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=960;
+  drawDiagram(canvas,diagram,'zoom');return canvas;
+}
+function paintAxialMovieWeights(canvas,points,u,accumulated){
+  const a=axialMovie.audit,c=a.config;
+  axialMovie.background??=axialMovieBackground(a);
+  const ctx=canvas.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,900,960);ctx.drawImage(axialMovie.background,0,0);
+  const xmin=Number(axialMovie.background.dataset.xMin),xmax=Number(axialMovie.background.dataset.xMax),left=112,top=32,width=754,height=650;
+  const x=z=>left+(z-xmin)/(xmax-xmin)*width,y=v=>top+(((v-a.base)%c.viewSamples+c.viewSamples)%c.viewSamples)/c.viewSamples*height;
+  const role=document.getElementById('axial-movie-role').value;
+  ctx.save();ctx.beginPath();ctx.rect(left,top,width,height);ctx.clip();
+  if(accumulated&&axialMovie.mode==='thickness'){
+    ctx.fillStyle='rgba(35,105,175,.09)';ctx.fillRect(x(-c.axialAverageMm/2),top,x(u)-x(-c.axialAverageMm/2),height);
+  }
+  const rendered=[];
+  for(const p of [...points].sort((a,b)=>a.weight-b.weight)){
+    if(accumulated&&role!=='all'&&p.use!==role)continue;
+    drawWeightedMarker(ctx,p.row,c.rows,x(p.z),y(p.referenceView),5.2,p.weight,p.direction?'triangle':'circle');
+    rendered.push({p,x:x(p.z),y:y(p.referenceView)});
+  }
+  if(axialMovie.mode==='thickness'||!accumulated){ctx.strokeStyle='#2166ac';ctx.lineWidth=2.5;ctx.setLineDash([7,4]);ctx.beginPath();ctx.moveTo(x(u),top);ctx.lineTo(x(u),top+height);ctx.stroke();ctx.setLineDash([]);}
+  ctx.restore();canvas.dataset.renderState='ready';canvas.dataset.startIndex=axialMovie.index;canvas.dataset.planeMm=u;canvas.dataset.partial=String(accumulated&&axialMovie.mode==='thickness');canvas.dataset.markerCount=rendered.length;
+  if(accumulated)axialMovie.hitPoints=rendered;
+}
+function renderAxialMovie(){
+  const audit=axialMovie.audit;if(!audit||!fdkResult||axialMovie.pending)return;
+  const c=audit.config,frame=audit.frames[axialMovie.mode==='phase'?0:axialMovie.frame];if(!frame)return;
+  const phase=c.phase*180/Math.PI,progress=Math.round(frame.fraction*100),el=id=>document.getElementById('axial-movie-'+id);
+  el('position').max=axialMovie.mode==='phase'?fdkResult.profiles.length-1:audit.frames.length-1;
+  el('position').value=axialMovie.mode==='phase'?axialMovie.index:axialMovie.frame;
+  el('position-label').textContent=fdkText('','Start angle in this animation')+` ${phase.toFixed(1)}° / T = ${c.axialAverageMm.toFixed(2)} mm`+(axialMovie.mode==='thickness'?` / u = ${frame.u.toFixed(2)} mm`:``);
+  el('status').textContent=axialMovie.mode==='thickness'?fdkText('','Fixed start angle: ')+` ${progress}% `+fdkText('','of T accumulated'):fdkText('','Comparing separate start-angle conditions: full-T weights shown');
+  el('total-title').textContent=axialMovie.mode==='thickness'?fdkText('','(b) Weights accumulated within T')+` — ${progress}%`:fdkText('','(b) Total weights over T');
+  el('note').textContent=fdkText('','Panels (a) and (b) explain the central response; (c) is the computed SSPz at all evaluation positions. Markers sample ')+`${audit.angleSamplesPerTurn}`+fdkText('',' display angles.');
+  paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
+  const p=fdkResult.profiles[axialMovie.index],xs=fdkResult.z,plot=fdkAxes(el('profile'),xs[0],xs.at(-1),0,1.05,'z position (mm)','Normalized SSPz','', [0,.5,1],70);
+  fdkDrawLines(plot,xs,[p.profile],FDK_PRIMARY_COLOR);fdkArrow(plot,p.fwhm,.5,FDK_PRIMARY_COLOR);
+  plot.ctx.strokeStyle='#555';plot.ctx.setLineDash([5,5]);plot.ctx.beginPath();plot.ctx.moveTo(plot.x(0),plot.b.top);plot.ctx.lineTo(plot.x(0),plot.b.bottom);plot.ctx.stroke();plot.ctx.setLineDash([]);
+  plot.ctx.fillStyle=FDK_PRIMARY_COLOR;plot.ctx.textAlign='center';plot.ctx.font='24px Arial';plot.ctx.fillText(`FWHM ${p.fwhm.width.toFixed(2)} mm / ${phase.toFixed(1)}°`,(plot.b.left+plot.b.right)/2,38);
+  el('profile').dataset.startIndex=axialMovie.index;el('profile').dataset.profileSource='full-acquired-view-result';
+  el('detail').textContent=fdkText('','Click a marker in (b) to inspect both roles of that datum.');
+}
+function inspectAxialMovieMarker(event){
+  if(!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
+  let hit=null,distance=16;for(const q of axialMovie.hitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
+  if(!hit)return;const p=hit.p,c=axialMovie.audit.config;
+  const weight=v=>v===0?'0':v<.001?'<0.001':v.toFixed(3);
+  document.getElementById('axial-movie-detail').textContent=fdkText('','Full-T role weights: detector row')+` ${p.row+1}${c.zFfsEnabled?' / '+(p.focus?'B':'A'):''} / z = ${p.z.toFixed(2)} mm / `+fdkText('','direct')+`: ${weight(p.directWeight)} / `+fdkText('','complementary')+`: ${weight(p.complementaryWeight)} / `+fdkText('','total')+`: ${weight(p.directWeight+p.complementaryWeight)}`;
+}
+
 // One reconstruction result supplies the diagram, weights, selected SSP and
 // phase-ordered widths. Rendering never substitutes axial-model coefficients.
 let fdkSelectedResult=null,fdkRunParams=null,fdkInspectionRequest=0,fdkInspectionTimer=null;
@@ -3083,6 +3272,7 @@ function initializeFdkWorkflow(panel){
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
   const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,widths,shape,images);
+  initializeAxialMovie(weights);
   // The old first-angle-only audit is superseded by the linked window audit.
   document.getElementById('cba-samples-wrap').hidden=true;
   document.getElementById('cba-samples-wrap').style.display='none';
@@ -3098,11 +3288,13 @@ function initializeFdkWorkflow(panel){
   }
 }
 function fdkWorkflowAvailability(on){
+  if(!on)disableAxialMovie();
   for(const id of ['fdk-inspect','fdk-prev','fdk-next','fdk-width-metric','fdk-width-csv'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
 function selectFdkState(index,immediate=false){
   if(!fdkResult)return;
+  stopAxialMovie();
   selectedStateIndex=((Math.round(index)%360)+360)%360;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkSelectedResult=null;
   document.getElementById('fdk-inspect').value=selectedStateIndex;
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
@@ -3137,6 +3329,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   renderZffsSelected();
+  syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
@@ -3455,7 +3648,9 @@ function runFdkSimulation(){
         renderZffsSelected();releaseWorker();return;
       }
       fdkResult=m.result;renderFdkResult(fdkResult);progress.value=1;setBusy(false);fdkToggleDownloads(true);status.textContent=fdkText('','Completed ')+((performance.now()-startedAt)/1000).toFixed(1)+' s / 360 angles';selectFdkState(selectedStateIndex,true);
-    }else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest){fdkSelectedResult=m.result;renderFdkSelected();}}
+    }else if(m.type==='axial-animation'){receiveAxialMovie(m);}
+    else if(m.type==='axial-animation-error'){failAxialMovie(m);}
+    else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest){fdkSelectedResult=m.result;renderFdkSelected();}}
     else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
     else if(m.type==='cancelled'){setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
@@ -3646,7 +3841,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.13 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.1 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

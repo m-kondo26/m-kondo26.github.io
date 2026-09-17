@@ -433,3 +433,24 @@ footer p { margin: 0.2rem 0; }
 .zffs-canvas-scroll canvas { width: 100%; min-width: 540px; }
 .zffs-table-scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .zffs-table-scroll th,.zffs-table-scroll td { padding: 6px 10px; border-bottom: 1px solid #ddd; text-align: right; }
+
+#axial-movie { padding: 1.25rem; border: 1px solid #cbdbe7; border-radius: 10px; background: #f6f9fc; }
+.axial-movie-controls { display: flex; flex-wrap: wrap; gap: .7rem; align-items: end; }
+.axial-movie-controls label { min-width: 140px; }
+.axial-movie-controls select { margin-top: .3rem; }
+.axial-movie-controls select, #axial-movie-role { font: inherit; padding: .45rem; border: 1px solid #b9c9d6; border-radius: 5px; background: white; }
+.axial-movie-controls button { font: inherit; padding: .55rem .75rem; border: 1px solid #b9c9d6; border-radius: 5px; background: white; color: #173b58; cursor: pointer; }
+.axial-movie-controls button:disabled { opacity: .5; cursor: default; }
+#axial-movie-play { background: #2166ac; color: white; }
+.axial-movie-role-control { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.axial-movie-position { display: block; margin: 1rem 0 .3rem; font-variant-numeric: tabular-nums; }
+.axial-movie-position input { display: block; width: 100%; margin-top: .8rem; }
+.axial-movie-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; align-items: start; }
+#fdk-panel #axial-movie .chart-card { margin-top: .7rem; padding: .8rem; min-width: 0; max-width: 620px; }
+#fdk-panel #axial-movie .axial-movie-ssp { max-width: 1000px; }
+.axial-movie-scroll { overflow-x: auto; }
+#fdk-panel .axial-movie-scroll canvas { width: 100%; min-width: 480px; }
+#axial-movie-role { width: auto; max-width: 100%; margin: .3rem 0; }
+#axial-movie-detail, #axial-movie-note { font-size: .9rem; line-height: 1.6; }
+@media(max-width: 1050px) { .axial-movie-grid { grid-template-columns: 1fr; } }
+@media(max-width: 600px) { #axial-movie { padding: .65rem; } .axial-movie-controls button { padding: .6rem; } }
