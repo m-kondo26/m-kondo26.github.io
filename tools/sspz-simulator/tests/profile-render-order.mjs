@@ -16,7 +16,7 @@ function functionSource(name) {
   return source.slice(match.index, following ? following.index : source.length).trim();
 }
 
-const functionNames = ["axisContext", "setFittedFigureFont", "drawAxes", "drawPolyline",
+const functionNames = ["axisContext", "setFittedFigureFont", "drawAxisGrid", "drawAxes", "drawPolyline",
   "decimalPlacesForStep", "drawProfileEncodingLegend", "strokeNativeProfile", "setProfileDisplayMetadata", "drawProfiles", "drawOverlayLegend",
   "drawProfileOverlay", "filterParameterLabel"];
 const constantNames = ["BLUE", "ORANGE", "INK", "MUTED", "GRID", "FIGURE_FONT", "PROFILE_TAIL_DISPLAY_BOUNDS", "PROFILE_DISPLAY_VERSION"];

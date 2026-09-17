@@ -189,7 +189,7 @@ function rendererRuntime(restoreUnmergedMarkers = false) {
       ticks: [-limit, 0, limit], formatter: String }),
     axisContext: canvas => ({ ctx: canvas.context, canvas, labels: {}, margin: { left: 0, top: 0 },
       innerWidth: 1000, innerHeight: 360, x: value => value, yDown: value => value }),
-    drawAxes() {}, drawOverviewLegend() {}, drawWeightLegend() {},
+    drawAxisGrid() {}, drawAxes() {}, drawOverviewLegend() {}, drawWeightLegend() {},
     drawDetectorRowLegend() {}, drawCandidateTrace() {},
   });
   const constants = ["ROW_COLORS", "PALE", "RED", "INK", "MUTED", "GRID", "FIGURE_FONT"].map(name => {
