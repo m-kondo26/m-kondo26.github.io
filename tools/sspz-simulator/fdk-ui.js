@@ -143,7 +143,7 @@ function initializeFdkUi(initial){
 function fdkToggleDownloads(on){syncZffsUi();for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
 function runFdkSimulation(){
   const params={...readParams(),...readFdkParams()};
-  for(const id of ['fdk-profile-step','fdk-width-step','fdk-shape-step'])document.getElementById(id).hidden=false;
+  for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=false;
   fdkRunParams=params;
   releaseWorker();clearError();lastResult=null;fdkResult=null;fdkSelectedResult=null;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkShapeGroups=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('体軸補間応答を計算中…','Computing axial response…');document.getElementById('fdk-result-config').textContent='';
@@ -159,7 +159,7 @@ function runFdkSimulation(){
     else if(m.type==='fdk-result'){
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
-        for(const id of ['fdk-profile-step','fdk-width-step','fdk-shape-step'])document.getElementById(id).hidden=true;
+        for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),m.result,false);
@@ -224,7 +224,7 @@ function fdkDrawProfile(canvas,r){
 }
 function drawFdkDifference(canvas,r){
   const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02;
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(h)');
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(f)');
   for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,g.z,g.meanDifference,i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
   a.ctx.textAlign='center';a.ctx.fillStyle=INK;a.ctx.font=`21px ${FIGURE_FONT}`;a.ctx.fillText(r.reference?'CBA (red) / RRI (blue); each minus its own mean':'Each profile minus the mean SSPz',(a.b.left+a.b.right)/2,49);
   canvas.dataset.profileOpacity='0.13';canvas.dataset.yMin=String(-limit);canvas.dataset.yMax=String(limit);
@@ -261,7 +261,7 @@ function fdkDrawImage(canvas,r,coronal){
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
   physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Point response: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
-function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(i)'});}
+function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(g)'});}
 function renderFdkResult(r){
   const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。選択角度の表示を準備しています。','All 360 conditions are complete. Preparing the selected-angle view.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} rows / ${c.viewSamples} views/turn / ${r.profiles.length} start angles`;

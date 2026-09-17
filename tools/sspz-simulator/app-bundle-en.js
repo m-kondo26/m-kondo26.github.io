@@ -3247,7 +3247,7 @@ function inspectAxialMovieMarker(event){
 }
 
 // One reconstruction result supplies the diagram, weights, selected SSP and
-// phase-ordered widths. Rendering never substitutes axial-model coefficients.
+// shape variation. Rendering never substitutes axial-model coefficients.
 let fdkSelectedResult=null,fdkRunParams=null,fdkInspectionRequest=0,fdkInspectionTimer=null;
 const fdkAngleTicks=[0,60,120,180,240,300,360];
 function initializeFdkWorkflow(panel){
@@ -3263,15 +3263,11 @@ function initializeFdkWorkflow(panel){
   const profile=block('fdk-profile-step',fdkText('','3  Selected SSPz and all 360 conditions'));
   profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('','Selected angle: half-maximum crossings and FWHM')}</h3><canvas id="fdk-selected-profile" width="1200" height="800"></canvas></article>`);
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('','Overlay of all 360 conditions');
-  profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('','All 360 conditions: tail detail (0.01–1)')}</h3><canvas id="fdk-tail" width="1200" height="700"></canvas></article>`);
-  const widths=block('fdk-width-step',fdkText('','4  Width variation with start angle'));
-  widths.insertAdjacentHTML('beforeend',`<label>${fdkText('','Width metric')}<select id="fdk-width-metric"><option value="fwhm">FWHM</option><option value="fwtm">FWTM</option></select></label><article class="chart-card"><canvas id="fdk-sweep" width="1200" height="700"></canvas></article><p>${fdkText('','The horizontal axis is the offset from the configured base start angle. Click the graph to select an angle.')}</p>`);
-  const shape=block('fdk-shape-step',fdkText('','5  SSPz shape variation'));
-  widths.insertAdjacentHTML('beforeend',`<button type="button" class="secondary" id="fdk-width-csv" disabled>${fdkText('','Export widths for all 360 angles as CSV')}</button>`);
+  const shape=block('fdk-shape-step',fdkText('','4  SSPz shape variation'));
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
-  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,widths,shape,images);
+  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,shape,images);
   initializeAxialMovie(weights);
   // The old first-angle-only audit is superseded by the linked window audit.
   document.getElementById('cba-samples-wrap').hidden=true;
@@ -3279,17 +3275,13 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-inspect').oninput=e=>selectFdkState(Number(e.target.value));
   document.getElementById('fdk-prev').onclick=()=>selectFdkState(selectedStateIndex-1,true);
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
-  document.getElementById('fdk-width-metric').value=['fwhm','fwtm'].includes(metricSelect.value)?metricSelect.value:'fwhm';
-  document.getElementById('fdk-width-metric').onchange=e=>{metricSelect.value=e.target.value;if(fdkResult){drawFdkSweep(document.getElementById('fdk-sweep'));const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);}};
-  document.getElementById('fdk-width-csv').onclick=()=>{if(!fdkResult)return;const rows=[['method','start_index','start_angle_rad','FWHM_mm','FWTM_mm','configured_thickness_mm','axial_average_mm'],...fdkGroups(fdkResult).flatMap(([name,g])=>g.profiles.map((p,i)=>[name,i,p.phase,p.fwhm.width,p.fwtm.width,fdkResult.config.sliceThicknessMm,fdkResult.config.axialAverageMm]))];downloadBlob(fdkFileStem(fdkResult)+'_360_angles_widths.csv','\uFEFF'+rows.map(r=>r.join(',')).join('\r\n'));};
-  document.getElementById('fdk-sweep').onclick=e=>{if(!fdkResult)return;const box=e.currentTarget.getBoundingClientRect(),x=(e.clientX-box.left)/box.width;selectFdkState(Math.max(0,Math.min(359,Math.round((x-.13)/.835*360))),true);};
-  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-selected-profile','fdk-tail','fdk-sweep','fdk-difference']){
+  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-selected-profile','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
   }
 }
 function fdkWorkflowAvailability(on){
   if(!on)disableAxialMovie();
-  for(const id of ['fdk-inspect','fdk-prev','fdk-next','fdk-width-metric','fdk-width-csv'])document.getElementById(id).disabled=!on;
+  for(const id of ['fdk-inspect','fdk-prev','fdk-next'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
 function selectFdkState(index,immediate=false){
@@ -3301,7 +3293,7 @@ function selectFdkState(index,immediate=false){
   document.getElementById('fdk-inspect-label').textContent=`+${selectedStateIndex}° / ${fdkText('','start angle')} ${angle.toFixed(1)}°`;
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Updating geometry, weights and response for the selected angle…');
   for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('','Computing selected angle'));
-  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));drawFdkSweep(document.getElementById('fdk-sweep'));drawFdkTail(document.getElementById('fdk-tail'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
   syncZffsUi();for(const cv of document.querySelectorAll('#zffs-diagrams canvas'))drawCanvasStatus(cv,'z-FFS',fdkText('','Computing selected angle'));
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
@@ -3438,21 +3430,6 @@ function drawFdkSelectedProfile(canvas){
   const a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,1.02,'z position (mm)','Normalized SSPz','(d)',low<0?[Math.floor(low*10)/10,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],120);
   groups.forEach(([name,g],i)=>{const p=g.profiles[selectedStateIndex],color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;fdkDrawLines(a,g.z,[p.profile],color);fdkArrow(a,p.fwhm,.5,color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.font=`${23*a.s}px Arial`;a.ctx.fillText(`${name} / +${selectedStateIndex}°: FWHM ${p.fwhm.width.toFixed(2)} mm; FWTM ${p.fwtm.width.toFixed(2)} mm`,(a.b.left+a.b.right)/2,(50+i*35)*a.s);});canvas.dataset.startIndex=selectedStateIndex;
 }
-function drawFdkTail(canvas){
-  const r=fdkResult,a=fdkAxes(canvas,r.z[0],r.z.at(-1),PROFILE_TAIL_DISPLAY_BOUNDS.yMin,PROFILE_TAIL_DISPLAY_BOUNDS.yMax,'z position (mm)','Normalized SSPz','(f)',[-2,-1,0],110,null,v=>10**v);
-  const {ctx,b}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  for(const [i,[,g]] of fdkGroups(r).entries()){
-    ctx.strokeStyle=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;ctx.globalAlpha=.13;ctx.lineWidth=1.1;
-    for(const p of g.profiles)strokeNativeProfile(ctx,r.z,p.profile,a.x,a.y,{tailView:true});
-  }
-  ctx.restore();drawFdkProfileLegend(a,r);
-  canvas.dataset.profileOpacity='0.13';canvas.dataset.profileLineWidth='1.1';canvas.dataset.yScale='log10';canvas.dataset.tailFloor=String(PROFILE_TAIL_DISPLAY_BOUNDS.minimum);
-}
-function drawFdkSweep(canvas){
-  const r=fdkResult,key=document.getElementById('fdk-width-metric').value,values=fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>p[key].width)),lo=Math.min(...values),hi=Math.max(...values),pad=Math.max(.01,(hi-lo)*.1),a=fdkAxes(canvas,0,360,Math.max(0,Math.floor((lo-pad)*100)/100),Math.ceil((hi+pad)*100)/100,'Start-angle offset (°)',`${key.toUpperCase()} (mm)`,'(g)',null,95,fdkAngleTicks);
-  for(const [i,[name,g]] of fdkGroups(r).entries()){const color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR,ys=g.profiles.map(p=>p[key].width);fdkDrawLines(a,ys.map((_,j)=>j),[ys],color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.fillText(`${name}: ${Math.min(...ys).toFixed(2)}–${Math.max(...ys).toFixed(2)} mm`,a.b.left+(i?.73:.27)*(a.b.right-a.b.left),53*a.s);a.ctx.beginPath();a.ctx.arc(a.x(selectedStateIndex),a.y(ys[selectedStateIndex]),5*a.s,0,2*Math.PI);a.ctx.fill();}
-  a.ctx.strokeStyle='#555';a.ctx.setLineDash([5*a.s,5*a.s]);a.ctx.beginPath();a.ctx.moveTo(a.x(selectedStateIndex),a.b.top);a.ctx.lineTo(a.x(selectedStateIndex),a.b.bottom);a.ctx.stroke();a.ctx.setLineDash([]);canvas.dataset.startIndex=selectedStateIndex;
-}
 function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
@@ -3470,8 +3447,6 @@ async function exportFdkWorkflowCanvas(id){
   if(id==='fdk-geometry')drawFdkCandidateDiagram(c,fdkSelectedResult,false);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'));
   else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
-  else if(id==='fdk-tail')drawFdkTail(c);
-  else if(id==='fdk-sweep')drawFdkSweep(c);
   else drawFdkDifference(c,fdkResult);
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }
@@ -3621,7 +3596,7 @@ function initializeFdkUi(initial){
 function fdkToggleDownloads(on){syncZffsUi();for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
 function runFdkSimulation(){
   const params={...readParams(),...readFdkParams()};
-  for(const id of ['fdk-profile-step','fdk-width-step','fdk-shape-step'])document.getElementById(id).hidden=false;
+  for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=false;
   fdkRunParams=params;
   releaseWorker();clearError();lastResult=null;fdkResult=null;fdkSelectedResult=null;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkShapeGroups=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('','Computing axial response…');document.getElementById('fdk-result-config').textContent='';
@@ -3637,7 +3612,7 @@ function runFdkSimulation(){
     else if(m.type==='fdk-result'){
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
-        for(const id of ['fdk-profile-step','fdk-width-step','fdk-shape-step'])document.getElementById(id).hidden=true;
+        for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),m.result,false);
@@ -3702,7 +3677,7 @@ function fdkDrawProfile(canvas,r){
 }
 function drawFdkDifference(canvas,r){
   const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02;
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(h)');
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(f)');
   for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,g.z,g.meanDifference,i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
   a.ctx.textAlign='center';a.ctx.fillStyle=INK;a.ctx.font=`21px ${FIGURE_FONT}`;a.ctx.fillText(r.reference?'CBA (red) / RRI (blue); each minus its own mean':'Each profile minus the mean SSPz',(a.b.left+a.b.right)/2,49);
   canvas.dataset.profileOpacity='0.13';canvas.dataset.yMin=String(-limit);canvas.dataset.yMax=String(limit);
@@ -3739,7 +3714,7 @@ function fdkDrawImage(canvas,r,coronal){
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
   physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Point response: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
-function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(i)'});}
+function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(g)'});}
 function renderFdkResult(r){
   const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Preparing the selected-angle view.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} rows / ${c.viewSamples} views/turn / ${r.profiles.length} start angles`;
@@ -3841,7 +3816,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.1 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.2 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
