@@ -313,10 +313,10 @@
   },
   "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
   "activeBrowserModel": {
-    "version": "2026-09-17.7",
+    "version": "2026-09-17.8",
     "urlSchema": 11,
     "core": "axial-response-core.js",
-    "sha256": "64a3402c4d3b0f5b4ce16b0a98f855cc5ccef3864d7f9fe471e46f0cc13f40f8",
+    "sha256": "f8fe82a19a982e1b0b2c9f49125fae5d1e40fe35082c1bd103252e4986c6c60c",
     "sha256Convention": "UTF-8 with LF line endings",
     "documentation": "AXIAL_RESPONSE_METHOD.md",
     "scope": "Shared finite-aperture point acquisition, rowwise rebinning, candidate selection/axial interpolation, paired angular mean, rectangular T average; no full transverse image reconstruction",
@@ -349,6 +349,14 @@
         "zffs-geometry.js": "4631c37e7850ebf41af49d1aa600e5adaea81a6319d020985a26cf3742cf2d5c",
         "zffs-response.js": "87716392f0f9c4bbeee2c69808f5c7bf0bcb0a8589e42830f17e762eb310f499"
       }
+    },
+    "diagram": {
+      "version": "2026-09-17.8",
+      "defaultOffCoordinate": "common direct-side rebinned theta; complementary family at theta+pi",
+      "encoding": "direct solid/circle; complementary dashed/triangle; detector-row colour",
+      "weightAudit": "pairedSamples partitions original samples by reference pair and direction; no duplicated total coefficients",
+      "verification": "tests/axial-paired-diagram.mjs",
+      "unchanged": "SSPz calculation and z-FFS physical-view display"
     }
   }
 }

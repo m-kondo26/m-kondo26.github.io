@@ -81,7 +81,7 @@ export async function computeAxialResponse(input={},hooks={}){
     rebinnedCache.set(v,q);return q;
   };
   const padded=new Float64Array(zs.length),counts=new Uint16Array(zs.length);
-  const slab=fdkSlabCoefficients(zs.length,c.zStep,c.axialAverageMm),weights=new Map(),sampleAudit=[];
+  const slab=fdkSlabCoefficients(zs.length,c.zStep,c.axialAverageMm),weights=new Map(),pairedWeights=new Map(),sampleAudit=[];
   const centre=(zs.length-1)/2;let lastYield=performance.now();
   for(let v=first;v<last;v++){
     if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
@@ -95,6 +95,11 @@ export async function computeAxialResponse(input={},hooks={}){
           const view=v+s.direction*half,key=view+':'+s.row;
           if(!weights.has(key))weights.set(key,{view,row:s.row,theta:c.phase+view*db,beta:q.beta,z:s.z-zObject,weight:0,referenceWeight:0,acquiredValue:value});
           weights.get(key).weight+=slab[iz]*s.weight;
+          // Display audit only: retain the reference pair and direction before
+          // the existing acquired-row accumulation combines their roles.
+          const pairKey=v+':'+s.direction+':'+s.row;
+          if(!pairedWeights.has(pairKey))pairedWeights.set(pairKey,{referenceView:v,direction:s.direction,view,row:s.row,theta:c.phase+view*db,beta:q.beta,z:s.z-zObject,weight:0,acquiredValue:value});
+          pairedWeights.get(pairKey).weight+=slab[iz]*s.weight;
         }
       }
       if(!hooks.profileOnly&&iz===centre)sampleAudit.push({theta:c.phase+v*db,relativeAngleDeg:(v-starts[iz])*360/nv,beta:a.beta,betaConjugate:b.beta,z:ws.map(s=>s.z-zObject),weights:ws.map(s=>s.weight)});
@@ -106,11 +111,11 @@ export async function computeAxialResponse(input={},hooks={}){
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))return {config:c,z,zObject,raw,geometryOnly:true,reason:'no-acquired-point-response',profiles:[],volume:null,
     coordinateSystem:'rebinned-theta',model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule},
-    weightAudit:{db:1/half,centerValue:0,axialAverageMm:c.axialAverageMm,samples:[...weights.values()]}};
+    weightAudit:{db:1/half,centerValue:0,axialAverageMm:c.axialAverageMm,samples:[...weights.values()],pairedSamples:[...pairedWeights.values()]}};
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline));
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
   if(!fwhm||!fwtm||Math.max(profile[0],profile.at(-1))>.001)throw Error('AXIAL_DOMAIN: extend z range to contain response tails');
-  const weightAudit=hooks.profileOnly?null:{definition:'Unfiltered rebinned row weights at the target transverse point, integrated over T; angular mean applied separately.',db:1/half,axialAverageMm:c.axialAverageMm,centerValue:raw[(raw.length-1)/2],samples:[...weights.values()]};
+  const weightAudit=hooks.profileOnly?null:{definition:'Unfiltered rebinned row weights at the target transverse point, integrated over T; angular mean applied separately.',db:1/half,axialAverageMm:c.axialAverageMm,centerValue:raw[(raw.length-1)/2],samples:[...weights.values()],pairedSamples:[...pairedWeights.values()]};
   return {config:c,z,zObject,raw,profile,fwhm,fwtm,min,max,baseline,counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit,
     volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'rebinned-theta',
     acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerSlice:nv,rebinnedPairsPerSlice:half},

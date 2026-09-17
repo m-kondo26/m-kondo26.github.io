@@ -83,6 +83,16 @@ URL schema v11 and model version 2026-09-17.6 identify this change. Old URLs loa
 
 The supplied textbook scan is not redistributed by this website.
 
+## Paired unwrapped display (Web 2026-09-17.8)
+
+With z-FFS off, the overview and weight detail use a common direct-side rebinned angle. Solid curves/circles refer to theta; dashed curves/triangles refer to theta+pi. Each family's row positions use its own source z and ray length L from the equations above. The complementary family is not a copy of the direct family's z coordinates, and theta+pi does not imply an exact pi difference between the original fan-beam source angles. Both families retain complete visible geometric turns independently of the selected-weight support.
+
+Previously, the same data were shown only at their own rebinned angles, so the complementary family was not separately visible. This display revision restores the paired reading of the diagram without changing acquisition, interpolation, averaging, normalization or width calculations. Beam pitch remains h/(N d); local row spacing in the off-centre diagram is d L/R.
+
+The additional `weightAudit.pairedSamples` / Excel `Paired_weights` audit retains reference pair, direction, rebinned view, detector row, and the coefficient integrated over T. Summing it by rebinned view and row recovers the original `Selected_weights` audit. A datum reused in different reference pairs stays distinct in the diagram. Either complete audit, multiplied by the corresponding data values and angular-mean factor, reproduces the central raw response; the two audits must not be added together. Markers are subsampled by reference angle only for drawing. JSON and Excel retain all coefficients.
+
+`tests/axial-paired-diagram.mjs` checks both families against independently evaluated ray coordinates, complete visible turns, marker identity, coefficient partition and response closure. The z-FFS A/B display retains its separate physical-view coordinates and focal-state encoding.
+
 
 ## Optional focal switching (Web 2026-09-17.7)
 

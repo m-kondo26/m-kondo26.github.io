@@ -3068,6 +3068,7 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-geometry').width=900;document.getElementById('fdk-geometry').height=960;
   const firstCard=document.getElementById('fdk-geometry').closest('article');geometry.append(firstCard);
   firstCard.querySelector('h3').textContent=fdkText('','2A  Candidate arrangement: 0–360° unwrapped diagram');
+  firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('','2B  Selected data and weights'));
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
   const profile=block('fdk-profile-step',fdkText('','3  Selected SSPz and all 360 conditions'));
@@ -3121,12 +3122,16 @@ function renderFdkSelected(){
   document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(r);
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('','RRI: linear row interpolation');
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
+  const pairNote=document.getElementById('fdk-paired-coordinate');
+  pairNote.hidden=!r.weightAudit?.pairedSamples;
+  pairNote.textContent=fdkText('','Solid: direct side. Dashed: complementary side. Both are shown at the direct-side rebinned angle θ; the complementary data are from θ + 180°.');
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   // Reduced response has no image volume.
   document.getElementById('fdk-weight-scope').textContent=fdkText('','Weights sum over T at the object point. Combined with unfiltered acquired responses, they reproduce that response sample. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
+  if(r.weightAudit?.pairedSamples)document.getElementById('fdk-weight-scope').textContent=fdkText('','Circles: direct side; triangles: complementary side. Weights are accumulated over T for each interpolation pair. Reuse of a datum in another pair remains distinct; Excel and JSON retain all weights.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
@@ -3139,13 +3144,13 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   if(r.config.zFfsEnabled)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
-  const samples=audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
+  const paired=!!audit.pairedSamples,samples=paired?audit.pairedSamples:audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
   const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
   const rebinned=r.coordinateSystem==='rebinned-theta'||!!r.reference;
   const physical=!zoom&&!rebinned;
   const rowMin=rebinned||physical?0:Math.min(...samples.map(q=>q.row))-2;
   const rowMax=rebinned||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
-  const rows=rowMax-rowMin+1,angles=[],axial=[],scales=[];
+  const rows=rowMax-rowMin+1,angles=[],axial=[],scales=[],opposedAxial=[],opposedScales=[];
   const fold=v=>((v-base)%c.viewSamples+c.viewSamples)%c.viewSamples*360/c.viewSamples;
   const geometryAt=v=>{
     const angle=c.phase+v*step;
@@ -3174,6 +3179,14 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
       const delta=z+scale*rowOffsets[row]-r.zObject;
       minCentral=Math.min(minCentral,delta);maxCentral=Math.max(maxCentral,delta);
     }
+    if(paired){
+      const [opposedZ,opposedScale]=geometryAt(base+i+c.viewSamples/2);
+      opposedAxial.push(opposedZ);opposedScales.push(opposedScale);
+      for(const row of [0,rows-1]){
+        const delta=opposedZ+opposedScale*rowOffsets[row]-r.zObject;
+        minCentral=Math.min(minCentral,delta);maxCentral=Math.max(maxCentral,delta);
+      }
+    }
   }
   const xLimit=symmetricNiceAxis(zoom?zoomLimit:extent,3).xMax;
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
@@ -3181,12 +3194,15 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
   const stride=Math.max(1,Math.ceil(c.viewSamples/72));
   const trace={id:'acquired',family:'direct',angles,axial,scales};
+  const traceFamilies=[trace];
+  if(paired)traceFamilies.push({id:'complementary-rebinned',family:'complementary',angles,axial:opposedAxial,scales:opposedScales});
+  const referenceView=q=>paired?q.referenceView:q.view;
   const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
-    traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies:[trace],
-    weightedPoints:zoom?samples.filter(q=>((q.view-base)%stride+stride)%stride===0).map(q=>({
-      x:q.z,y:fold(q.view),row:q.row-rowMin,weight:reference?q.referenceWeight:q.weight,
-      referenceViewIndex:q.view,absoluteViewIndex:q.view,traceFamilyId:'acquired',dataKind:'unfiltered-data'
+    traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
+    weightedPoints:zoom?samples.filter(q=>((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
+      x:q.z,y:fold(referenceView(q)),row:q.row-rowMin,weight:reference?q.referenceWeight:q.weight,
+      referenceViewIndex:referenceView(q),absoluteViewIndex:q.view,traceFamilyId:paired&&q.direction?'complementary-rebinned':'acquired',dataKind:'unfiltered-data'
     })):[],
     referenceViewSamples:c.viewSamples,renderedAngleSamples:Math.ceil(c.viewSamples/stride),acquiredTraceSamples:angles.length,
     xAxisLabel:fdkText('','Candidate row centre  zᵢ − z₀  (mm)'),
@@ -3196,7 +3212,13 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     weightLegendLabel:fdkText('','Total weight w'),
     angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
-  if(!zoom)diagram.directLegendLabel=rebinned?fdkText('','Rebinned row trajectories'):fdkText('','Detector-row trajectories');
+  if(paired){
+    diagram.yAxisLabel=fdkText('','Direct-side angle offset  θ  (°)');
+    diagram.directLegendLabel=fdkText('','Direct ○');
+    diagram.weightLegendNote=fdkText('','Pair weights summed over T. Trace overlaps blend.');
+    diagram.angleCoordinate='common direct-side rebinned theta; complementary at theta+pi; relative to centre turn';
+  }
+  if(!zoom&&!paired)diagram.directLegendLabel=rebinned?fdkText('','Rebinned row trajectories'):fdkText('','Detector-row trajectories');
   if(!rebinned&&zoom){
     diagram.rowLegendLabel=fdkText('','Virtual row');
     diagram.rowLabels=Array.from({length:rows},(_,i)=>rowMin+i);
@@ -3207,11 +3229,12 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   drawDiagram(canvas,diagram,zoom?'zoom':'overview');
   for(const key of Object.keys(canvas.dataset))if(canvas.dataset[key]==='undefined')delete canvas.dataset[key];
   canvas.dataset.renderState='ready';
-  canvas.dataset.complementaryMarkerShape='not-applicable-in-own-angle-coordinate';
-  canvas.dataset.complementaryLineStyle='not-applicable-in-own-angle-coordinate';
+  canvas.dataset.complementaryMarkerShape=paired?'triangle':'not-applicable-in-own-angle-coordinate';
+  canvas.dataset.complementaryLineStyle=paired?'dashed':'not-applicable-in-own-angle-coordinate';
   canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
   canvas.dataset.markerEncoding='fixed-radius;row-colour;weight-fill';
-  canvas.dataset.familyEncoding='each sample at its own acquired angle; no direct-reference folding';
+  canvas.dataset.familyEncoding=paired?'direct solid/circle; complementary dashed/triangle; common direct-side rebinned angle':'each sample at its own acquired angle; no direct-reference folding';
+  if(paired)canvas.dataset.diagramDisplayVersion='2026-09-17.8';
   canvas.dataset.backgroundTraceScope='geometric-context-independent-of-selected-weight-support';
   canvas.dataset.backgroundTurns=turns.join(',');
 }
@@ -3242,6 +3265,10 @@ function addFdkWorkflowSheets(sheets){
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
   if(r.config.zFfsEnabled){sheets.push(['zFFS_acquired_weights',zffsWeightRows(r)]);sheets.push(['zFFS_rebinned_weights',[['view_index','focus','row_index','theta_rad','beta_rad','z_relative_mm','weight','rebinned_value'],...r.rebinnedWeightAudit.map(q=>[q.view,q.focus?'B':'A',q.row,q.theta,q.beta,q.z,q.weight,q.acquiredValue])]]);}
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
+  if(r.weightAudit.pairedSamples){
+    sheets[0][1].push(['paired_diagram','Common direct-side rebinned angle; complementary coordinates evaluated at theta+pi. Paired_weights partitions Selected_weights by reference pair; do not add the two sheets together.']);
+    sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
+  }
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }
 async function exportFdkWorkflowCanvas(id){
@@ -3613,7 +3640,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.7 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-17.8 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
