@@ -1,3 +1,5 @@
+> Version note (2026-09-17.6): the public browser now uses the reduced [shared axial interpolation response](AXIAL_RESPONSE_METHOD.md). Image-reconstruction and prior-browser descriptions below document the retained historical APIs; they do not describe the current public calculation. Detector-cell acquisition definitions remain shared.
+
 # RRI-equivalent linear interpolation and historical CBA comparison
 
 **CBA** means **conjugate backprojection algorithm**: conjugate projections

@@ -1,3 +1,5 @@
+> Version note (2026-09-17.6): the public browser now uses the reduced [shared axial interpolation response](AXIAL_RESPONSE_METHOD.md). Image-reconstruction and prior-browser descriptions below document the retained historical APIs; they do not describe the current public calculation. Detector-cell acquisition definitions remain shared.
+
 # Point-response definition (2026-09-17.4)
 
 The browser's FDK, CBA and matched RRI paths now reconstruct a unit-integral

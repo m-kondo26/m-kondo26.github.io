@@ -1,4 +1,15 @@
 const replacements = [
+  ["実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。", "Reference for the transverse relationship between direct and opposite-direction source rays, including the fan-angle-dependent source separation. "],
+  ["展開図とモデルSSPzを対応させ、取得データの配置と体軸方向の補間方法を比較します。", "Relate candidate geometry to model SSPz and compare axial interpolation rules."],
+  ["コーン幾何の2モデルは取得データ・検出器開口を共通にし、候補の選択と補間規則を比較します。", "The two cone models share acquired data and detector apertures while comparing candidate selection and interpolation."],
+  ["多列CTにおける角度―体軸位置関係とSSP解析の背景です。同報や実機の再構成全体を再現するものではありません。", "Background for multirow angular-axial geometry and SSP analysis; not a reproduction of the complete published or commercial reconstruction."],
+  ["体軸補間と正規化重みの理論的背景です。同報の適応的体軸補間は実装していません。", "Background for axial interpolation and normalized weights. The adaptive axial interpolation in this paper is not implemented."],
+  ["評価断面を中心とする1回転区間の背景として参照しています。現在の体軸補間モデルではFDKや正確な3次元再構成は計算しません。", "Background for a slice-centred full-turn interval. The current axial model computes neither FDK nor exact 3D reconstruction."],
+  ["式（6）の体軸補間値を重み付き平均する考え方を参照しています。現在は幅Tの矩形平均を、体軸格子間を線形とする積分で計算します。有限再標本数Kを用いた旧版とは数値手順が異なります。", "The weighted axial interpolation concept in Eq. (6) motivates rectangular T averaging. The current implementation integrates the piecewise-linear axial grid, unlike the former finite-K resampling scheme."],
+  ["三次元では対向方向でも体軸成分が一致するとは限らず、同報の欠損データ復元法は実装していません。", "Opposite transverse directions need not have matching axial ray components. The missing-data recovery method is not implemented."],
+  ["列ごとの投影再配列とRRI（row-to-row interpolation）相当の線形列間補間を参照します。検出器端の取得列正規化と矩形平均は明示した追加定義です。フィルタ逆投影を除いた体軸応答であり、同報の完成画像を再現するものではありません。", "Uses rowwise rebinning and RRI (row-to-row interpolation) linear row weights. Acquired-row edge normalization and rectangular averaging are explicit additional definitions. The axial response excludes filtered backprojection and does not reproduce the published reconstructed image."],
+  ["旧FBP実装の前処理に参照した文献です。現在の体軸補間モデルでは面内ランプフィルタやFBPの幾何重みを適用しません。", "Reference for preprocessing in the archived FBP implementation. The current axial model omits the transaxial ramp and FBP geometric weights."],
+
   ["点対象がチャネル間の非感度領域にあります：展開図のみ表示", "Point object lies in a detector gap: geometry only"],
   ["回転中心の点が偶数チャネルの中央の隙間にあり、信号を取得できません。SSPz・幅指標は計算できません。", "The isocenter point lies in the central gap of the even-channel grid. No signal is acquired; SSPz and widths are unavailable."],
   ["両モデルに共通の面内有限開口を導入しました。旧条件は共通開口で再計算されるため、従来の体軸補間モデルと結果が異なります。設定厚Tは平均化幅として使用します。", "A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width."],

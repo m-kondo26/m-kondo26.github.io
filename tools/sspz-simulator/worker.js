@@ -10,6 +10,7 @@ import {
 } from "./sim-core.js";
 import { reconstructFdkSeries, reconstructFdk } from "./fdk-core.js";
 import { reconstructRriSeries, reconstructRri } from "./cba-core.js";
+import { computeAxialResponseSeries, computeAxialResponse } from "./axial-response-core.js";
 
 let cancelled = false;
 let activeContext = null;
@@ -109,10 +110,10 @@ self.onmessage = async event => {
     cancelled = false;
     fdkContext=null;fdkInspectionToken++;
     try {
-      const reconstruct = message.params.method === 'fdk' ? reconstructFdkSeries : reconstructRriSeries;
+      const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
-        progress: value => self.postMessage({type:'progress',value,label:`3D FBP ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
+        progress: value => self.postMessage({type:'progress',value,label:`Axial interpolation ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
       });
       fdkContext={params:message.params,first:result};
       self.postMessage({type:'fdk-result',result});
@@ -125,7 +126,7 @@ self.onmessage = async event => {
     const token=++fdkInspectionToken,context=fdkContext;if(!context)return;
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
-      const reconstruct=context.params.method==='fdk'?reconstructFdk:reconstructRri;
+      const reconstruct=computeAxialResponse;
       const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
       if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
     }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}

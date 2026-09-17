@@ -1,3 +1,9 @@
+## Current browser: shared axial interpolation response (2026-09-17.6)
+
+The public comparison now uses common point acquisition, finite detector aperture, rowwise rebinning, angle/state definitions, rectangular T averaging and normalization. It compares merged candidate selection with RRI-equivalent linear row interpolation, plus a separate nondivergent reference. There is no transverse ramp or reconstructed image volume. This is a new numerical model, not an unchanged FBP SSP. See [AXIAL_RESPONSE_METHOD.md](AXIAL_RESPONSE_METHOD.md).
+
+URL v11 records the new scope. Numerical APIs for earlier Taguchi/FBP results remain unchanged; all dated notes below are historical. Manuscript figures are not automatically replaced. New tests include independent all-row response evaluation, chapter-3 ray-coordinate checks and weight/response closure at 4, 80, 160 and 320 rows. These are implementation checks, not scanner validation or manuscript convergence.
+
 ## RRI as the primary 3D interpolation (2026-09-17.5)
 
 The browser now uses **RRI-equivalent linear interpolation** for the 3D conjugate-data path. One result supplies the diagram weights, images, SSPz series, shape deviations and Excel/CSV/JSON/PNG exports. This simplifies visualization of candidate geometry and its distance-based weights; it does not claim that CBA and RRI responses are equivalent. The explicit acquired-row edge normalization is retained. See [CBA_METHOD.md](CBA_METHOD.md) for the adopted definition and historical paired APIs.

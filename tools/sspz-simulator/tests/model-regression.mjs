@@ -284,7 +284,8 @@ for (const doi of [
 }
 assert.match(indexSource, /各文献の下に、このシミュレーションで採用した計算と適用範囲を示します/);
 assert.match(indexSource, /10\.1117\/1\.2746866/);
-assert.match(indexSource, /同報で示されたRRI相当の線形補間を採用/);
+assert.match(indexSource, /RRI（row-to-row interpolation）相当の線形列間補間/);
+assert.match(indexSource, /フィルタ逆投影を除いた体軸応答/);
 assert.match(appSource, /設定厚Tを矩形平均化幅FWとして計算し、得られた幅をTで除しています/);
 assert.match(appSource, /FWHMは出力値であり、Tと一致するよう調整していません/);
 assert.match(appSource, /sweep-taguchi-\$\{metric\.rawKey\}-FW/);
@@ -410,7 +411,7 @@ assert.match(englishIndexSource, /CT Angular-Longitudinal Diagram and SSPz Geome
 assert.match(englishIndexSource, /data-language-target="index\.html"/);
 assert.match(englishIndexSource, /worker-source-en\.js/);
 assert.match(englishIndexSource, /app-bundle-en\.js/);
-assert.match(englishIndexSource, /Adjacent acquired samples are linearly interpolated at each position/);
+assert.match(englishIndexSource, /integrates the piecewise-linear axial grid/);
 assert.match(englishIndexSource, /Configured thickness T defines rectangular averaging width FW/);
 assert.match(englishIndexSource, /moving the reconstruction plane past a fixed thin object/);
 assert.match(englishIndexSource, /not all contributors to a thick-slice response/);

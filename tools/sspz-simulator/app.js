@@ -77,7 +77,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.5 / axial model ${MODEL_VERSION} / RRI 2026-09-17.5 / FDK 2026-09-17.4`;
+versionLabel.textContent = `Web build 2026-09-17.6 / shared axial response 2026-09-17.6`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -172,7 +172,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 10,
+    v: 11,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     n: params.rows,
@@ -364,7 +364,7 @@ function createComputationWorker() {
 }
 
 function runSimulation() {
-  if (document.querySelector('#computationModel')?.value === 'fdk') return runFdkSimulation();
+  if (Number(form.elements.namedItem('beamPitch').value)>0) return runFdkSimulation();
   releaseWorker();
   clearError();
   const params = readParams();

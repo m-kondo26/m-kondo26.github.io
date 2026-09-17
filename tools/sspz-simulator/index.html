@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-17.5">
+  <link rel="stylesheet" href="styles.css?v=2026-09-17.6">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -26,7 +26,7 @@
         <a class="language-link" href="index-en.html" data-language-target="index-en.html" lang="en">English</a>
       </div>
       <h1>CT展開図・SSPz幾何リファレンス</h1>
-      <p class="lead">展開図とSSPzを対応させ、取得データの配置と補間方法の影響を比較します。体軸方向の補間モデルと、3次元フィルタ逆投影による応答を比較できます。</p>
+      <p class="lead">展開図とモデルSSPzを対応させ、取得データの配置と体軸方向の補間方法を比較します。</p>
     </div>
     <div class="hero-badge" aria-label="利用条件とモデルの位置づけ">
       <strong>無料・登録不要</strong>
@@ -53,7 +53,7 @@
         </div>
       </div>
 
-      <p class="field-help" id="detector-model-guide">両モデルで検出器の取得開口を共通にします。体軸補間モデルは面内の線形補間を、3次元モデルはフィルタと逆投影も計算します。<a href="DETECTOR_APERTURE_METHOD.md">開口幅と計算方法</a></p>
+      <p class="field-help" id="detector-model-guide">コーン幾何の2モデルは取得データ・検出器開口を共通にし、候補の選択と補間規則を比較します。<a href="DETECTOR_APERTURE_METHOD.md">開口幅と計算方法</a></p>
       <form id="parameter-form" class="parameter-grid">
         <label>検出器列数 <span class="symbol">N</span>
           <input id="rows" name="rows" type="number" min="1" max="320" step="1" value="4">
@@ -428,19 +428,19 @@
         </li>
         <li>
           <div class="reference-citation">Wang G, Madsen M, Redford K, Zhao S, Vannier MW. <a href="https://doi.org/10.3233/XST-2003-00064" target="_blank" rel="noopener noreferrer">A study on the section sensitivity profile in multi-row-detector spiral CT.</a> <i>Journal of X-Ray Science and Technology.</i> 2003;11:1–11.</div>
-          <p>多列CTにおける角度―体軸位置関係とSSP解析の基礎として参照しました。本Web版の主解析は180LI取得幾何を説明用SSPzへ適用しますが、同報または特定装置の再構成処理全体を再現するものではありません。</p>
+          <p>多列CTにおける角度―体軸位置関係とSSP解析の背景です。同報や実機の再構成全体を再現するものではありません。</p>
         </li>
         <li>
           <div class="reference-citation">Schaller S, Flohr T, Klingenbeck K, Krause J, Fuchs T, Kalender WA. <a href="https://doi.org/10.1109/42.887832" target="_blank" rel="noopener noreferrer">Spiral interpolation algorithm for multislice spiral CT—Part I: Theory.</a> <i>IEEE Transactions on Medical Imaging.</i> 2000;19:822–834.</div>
-          <p>多列ヘリカルCTにおける体軸方向補間と正規化重みの理論的背景。本Web版は、各再標本位置での局所2点線形補間とTaguchiらのフィルタ平均を用いるもので、同報の適応的体軸補間を実装したものではありません。厚いスライスの応答全体が2候補だけから作られるわけではありません。</p>
+          <p>体軸補間と正規化重みの理論的背景です。同報の適応的体軸補間は実装していません。</p>
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
-          <p>3次元FDK経路は、同報の導入部で説明された断面中心の1回転区間を用いる従来のヘリカルFDK近似を参照しています。同報の新しい正確再構成法や周波数混合法は実装していません。</p>
+          <p>評価断面を中心とする1回転区間の背景として参照しています。現在の体軸補間モデルではFDKや正確な3次元再構成は計算しません。</p>
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
-          <p>厚いスライスのモデルは式（6）とFig. 5/6のフィルタ補間に基づきます。zᵣ+i FW/(2I+1)の各位置で隣接取得データを線形補間し、矩形重みで正規化平均します。K=2I+1は数値積分の再標本点数であり、取得データ数ではありません。同報の最適化ピッチの選択や画像再構成全体は再現していません。</p>
+          <p>式（6）の体軸補間値を重み付き平均する考え方を参照しています。現在は幅Tの矩形平均を、体軸格子間を線形とする積分で計算します。有限再標本数Kを用いた旧版とは数値手順が異なります。</p>
         </li>
         <li>
           <div class="reference-citation">Hu H. <a href="https://doi.org/10.1118/1.598470" target="_blank" rel="noopener noreferrer">Multi-slice helical CT: Scan and reconstruction.</a> <i>Medical Physics.</i> 1999;26:5–18.</div>
@@ -448,19 +448,18 @@
         </li>
         <li>
           <div class="reference-citation">Zamyatin AA, Taguchi K, Silver MD. <a href="https://doi.org/10.1118/1.2047784" target="_blank" rel="noopener noreferrer">Helical cone beam CT with an asymmetrical detector.</a> <i>Medical Physics.</i> 2005;32:3117–3127.</div>
-          <p>実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。三次元コーンビームでは厳密に一致する対向レイが一般に存在しないという境界も踏まえ、本Web版2Cは理想化した取得幾何参照に限定し、同報の欠損データ復元法を実装していません。</p>
+          <p>実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。三次元では対向方向でも体軸成分が一致するとは限らず、同報の欠損データ復元法は実装していません。</p>
         </li>
         <li>
           <div class="reference-citation">Hsieh J, Tang X, Thibault JB, Shaughnessy C, Nilsen RA, Williams E. <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Conjugate cone-beam reconstruction algorithm.</a> <i>Optical Engineering.</i> 2007;46(6):067001.</div>
-          <p>検出器列ごとの投影再配列と、同報で示されたRRI相当の線形補間を採用します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。</p>
+          <p>列ごとの投影再配列とRRI（row-to-row interpolation）相当の線形列間補間を参照します。検出器端の取得列正規化と矩形平均は明示した追加定義です。フィルタ逆投影を除いた体軸応答であり、同報の完成画像を再現するものではありません。</p>
         </li>
         <li>
           <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
-          <p>Hsieh法の共通前処理として、式（2）・（3）の平行座標でのランプフィルタとコーン角の余弦係数を参照しました。同報の適応的3次元重み付けとオーバースキャン拡張は採用していません。</p>
+          <p>旧FBP実装の前処理に参照した文献です。現在の体軸補間モデルでは面内ランプフィルタやFBPの幾何重みを適用しません。</p>
         </li>
       </ol>
-      <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p class="model-note compact-note"><strong>実装境界：</strong>原典の局所線形補間と矩形フィルタ平均を用い、固定した薄い物体に対する体軸応答を評価します。各再標本位置で候補を選び直した応答を線形性により合成します。従来の固定断面で作った候補応答に幅Tの矩形平均を加える処理は、既定のSSPz計算には使いません。取得幾何の近似、等しいビュー重み、理想列開口は明示した仮定です。これだけで特定装置の厚いスライス再構成を検証したことにはなりません。</p>
-    </details></section>
+      <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p><a href="AXIAL_RESPONSE_METHOD.md">Equations, assumptions, version changes and verification</a></p></details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
       <p class="step">6</p>
@@ -481,11 +480,11 @@
   </main>
 
   <footer>
-    <p>Models: axial filter interpolation and approximate 3D filtered backprojection. These are reference calculations, not scanner-specific reconstructions.</p>
-    <p id="version">Web build 2026-09-17.5 / axial model 2026-09-17.4 / RRI 2026-09-17.5 / FDK 2026-09-17.4</p>
+    <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
+    <p id="version">Web build 2026-09-17.6 / axial model 2026-09-17.4 / RRI 2026-09-17.6 / FDK 2026-09-17.4</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-17.5"></script>
-  <script src="app-bundle.js?v=2026-09-17.5"></script>
+  <script src="worker-source.js?v=2026-09-17.6"></script>
+  <script src="app-bundle.js?v=2026-09-17.6"></script>
 </body>
 </html>

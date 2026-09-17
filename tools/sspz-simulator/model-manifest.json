@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.5",
+  "webBuildVersion": "2026-09-17.6",
   "threeDimensionalFbp": {
     "version": "2026-09-17.4",
     "core": "fdk-core.js",
@@ -182,7 +182,8 @@
     "axialAveraging": "Post-backprojection normalized rectangular image-domain mean of width T, before profile normalization; reconstruct required padding and retain coverage checks.",
     "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
     "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
-    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
+    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately.",
+    "currentStatus": "Historical numerical API / previous browser release; superseded for public display by activeBrowserModel."
   },
   "conjugateFbp": {
     "version": "2026-09-17.5",
@@ -199,7 +200,8 @@
     "scope": "Public RRI-equivalent linear interpolation, with explicit acquired-row edge normalization and configured rectangular image average. Historical paired CBA/RRI APIs retained. No commercial validation.",
     "objectModel": "browser: unit-integral ideal point, analytic aperture integral; historical sphere retained in API only",
     "profileReadout": "fixed transverse point through object location: axial section of 3D PSF, no bead ROI average",
-    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately."
+    "numericalSensitivityScope": "Existing verification JSON is historical finite-sphere evidence; new point-response sensitivity must be evaluated separately.",
+    "currentStatus": "Historical numerical API / previous browser release; superseded for public display by activeBrowserModel."
   },
   "diagramLayout": {
     "logicalCanvas": [
@@ -218,12 +220,12 @@
     "originalAxialModel": "retained as a separate model"
   },
   "shapeDisplay": {
-    "version": "2026-09-17.5",
+    "version": "2026-09-17.6",
     "intensity": "fraction^0.35; shared across channels; fixed 0–100% LUT",
     "alignment": "Individual native FWHM midpoint translated to zero, no width rescaling; 0.01 mm linear grid; subtract own group mean",
     "arrows": "Mean individual FWHM; mean and sample SD above plots",
     "bins": "0.002; minimum extent +/-0.06, expand to contain all deviations",
-    "colors": "Public 3D selected model (RRI by default, optional FDK) red; axial reference gray and cone geometry red. Historical paired APIs retain CBA red/RRI blue. No measured data in browser.",
+    "colors": "Selected reduced axial model red; detector row hues unchanged; historical comparison palettes retained only for historical APIs.",
     "exports": "Same renderer for screen and 600-dpi PNG; aligned arrays and deviations in Excel",
     "numericalModelChanged": false
   },
@@ -245,7 +247,8 @@
       "scope": "Complete geometric turns clipped at the existing axes, independent of selected-weight support; no additional acquired samples",
       "unchanged": "Reconstruction, selected sample identities, positions, weights, axes, palette and marker opacity",
       "test": "tests/fdk-diagram-trajectories.mjs"
-    }
+    },
+    "currentStatus": "Historical numerical API / previous browser release; superseded for public display by activeBrowserModel."
   },
   "configuredThickness": {
     "version": "2026-09-16.1",
@@ -305,6 +308,30 @@
     "color": "single simulation channel red; row hues retain detector-row identity",
     "migration": "fdk_method=hsieh becomes rri with a visible notice; original FDK remains optional",
     "reproducibility": "Paired reconstructCba/reconstructCbaSeries APIs retained; reconstructRri/reconstructRriSeries promote their actual linear result and audits.",
-    "scope": "Numerical identity to the previous RRI branch; not equality to CBA, clinical validation, or manuscript-condition convergence."
+    "scope": "Numerical identity to the previous RRI branch; not equality to CBA, clinical validation, or manuscript-condition convergence.",
+    "currentStatus": "Historical numerical API / previous browser release; superseded for public display by activeBrowserModel."
+  },
+  "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
+  "activeBrowserModel": {
+    "version": "2026-09-17.6",
+    "urlSchema": 11,
+    "core": "axial-response-core.js",
+    "sha256": "b2f8872ffd505f85ef7b61f9f8e457c79c44063b393eabd823834885829cb115",
+    "sha256Convention": "UTF-8 with LF line endings",
+    "documentation": "AXIAL_RESPONSE_METHOD.md",
+    "scope": "Shared finite-aperture point acquisition, rowwise rebinning, candidate selection/axial interpolation, paired angular mean, rectangular T average; no full transverse image reconstruction",
+    "methods": [
+      "merged nearest bracket in common cone geometry",
+      "RRI-equivalent compact linear row interpolation in common cone geometry",
+      "nondivergent parallel merged-pair reference"
+    ],
+    "state": "fixed object; 360 start angles in 1 degree increments",
+    "averaging": "integral of piecewise-linear moving-plane response over T; not the former finite-K sum",
+    "exports": "same profiles, selected-angle weights and unfiltered rebinned response; no volumes",
+    "tests": "tests/axial-response.mjs",
+    "verification": "tests/axial-response-verification.json",
+    "bookCheck": "Chapter 3 printed pp.75-111; coordinate mapping with Eqs.3-32,3-62; intentionally excludes FDK stages Eqs.3-69 to 3-71",
+    "scannerValidation": "not established",
+    "manuscriptFiguresRegenerated": false
   }
 }
