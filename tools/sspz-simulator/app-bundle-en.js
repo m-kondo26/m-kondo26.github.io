@@ -3646,7 +3646,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.10 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-17.11 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4154,15 +4154,30 @@ function setFittedFigureFont(ctx, text, preferredPx, minimumPx, maximumWidth, we
   return minimumPx;
 }
 
-function drawAxes(plot, xTicks, yTicks, useYDown = false) {
+function drawAxisGrid(plot, xTicks, yTicks, useYDown = false) {
+  const { ctx, margin, innerWidth, innerHeight, x, y, yDown, style } = plot;
+  ctx.save();
+  ctx.strokeStyle = GRID;
+  ctx.lineWidth = style.gridWidth;
+  for (const tick of xTicks.filter(Number.isFinite)) {
+    const px = x(tick);
+    ctx.beginPath(); ctx.moveTo(px, margin.top); ctx.lineTo(px, margin.top + innerHeight); ctx.stroke();
+  }
+  for (const tick of yTicks.filter(Number.isFinite)) {
+    const py = useYDown ? yDown(tick) : y(tick);
+    ctx.beginPath(); ctx.moveTo(margin.left, py); ctx.lineTo(margin.left + innerWidth, py); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAxes(plot, xTicks, yTicks, useYDown = false, includeGrid = true) {
   const { ctx, margin, innerWidth, innerHeight, x, y, yDown, labels, width, height, style } = plot;
   const xValues = xTicks.filter(Number.isFinite);
   const yValues = yTicks.filter(Number.isFinite);
   const xFormatter = labels.xFormatter ?? (value => String(value));
   const yFormatter = labels.yFormatter ?? (value => String(value));
+  if (includeGrid) drawAxisGrid(plot, xTicks, yTicks, useYDown);
   ctx.save();
-  ctx.strokeStyle = GRID;
-  ctx.lineWidth = style.gridWidth;
   // Publication figures use black tick-label numerals; only the supporting
   // gridlines remain gray so the coordinate scale keeps full print contrast.
   ctx.fillStyle = INK;
@@ -4171,14 +4186,12 @@ function drawAxes(plot, xTicks, yTicks, useYDown = false) {
   ctx.textBaseline = "top";
   for (const tick of xValues) {
     const px = x(tick);
-    ctx.beginPath(); ctx.moveTo(px, margin.top); ctx.lineTo(px, margin.top + innerHeight); ctx.stroke();
     ctx.fillText(xFormatter(tick), px, margin.top + innerHeight + 15);
   }
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (const tick of yValues) {
     const py = useYDown ? yDown(tick) : y(tick);
-    ctx.beginPath(); ctx.moveTo(margin.left, py); ctx.lineTo(margin.left + innerWidth, py); ctx.stroke();
     ctx.fillText(yFormatter(tick), margin.left - 16, py);
   }
 
@@ -4512,6 +4525,10 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     : Math.max(diagram.interpolationBandHalfWidth ?? 0, 0.15));
   ctx.fillStyle = PALE;
   ctx.fillRect(x(-bandLimit), margin.top, x(bandLimit) - x(-bandLimit), innerHeight);
+  // Paint supporting guides behind all trajectories, weight glyphs and the
+  // target plane. Keep the black frame, ticks and labels in the foreground.
+  const angleTicks = [0, 60, 120, 180, 240, 300, 360];
+  drawAxisGrid(plot, xAxis.ticks, angleTicks, true);
   ctx.save();
   ctx.beginPath();
   ctx.rect(margin.left, margin.top, innerWidth, innerHeight);
@@ -4550,7 +4567,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   // The key belongs below the axes, in a separate footer. Reserve plot
   // height in the canvas dimensions rather than squeezing it for the legend.
   plot.labels.xLabelY = margin.top + innerHeight + 86;
-  drawAxes(plot, xAxis.ticks, [0, 60, 120, 180, 240, 300, 360], true);
+  drawAxes(plot, xAxis.ticks, angleTicks, true, false);
   const legendTop = margin.top + innerHeight + 136;
   ctx.save(); ctx.strokeStyle = GRID; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(margin.left, legendTop - 27); ctx.lineTo(margin.left + innerWidth, legendTop - 27); ctx.stroke(); ctx.restore();
@@ -4600,6 +4617,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.inlineRowLabels = "0";
   canvas.dataset.traceOverlapEncoding = "multiply;opacity-and-width-density-compensated;not-weight";
   canvas.dataset.diagramDisplayVersion = "2026-09-16.1";
+  canvas.dataset.gridLayer = "behind-trajectories-and-markers";
   canvas.dataset.legendPlacement = "below-axes";
   canvas.dataset.plotHeight = String(innerHeight);
   canvas.dataset.legendTop = String(legendTop);

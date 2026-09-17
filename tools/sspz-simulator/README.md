@@ -1,3 +1,7 @@
+## Diagram grid layers (2026-09-17.11)
+
+Unwrapped diagrams draw the gray major-tick grid behind trajectories, weight markers and the target plane, on screen and in 600-dpi PNG exports. The black frame, ticks and axis labels remain in the foreground. The pale extent band, row colours, marker weights and numerical results are unchanged.
+
 ## Tail display (2026-09-17)
 
 The public logarithmic tail view now shows normalized SSPz from 0.01 to 1 (1% to 100%), on screen and in 600-dpi PNG exports. This is a display threshold, not a contribution fraction or a truncation of the calculated profiles. Full numerical exports, FWHM and FWTM are unchanged. Profile display version: 2026-09-17.1. Earlier dated entries below describe prior releases.
