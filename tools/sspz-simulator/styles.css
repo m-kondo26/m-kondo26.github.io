@@ -415,3 +415,13 @@ footer p { margin: 0.2rem 0; }
 .shape-card { max-width: 1060px; margin-inline: auto; }
 .shape-canvas-wrap { max-width: 100%; overflow-x: auto; }
 .shape-canvas-wrap canvas, #fdk-panel .shape-canvas-wrap canvas { min-width: 520px; width: 100%; height: auto; aspect-ratio: auto; }
+
+.zffs-controls { padding: 14px; border: 1px solid #c9d7e3; border-radius: 8px; margin-bottom: 16px; }
+.zffs-switch { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.zffs-switch input { width: 20px; height: 20px; }
+.zffs-view-controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+.zffs-view-controls label { min-width: 180px; }
+.zffs-canvas-scroll,.zffs-table-scroll { overflow-x: auto; }
+.zffs-canvas-scroll canvas { width: 100%; min-width: 540px; }
+.zffs-table-scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.zffs-table-scroll th,.zffs-table-scroll td { padding: 6px 10px; border-bottom: 1px solid #ddd; text-align: right; }

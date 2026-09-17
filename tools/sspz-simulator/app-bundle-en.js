@@ -2731,6 +2731,46 @@ function summarizeSweep(rows, coneOn) {
   };
 }
 
+// Two alternating axial focal positions with a fixed cylindrical detector.
+// The quarter-row default follows the isocentre interlacing in Mori (2008),
+// Fig. 4 / Eqs. 19-22. Pure axial motion is an explicit idealization.
+const ZFFS_VERSION='2026-09-17.1';
+function zffsConfig(input,c){
+  c.zFfsEnabled=input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1';
+  if(!c.zFfsEnabled)return c;
+  c.zFfsMagnification=Number(input.zFfsMagnification??(1072/600));
+  c.zFfsOffset=Number(input.zFfsOffset??.25);
+  if(!(Number.isFinite(c.zFfsMagnification)&&c.zFfsMagnification>1&&c.zFfsMagnification<=4))throw Error('ZFFS_GEOMETRY: detector magnification must be > 1 and <= 4');
+  if(!(Number.isFinite(c.zFfsOffset)&&c.zFfsOffset>=0&&c.zFfsOffset<=.5))throw Error('ZFFS_GEOMETRY: isocentre half-offset must be 0 to 0.5 row pitches');
+  if(c.axialRule==='parallel')throw Error('ZFFS_GEOMETRY: focal switching requires cone-ray geometry');
+  c.zFfsSourceDetectorMm=c.sourceRadius*c.zFfsMagnification;
+  if(c.zFfsSourceDetectorMm<=c.sourceRadius+c.radius)throw Error('ZFFS_GEOMETRY: detector must lie beyond the evaluation point for every view');
+  c.zFfsSourceOffsetMm=c.zFfsOffset*c.rowWidth/(1-1/c.zFfsMagnification);
+  return c;
+}
+function zffsState(view){return ((view%2)+2)%2;}
+function zffsShift(c,focus){return (focus===0?-1:1)*c.zFfsSourceOffsetMm;}
+function zffsRowGeometry(c,view,row){
+  const beta=c.phase+2*Math.PI*view/c.viewSamples;
+  const L=Math.hypot(c.sourceRadius*Math.cos(beta)-c.radius,c.sourceRadius*Math.sin(beta));
+  const focus=zffsState(view),shift=zffsShift(c,focus),baseZ=c.feed*view/c.viewSamples;
+  const spacing=c.rowWidth*L/c.sourceRadius;
+  const origin=baseZ+shift*(1-L/c.zFfsSourceDetectorMm);
+  return {view,row,focus,beta,theta:beta,sourceZ:baseZ+shift,baseZ,L,spacing,z:origin+(row-(c.rows-1)/2)*spacing};
+}
+function zffsRebinStencil(c,theta,focus){
+  const gamma=Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius),beta=theta+gamma;
+  // Coincident foci are one acquisition trajectory: use the original full grid.
+  const stride=c.zFfsOffset===0?1:2,origin=c.zFfsOffset===0?0:focus;
+  const vf=(beta-c.phase)*c.viewSamples/(2*Math.PI),q=(vf-origin)/stride,i=Math.floor(q),a=q-i;
+  const jf=gamma*c.sourceRadius/c.channelWidth+(c.channels-1)/2,j=Math.floor(jf),b=jf-j;
+  const out=[];
+  for(const [view,wv] of [[origin+stride*i,1-a],[origin+stride*(i+1),a]])for(const [channel,wc] of [[j,1-b],[j+1,b]]){
+    const weight=wv*wc;if(weight>1e-14)out.push({view,channel,weight});
+  }
+  return {beta,gamma,stencil:out};
+}
+
 // Presentation/export only: does not alter the acquisition or response model.
 globalThis.SSPZShape = (() => {
   function analyze(overlay, key, step = 0.01) {
@@ -2821,7 +2861,8 @@ globalThis.SSPZShapeDisplay = (() => {
   }
   function fromFdk(result) {
     const name={'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial',rri:'RRI'}[result.model?.kind]??'FDK';
-    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[name, result, [1, 0, 0]]];
+    const displayName=name+(result.config?.zFfsEnabled?' + z-FFS':'');
+    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[displayName, result, [1, 0, 0]]];
     return groups.map(([name, r, rgb]) => {
       const z = r.z, count = r.profiles.length, values = new Float64Array(z.length * count);
       r.profiles.forEach((p, i) => values.set(p.profile, i * z.length));
@@ -2922,6 +2963,100 @@ globalThis.SSPZShapeDisplay = (() => {
   return { draw, fromFdk, intensity, ticks, exponent };
 })();
 
+// Optional acquired-point view. A/B are physical alternating exposures.
+const ZFFS_COLORS=['#0072b2','#d55e00'];
+let zffsSceneCache=null;
+function readZffsParams(){return {zFfsEnabled:!!document.getElementById('zffs-enabled')?.checked,zFfsMagnification:Number(document.getElementById('zffs-magnification')?.value??1072/600),zFfsOffset:Number(document.getElementById('zffs-offset')?.value??.25)};}
+function initializeZffsUi(initial,changed){
+  const box=document.createElement('div');box.id='zffs-controls';box.className='zffs-controls';
+  box.innerHTML=`<label class="zffs-switch"><input type="checkbox" id="zffs-enabled">${fdkText('','Use z-flying focal spot sampling (z-FFS)')}</label>
+  <p id="zffs-unavailable" hidden>${fdkText('','Focal switching requires cone geometry and positive pitch.')}</p>
+  <div id="zffs-options" hidden><p>${fdkText('','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. The default interlaces rows at half spacing at isocentre.')}</p>
+  <details class="reading-details"><summary>${fdkText('','Focal-switching geometry')}</summary><div class="parameter-grid">
+  <label>${fdkText('','Source–detector / source–isocentre distance')}<input id="zffs-magnification" type="number" min="1.01" max="4" step="any" value="${1072/600}"></label>
+  <label>${fdkText('','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
+  <p>${fdkText('','An ideal model of pure axial focal motion relative to a fixed cylindrical detector, not scanner settings. Away from isocentre, the interlaced spacing is not uniformly halved.')}</p>
+  <a href="ZFFS_METHOD.md">${fdkText('','Method and verification scope')}</a> · <a href="https://doi.org/10.1118/1.2828403">Mori (2008)</a></details></div>`;
+  document.getElementById('fdk-controls').prepend(box);
+  const ref=document.createElement('li');ref.innerHTML=`<div class="reference-citation">Mori I. <a href="https://doi.org/10.1118/1.2828403" target="_blank" rel="noopener noreferrer">Antialiasing backprojection for helical MDCT.</a> <i>Medical Physics.</i> 2008;35:1065–1077.</div><p>${fdkText('','Fig. 4 and Eqs. (19)–(22) motivate focal switching and sampling geometry. This extension assumes pure axial motion; it does not reproduce shifted backprojection or scanner artifact reduction.')}</p>`;document.querySelector('.reference-list').append(ref);
+  document.getElementById('zffs-enabled').checked=initial.zFfsEnabled===true;
+  document.getElementById('zffs-magnification').value=initial.zFfsMagnification??1072/600;
+  document.getElementById('zffs-offset').value=initial.zFfsOffset??.25;
+  const block=document.createElement('div');block.id='zffs-diagrams';block.hidden=true;
+  block.innerHTML=`<h3>${fdkText('','Focal positions A/B: acquired points and selected weights')}</h3>
+  <p id="zffs-result-note"></p><div class="zffs-view-controls"><label>${fdkText('','Display angle start (°)')}<input id="zffs-angle" type="range" min="0" max="300" step="1" value="0"><output id="zffs-angle-value">0°</output></label>
+  <label>${fdkText('','Angular span')}<select id="zffs-span"><option value="60">60°</option><option value="10">10°</option><option value="360">360°</option></select></label></div>
+  <div class="chart-grid two">${[0,1,2,3].map(i=>`<article class="chart-card"><div class="zffs-canvas-scroll" tabindex="0"><canvas id="zffs-panel-${i}" width="1000" height="850"></canvas></div></article>`).join('')}</div>
+  <p>${fdkText('','All panels share axes and scale. Circle: focus A; triangle: focus B. Points are detector-row centres at actual acquired angles. Bottom-right intensity shows acquired-data weights summed over T at the object location.')}</p>
+  <div class="action-row"><button type="button" class="secondary" id="zffs-png" disabled>${fdkText('','Save four panels as 600-dpi PNG')}</button><button type="button" class="secondary" id="zffs-csv" disabled>${fdkText('','Export acquired points and weights as CSV')}</button></div>
+  <details class="reading-details"><summary>${fdkText('','Selected data in this viewport (first 100 points)')}</summary><div class="zffs-table-scroll"><table><thead><tr><th>Focus</th><th>View</th><th>Row</th><th>β (°)</th><th>z (mm)</th><th>Weight</th></tr></thead><tbody id="zffs-weight-table"></tbody></table></div></details>`;
+  document.getElementById('fdk-geometry-step').append(block);
+  for(const id of ['zffs-enabled','zffs-magnification','zffs-offset'])document.getElementById(id).addEventListener('change',()=>{changed();syncZffsUi();});
+  for(const id of ['zffs-angle','zffs-span'])document.getElementById(id).addEventListener('input',()=>{zffsSceneCache=null;renderZffsSelected();});
+  document.getElementById('zffs-csv').onclick=()=>{if(!fdkSelectedResult?.config.zFfsEnabled)return;downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_zFFS_acquired_weights.csv','\uFEFF'+zffsWeightRows(fdkSelectedResult).map(r=>r.join(',')).join('\r\n'));};
+  document.getElementById('zffs-png').onclick=exportZffsPanels;
+  resetButton.addEventListener('click',()=>{document.getElementById('zffs-enabled').checked=false;document.getElementById('zffs-magnification').value=1072/600;document.getElementById('zffs-offset').value=.25;syncZffsUi();});
+  syncZffsUi();
+}
+function syncZffsUi(){
+  const e=document.getElementById('zffs-enabled');if(!e)return;
+  const available=document.getElementById('computationModel').value!=='parallel'&&Number(form.elements.namedItem('beamPitch').value)>0;
+  if(!available)e.checked=false;e.disabled=runButton.disabled||!available;
+  document.getElementById('zffs-unavailable').hidden=available;
+  document.getElementById('zffs-options').hidden=!e.checked;
+  document.getElementById('zffs-diagrams').hidden=!e.checked;
+  document.getElementById('fdk-geometry').closest('article').hidden=e.checked;
+  document.getElementById('fdk-weight-step').hidden=e.checked;
+  for(const id of ['zffs-png','zffs-csv'])document.getElementById(id).disabled=!fdkSelectedResult?.config.zFfsEnabled;
+}
+function zffsWeightRows(r){return [['focus','view_unwrapped','row_index_zero_based','channel_index_zero_based','source_angle_rad','source_z_mm','row_center_relative_mm','interpolation_weight','angular_mean_factor','acquired_point_value','response_contribution'],...r.weightAudit.samples.map(q=>[q.focus?'B':'A',q.view,q.row,q.channel,q.beta,q.sourceZ,q.z,q.weight,r.weightAudit.db,q.acquiredValue,q.weight*r.weightAudit.db*q.acquiredValue])];}
+function zffsScene(r){
+  const span=Number(document.getElementById('zffs-span').value),slider=document.getElementById('zffs-angle');slider.max=360-span;slider.disabled=span===360;
+  const start=Math.min(Number(slider.value),360-span);slider.value=start;document.getElementById('zffs-angle-value').value=start+'°';
+  const key=start+':'+span;if(zffsSceneCache?.r===r&&zffsSceneCache.key===key)return zffsSceneCache;
+  const c=r.config,nv=c.viewSamples,base=Math.ceil(((2*Math.PI*r.zObject/c.feed)-Math.PI)/(2*Math.PI/nv)-1e-12);
+  const limit=symmetricNiceAxis(Math.max(c.rowWidth,c.axialAverageMm/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+c.zFfsSourceOffsetMm),3).xMax;
+  const angle=v=>((v-base)%nv+nv)%nv*360/nv;
+  const axialReach=(c.rows-1)/2*c.rowWidth*(1+c.radius/c.sourceRadius)+c.zFfsSourceOffsetMm;
+  const first=Math.floor((r.zObject-limit-axialReach)/c.feed*nv),last=Math.ceil((r.zObject+limit+axialReach)/c.feed*nv),points=[];
+  for(let v=first;v<=last;v++){
+    const a=angle(v);if(a<start-1e-9||a>start+span+1e-9)continue;
+    const q=zffsRowGeometry(c,v,0),lo=Math.max(0,Math.ceil((-limit+r.zObject-q.z)/q.spacing)),hi=Math.min(c.rows-1,Math.floor((limit+r.zObject-q.z)/q.spacing));
+    for(let row=lo;row<=hi;row++)points.push({view:v,row,focus:q.focus,z:q.z+row*q.spacing-r.zObject,angle:a,weight:0});
+  }
+  const weights=new Map();for(const q of r.weightAudit.samples){const k=q.view+':'+q.row;if(!weights.has(k))weights.set(k,{...q,angle:angle(q.view),weight:0});weights.get(k).weight+=q.weight*r.weightAudit.db;}
+  const selected=[...weights.values()].filter(q=>q.angle>=start-1e-9&&q.angle<=start+span+1e-9&&Math.abs(q.z)<=limit).sort((a,b)=>a.angle-b.angle||a.z-b.z);
+  const maxWeight=Math.max(0,...selected.map(q=>q.weight));
+  return zffsSceneCache={r,key,start,span,limit,points,selected,maxWeight};
+}
+function drawZffsPanel(canvas,r,kind){
+  canvas.dataset.renderScale=String(canvas.width/1000);
+  const s=zffsScene(r),titles=[fdkText('','Acquired points: focus A'),fdkText('','Acquired points: focus B'),fdkText('','Overlay: focus A+B'),fdkText('','Selected acquired-data weights')];
+  const plot=axisContext(canvas,{xMin:-s.limit,xMax:s.limit,yMin:s.start+s.span,yMax:s.start},{x:'',y:'β − βref (°)',topMargin:85,leftMargin:130,rightMargin:35,bottomMargin:170,xFormatter:v=>Number(v.toFixed(2)).toString(),yFormatter:v=>Number(v.toFixed(1)).toString()});
+  const xs=SSPZShapeDisplay.ticks(-s.limit,s.limit),ys=Array.from({length:7},(_,i)=>s.start+i*s.span/6);drawAxes(plot,xs,ys);
+  const {ctx,x,y,margin:m,innerWidth:w,innerHeight:h}=plot;
+  ctx.save();ctx.fillStyle=INK;ctx.font=`700 27px ${FIGURE_FONT}`;ctx.textAlign='left';ctx.fillText('('+String.fromCharCode(97+kind)+')',18,32);ctx.textAlign='center';ctx.font=`27px ${FIGURE_FONT}`;ctx.fillText(titles[kind],m.left+w/2,43);
+  ctx.beginPath();ctx.rect(m.left,m.top,w,h);ctx.clip();ctx.strokeStyle='#b41630';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x(0),m.top);ctx.lineTo(x(0),m.top+h);ctx.stroke();
+  const marker=(q,weighted)=>{ctx.globalAlpha=weighted?.15+.85*q.weight/(s.maxWeight||1):.65;ctx.fillStyle=ZFFS_COLORS[q.focus];ctx.beginPath();const px=x(q.z),py=y(q.angle),sz=weighted?5:2.8;if(q.focus){ctx.moveTo(px,py-sz);ctx.lineTo(px-sz,py+sz);ctx.lineTo(px+sz,py+sz);ctx.closePath();}else ctx.arc(px,py,sz,0,2*Math.PI);ctx.fill();};
+  if(kind<3){for(const q of s.points)if(kind===2||q.focus===kind)marker(q,false);}
+  else {for(const q of s.selected)marker(q,true);}
+  ctx.restore();ctx.save();ctx.textAlign='center';ctx.fillStyle=INK;ctx.font=`31px ${FIGURE_FONT}`;ctx.fillText('zᵢ − z₀ (mm)',m.left+w/2,m.top+h+80);ctx.font=`23px ${FIGURE_FONT}`;ctx.textAlign='left';ctx.fillStyle=ZFFS_COLORS[0];ctx.fillText('○  '+fdkText('','Focus A'),m.left,m.top+h+118);ctx.fillStyle=ZFFS_COLORS[1];ctx.fillText('△  '+fdkText('','Focus B'),m.left+230,m.top+h+118);
+  if(kind===3){ctx.fillStyle=INK;ctx.font=`19px ${FIGURE_FONT}`;ctx.fillText(fdkText('','Intensity: weight 0 – ')+s.maxWeight.toPrecision(3),m.left,m.top+h+149);}ctx.restore();
+  canvas.dataset.renderState='ready';canvas.dataset.zffsFocus=String(kind);canvas.dataset.xRange=String(s.limit);canvas.dataset.angleRange=s.key;
+}
+function renderZffsSelected(){
+  syncZffsUi();const r=fdkSelectedResult;if(!r?.config.zFfsEnabled)return;
+  for(let i=0;i<4;i++)drawZffsPanel(document.getElementById('zffs-panel-'+i),r,i);
+  const c=r.config;document.getElementById('zffs-result-note').textContent=`${c.viewSamples} views/turn (A: ${c.viewSamples/2}, B: ${c.viewSamples/2}) / `+fdkText('','Source offset')+` ±${c.zFfsSourceOffsetMm.toFixed(3)} mm / `+fdkText('','One-sided isocentre offset')+` ${c.zFfsOffset} `+fdkText('','row pitches. These data also determine the SSPz at the selected start angle.');
+  const s=zffsScene(r);document.getElementById('zffs-weight-table').innerHTML=s.selected.slice(0,100).map(q=>`<tr><td>${q.focus?'B':'A'}</td><td>${q.view}</td><td>${q.row+1}</td><td>${q.angle.toFixed(1)}</td><td>${q.z.toFixed(3)}</td><td>${q.weight.toPrecision(4)}</td></tr>`).join('');
+}
+async function exportZffsPanels(){
+  const r=fdkSelectedResult;if(!r?.config.zFfsEnabled)return;
+  const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.85);const ctx=c.getContext('2d');
+  for(let i=0;i<4;i++){const tile=document.createElement('canvas');tile.width=Math.round(c.width/2);tile.height=Math.round(tile.width*.85);drawZffsPanel(tile,r,i);ctx.drawImage(tile,(i%2)*tile.width,Math.floor(i/2)*tile.height);}
+  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_zFFS_4panels_600dpi.png',await pngWithResolution(blob,600),'image/png');
+}
+
 // One reconstruction result supplies the diagram, weights, selected SSP and
 // phase-ordered widths. Rendering never substitutes axial-model coefficients.
 let fdkSelectedResult=null,fdkRunParams=null,fdkInspectionRequest=0,fdkInspectionTimer=null;
@@ -2974,6 +3109,7 @@ function selectFdkState(index,immediate=false){
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Updating geometry, weights and response for the selected angle…');
   for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('','Computing selected angle'));
   drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));drawFdkSweep(document.getElementById('fdk-sweep'));drawFdkTail(document.getElementById('fdk-tail'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  syncZffsUi();for(const cv of document.querySelectorAll('#zffs-diagrams canvas'))drawCanvasStatus(cv,'z-FFS',fdkText('','Computing selected angle'));
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
   const requestId=fdkInspectionRequest;
@@ -2994,11 +3130,13 @@ function renderFdkSelected(){
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
+  renderZffsSelected();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
 // Only the scene data differ; palette, opacity, marker size and layout are shared.
 function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
+  if(r.config.zFfsEnabled)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
   const samples=audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
@@ -3102,6 +3240,7 @@ function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
+  if(r.config.zFfsEnabled){sheets.push(['zFFS_acquired_weights',zffsWeightRows(r)]);sheets.push(['zFFS_rebinned_weights',[['view_index','focus','row_index','theta_rad','beta_rad','z_relative_mm','weight','rebinned_value'],...r.rebinnedWeightAudit.map(q=>[q.view,q.focus?'B':'A',q.row,q.theta,q.beta,q.z,q.weight,q.acquiredValue])]]);}
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }
@@ -3122,14 +3261,15 @@ const FDK_UI_FIELDS={method:'rri',edgePolicy:'available',axialAverageMm:0,object
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
-const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP');
+const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[[fdkMethodName(r),r]];
+const fdkSheetPrefix=name=>name.includes('z-FFS')?name.replace(' + z-FFS','_FFS').replace(' axial',''):name;
 const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
-function syncFdkMethodControls(){const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
+function syncFdkMethodControls(){syncZffsUi();const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
 function readFdkParams(){
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
@@ -3143,17 +3283,22 @@ function readFdkParams(){
   out.objectModel='point';
   out.thicknessMapping='configured-rectangular';
   out.phaseCount=360;
+  Object.assign(out,readZffsParams());
+  if(out.zFfsEnabled)out.zExtent+=2*out.zFfsOffset*d/(1-1/out.zFfsMagnification);
   return out;
 }
 function writeFdkUrl(url,p){
   url.searchParams.set('model',p.computationModel==='fdk'?'rri':p.computationModel??'axial');
   url.searchParams.set('response','axial-interpolation');
+  for(const k of ['zffs','zffs_m','zffs_a'])url.searchParams.delete(k);
+  if(p.zFfsEnabled){url.searchParams.set('zffs','1');url.searchParams.set('zffs_m',p.zFfsMagnification);url.searchParams.set('zffs_a',p.zFfsOffset);}
   for(const key of ['nf','pm','rp','nz',...Object.keys(FDK_UI_FIELDS).map(k=>'fdk_'+k)])url.searchParams.delete(key);
   for(const k of ['edgePolicy','zStep','phase','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
 }
 function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
+  out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
   if(out.legacyCbaComparison)out.method='rri';
@@ -3211,6 +3356,7 @@ function initializeFdkUi(initial){
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
   const axialViewHelp=viewHelp?.textContent;
   function modeChanged(){
+    fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
     if(fdkResult){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'));}
     document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
@@ -3218,8 +3364,10 @@ function initializeFdkUi(initial){
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
 
+    syncZffsUi();
     if(!runButton.disabled)status.textContent=fdkText('','Model selected. Check the conditions and calculate.');
   }
+  initializeZffsUi(initial,modeChanged);
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
@@ -3228,18 +3376,18 @@ function initializeFdkUi(initial){
     const r=fdkResult;if(!r)return;
     const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of shared ideal-point data, after T averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
-      ...fdkGroups(r).map(([name,g])=>[name+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
+      ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
     if(r.reference){sheets[0][1].push(['CBA','Conjugate backprojection algorithm: jointly weighted conjugate detector-row samples'],['RRI','Row-to-row interpolation: linear interpolation between adjacent detector rows; matched reference with shared edge extension'],['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(r.model.kind.startsWith('axial-')){
       sheets[0][1].push(['RRI','Row-to-row interpolation; linear weights with an explicit acquired-row edge extension']);
-      sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','interpolation_weight'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i]]))]]);
+      sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','interpolation_weight',...(r.config.zFfsEnabled?['focus']:[])],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],...(r.config.zFfsEnabled?[v.focus[i]?'B':'A']:[])]))]]);
     }
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
       for(const g of fdkShapeGroups){const a=g.analysis;
-        sheets.push([g.name+'_Shape_aligned',[['z_position_mm','mean',...a.valid.map(i=>'aligned_'+i)],...Array.from(a.x,(z,i)=>[z,a.mean[i],...a.aligned.map(p=>p[i])])]]);
-        sheets.push([g.name+'_Shape_deviation',[['z_position_mm',...a.valid.map(i=>'deviation_'+i)],...Array.from(a.x,(z,i)=>[z,...a.delta.map(p=>p[i])])]]);
+        sheets.push([fdkSheetPrefix(g.name)+'_Shape_aligned',[['z_position_mm','mean',...a.valid.map(i=>'aligned_'+i)],...Array.from(a.x,(z,i)=>[z,a.mean[i],...a.aligned.map(p=>p[i])])]]);
+        sheets.push([fdkSheetPrefix(g.name)+'_Shape_deviation',[['z_position_mm',...a.valid.map(i=>'deviation_'+i)],...Array.from(a.x,(z,i)=>[z,...a.delta.map(p=>p[i])])]]);
       }
     }
     addFdkWorkflowSheets(sheets);
@@ -3248,7 +3396,7 @@ function initializeFdkUi(initial){
   document.getElementById('fdk-shape-png').onclick=async()=>{if(!fdkShapeGroups)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.83);drawFdkShape(c);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_shape_distribution_600dpi.png',await pngWithResolution(blob,600),'image/png');};
   document.getElementById('fdk-png').onclick=async()=>{if(!fdkResult)return;const c=document.createElement('canvas');c.width=Math.round(180/25.4*600);c.height=Math.round(c.width*.7);fdkDrawProfile(c,fdkResult);const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(fdkFileStem(fdkResult)+'_SSPz_600dpi.png',await pngWithResolution(blob,600),'image/png');};
 }
-function fdkToggleDownloads(on){for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
+function fdkToggleDownloads(on){syncZffsUi();for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
 function runFdkSimulation(){
   const params={...readParams(),...readFdkParams()};
   for(const id of ['fdk-profile-step','fdk-width-step','fdk-shape-step'])document.getElementById(id).hidden=false;
@@ -3275,7 +3423,7 @@ function runFdkSimulation(){
         document.querySelectorAll('[data-fdk-canvas="fdk-geometry"],[data-fdk-canvas="fdk-weights-primary"]').forEach(b=>b.disabled=false);
         status.textContent=fdkText('','No acquired point response; geometry only.');
         document.getElementById('fdk-summary').textContent=fdkText('','The point signal is not acquired. Check detector aperture, gaps and sampling. Candidate geometry and weights remain available; SSPz and widths are undefined.');
-        releaseWorker();return;
+        renderZffsSelected();releaseWorker();return;
       }
       fdkResult=m.result;renderFdkResult(fdkResult);progress.value=1;setBusy(false);fdkToggleDownloads(true);status.textContent=fdkText('','Completed ')+((performance.now()-startedAt)/1000).toFixed(1)+' s / 360 angles';selectFdkState(selectedStateIndex,true);
     }else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest){fdkSelectedResult=m.result;renderFdkSelected();}}
@@ -3287,6 +3435,7 @@ function runFdkSimulation(){
       if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('',text);
       if(text.startsWith('CBA_COVERAGE'))text=fdkText('',text);
       if(text.startsWith('AXIAL_DOMAIN'))text=fdkText('',text);
+      if(text.startsWith('ZFFS_GEOMETRY'))text=fdkText('',text);
       if(text.startsWith('AXIAL_COVERAGE'))text=fdkText('',text);
       if(text.startsWith('CBA_VIEWS')||text.startsWith('AXIAL_VIEWS'))text=fdkText('',text);
       fail(text);
@@ -3464,7 +3613,7 @@ let selectedStateIndex = 0;
 let inspectTimer = null;
 let lastPlaceholderPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-17.6 / shared axial response 2026-09-17.6`;
+versionLabel.textContent = `Web build 2026-09-17.7 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -6682,7 +6831,7 @@ const initial = paramsFromUrl() ?? (() => {
       stored.filterSamples ??= DEFAULT_PARAMS.filterSamples;
       stored.profileMode = "taguchi-filter";
     }
-    return stored;
+    return {...stored,zFfsEnabled:false};
   }
   catch { return DEFAULT_PARAMS; }
 })();

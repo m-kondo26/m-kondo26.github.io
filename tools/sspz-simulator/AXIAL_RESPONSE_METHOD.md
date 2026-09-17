@@ -82,3 +82,8 @@ URL schema v11 and model version 2026-09-17.6 identify this change. Old URLs loa
 - Kudo H et al. *Exact and approximate algorithms for helical cone-beam CT.* Physics in Medicine and Biology. 2004;49:2913–2931. [doi:10.1088/0031-9155/49/13/011](https://doi.org/10.1088/0031-9155/49/13/011). Background for the declared slice-centred angular interval, not use of the paper's exact reconstruction.
 
 The supplied textbook scan is not redistributed by this website.
+
+
+## Optional focal switching (Web 2026-09-17.7)
+
+z-FFS is off by default. When enabled, acquired point data, within-focus rebinning, four-family candidate weights and model SSPz use the new explicitly declared acquisition model. See [ZFFS_METHOD.md](ZFFS_METHOD.md) for equations, assumptions, the total-view-count definition and verification. The off response equations above remain unchanged.

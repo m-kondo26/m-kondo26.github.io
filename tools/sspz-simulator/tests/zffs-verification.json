@@ -1,0 +1,439 @@
+{
+  "version": "2026-09-17.7",
+  "checks": 183,
+  "scope": "Implementation consistency of an ideal axial focal-switching extension; not scanner or publication-convergence validation",
+  "cases": [
+    {
+      "rows": 4,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0906049792634032,
+      "fwtm": 1.8615277956558791,
+      "closureError": 0
+    },
+    {
+      "rows": 4,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.4169182137048955,
+      "fwtm": 2.49142070615355,
+      "closureError": 1.5543122344752192e-15
+    },
+    {
+      "rows": 4,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5,
+      "fwtm": 5.834037858415409,
+      "closureError": -2.7755575615628914e-16
+    },
+    {
+      "rows": 4,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5,
+      "fwtm": 6.289741985566016,
+      "closureError": 1.1102230246251565e-16
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.105776434544093,
+      "fwtm": 1.864616729089908,
+      "closureError": 0
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.3844613357023305,
+      "fwtm": 2.4149767013398185,
+      "closureError": -2.7755575615628914e-17
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.000325762580718,
+      "fwtm": 5.83331841250644,
+      "closureError": -2.7755575615628914e-17
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000022868034993,
+      "fwtm": 6.23270242040439,
+      "closureError": 0
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0601691979032393,
+      "fwtm": 1.7841172898555846,
+      "closureError": 0
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.3254735544421896,
+      "fwtm": 2.3550987077931964,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.999542390497249,
+      "fwtm": 5.760683006686127,
+      "closureError": 6.938893903907228e-18
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000039963880005,
+      "fwtm": 6.190038254568172,
+      "closureError": -1.3877787807814457e-17
+    },
+    {
+      "rows": 80,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.002710028377471,
+      "fwtm": 1.5330864344923365,
+      "closureError": -2.220446049250313e-16
+    },
+    {
+      "rows": 80,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0405511975279507,
+      "fwtm": 1.7215875120664492,
+      "closureError": 4.440892098500626e-16
+    },
+    {
+      "rows": 80,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5,
+      "fwtm": 5.532098779713133,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 80,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5,
+      "fwtm": 5.704476294130226,
+      "closureError": -1.6653345369377348e-16
+    },
+    {
+      "rows": 80,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 0.9999582946913279,
+      "fwtm": 1.4375164752734357,
+      "closureError": -1.1102230246251565e-16
+    },
+    {
+      "rows": 80,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0282794748298376,
+      "fwtm": 1.6740623426285621,
+      "closureError": 1.6653345369377348e-16
+    },
+    {
+      "rows": 80,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.99983658884506,
+      "fwtm": 5.439601491742933,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 80,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000123238200368,
+      "fwtm": 5.661684087675347,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0001199092168556,
+      "fwtm": 1.4164625968461335,
+      "closureError": 0
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0237723331529955,
+      "fwtm": 1.6412895966587606,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.000186393395611,
+      "fwtm": 5.422577542549064,
+      "closureError": 0
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000502606331421,
+      "fwtm": 5.632257028811296,
+      "closureError": 6.938893903907228e-18
+    },
+    {
+      "rows": 160,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0206786428498693,
+      "fwtm": 1.6453386065678965,
+      "closureError": -1.7763568394002505e-15
+    },
+    {
+      "rows": 160,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0741847404146565,
+      "fwtm": 1.811471651111086,
+      "closureError": -1.1102230246251565e-15
+    },
+    {
+      "rows": 160,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5,
+      "fwtm": 5.635096391763172,
+      "closureError": 5.551115123125783e-17
+    },
+    {
+      "rows": 160,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5,
+      "fwtm": 5.78052079355612,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 0.9999303622767681,
+      "fwtm": 1.4477084140364234,
+      "closureError": 5.551115123125783e-17
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0359029935217656,
+      "fwtm": 1.7024201900843385,
+      "closureError": -1.6653345369377348e-16
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.999721210158761,
+      "fwtm": 5.44988838874794,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000258349038596,
+      "fwtm": 5.686849967799512,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 160,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0001274285834783,
+      "fwtm": 1.4079808932482865,
+      "closureError": -2.7755575615628914e-17
+    },
+    {
+      "rows": 160,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0196827052036062,
+      "fwtm": 1.616473056812458,
+      "closureError": 5.551115123125783e-17
+    },
+    {
+      "rows": 160,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.00028694714428,
+      "fwtm": 5.404578779930054,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 160,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 4.999524096312812,
+      "fwtm": 5.606063136827504,
+      "closureError": 0
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.1914146581756206,
+      "fwtm": 2.0774514417005414,
+      "closureError": 0
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.2510797738651722,
+      "fwtm": 2.179315203113437,
+      "closureError": 1.3322676295501878e-15
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5,
+      "fwtm": 5.99137524566121,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5,
+      "fwtm": 6.0723965241856614,
+      "closureError": 0
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0088275647260654,
+      "fwtm": 1.5619965626922259,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0616654147103046,
+      "fwtm": 1.7777035785873796,
+      "closureError": 1.1102230246251565e-16
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.999647045980419,
+      "fwtm": 5.557272067100282,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000017012860285,
+      "fwtm": 5.748477173207422,
+      "closureError": -1.3877787807814457e-17
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.000449947008402,
+      "fwtm": 1.4164893954656084,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0189043750813274,
+      "fwtm": 1.6292911070500709,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.000686272326115,
+      "fwtm": 5.411469651675258,
+      "closureError": 6.938893903907228e-18
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 4.999524512119779,
+      "fwtm": 5.622034568226175,
+      "closureError": -6.938893903907228e-18
+    }
+  ]
+}

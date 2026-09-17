@@ -12,7 +12,8 @@ globalThis.SSPZShapeDisplay = (() => {
   }
   function fromFdk(result) {
     const name={'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial',rri:'RRI'}[result.model?.kind]??'FDK';
-    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[name, result, [1, 0, 0]]];
+    const displayName=name+(result.config?.zFfsEnabled?' + z-FFS':'');
+    const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[displayName, result, [1, 0, 0]]];
     return groups.map(([name, r, rgb]) => {
       const z = r.z, count = r.profiles.length, values = new Float64Array(z.length * count);
       r.profiles.forEach((p, i) => values.set(p.profile, i * z.length));

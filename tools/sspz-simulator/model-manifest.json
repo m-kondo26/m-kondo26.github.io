@@ -313,10 +313,10 @@
   },
   "historicalFieldsNotice": "modelVersion/browserCore and the older conventions below describe the retained legacy numerical API, not the active browser response. activeBrowserModel supersedes public-model claims.",
   "activeBrowserModel": {
-    "version": "2026-09-17.6",
+    "version": "2026-09-17.7",
     "urlSchema": 11,
     "core": "axial-response-core.js",
-    "sha256": "b2f8872ffd505f85ef7b61f9f8e457c79c44063b393eabd823834885829cb115",
+    "sha256": "64a3402c4d3b0f5b4ce16b0a98f855cc5ccef3864d7f9fe471e46f0cc13f40f8",
     "sha256Convention": "UTF-8 with LF line endings",
     "documentation": "AXIAL_RESPONSE_METHOD.md",
     "scope": "Shared finite-aperture point acquisition, rowwise rebinning, candidate selection/axial interpolation, paired angular mean, rectangular T average; no full transverse image reconstruction",
@@ -332,6 +332,23 @@
     "verification": "tests/axial-response-verification.json",
     "bookCheck": "Chapter 3 printed pp.75-111; coordinate mapping with Eqs.3-32,3-62; intentionally excludes FDK stages Eqs.3-69 to 3-71",
     "scannerValidation": "not established",
-    "manuscriptFiguresRegenerated": false
+    "manuscriptFiguresRegenerated": false,
+    "unchangedOffEquationsVersion": "2026-09-17.6",
+    "optionalZffs": {
+      "default": false,
+      "version": "2026-09-17.1",
+      "documentation": "ZFFS_METHOD.md",
+      "source": "Mori I. Med Phys 35 (2008) 1065-1077; doi:10.1118/1.2828403; Fig4 and Eqs19-22 geometry only",
+      "scope": "Pure axial two-position source motion relative to fixed cylindrical detector; acquired ideal-point cells, within-focus rebinning, four-family interpolation and SSPz; no shifted backprojection or clinical image validation",
+      "totalViews": "V acquired views per turn, V/2 per focus; does not double on activation",
+      "initialIsocentreHalfOffsetInRowPitches": 0.25,
+      "initialSourceDetectorToSourceIsocentreRatio": 1.7866666666666666,
+      "exports": "physical focus/view/row/channel/weights/point values; same screen and 600-dpi painter",
+      "verification": "tests/zffs-verification.json",
+      "coreFiles": {
+        "zffs-geometry.js": "4631c37e7850ebf41af49d1aa600e5adaea81a6319d020985a26cf3742cf2d5c",
+        "zffs-response.js": "87716392f0f9c4bbeee2c69808f5c7bf0bcb0a8589e42830f17e762eb310f499"
+      }
+    }
   }
 }

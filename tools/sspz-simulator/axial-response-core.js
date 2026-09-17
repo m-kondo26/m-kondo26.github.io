@@ -4,6 +4,8 @@
 import {fdkConfig,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
 import {cbaCoordinates,cbaRebinAt} from './cba-core.js';
 import {detectorPointProjection,detectorRowReadout} from './detector-aperture.js';
+import {zffsConfig} from './zffs-geometry.js';
+import {computeZffsResponse} from './zffs-response.js';
 export const AXIAL_RESPONSE_VERSION='2026-09-17.6';
 const AR_TAU=2*Math.PI;
 export function axialResponseConfig(input={}){
@@ -17,7 +19,7 @@ export function axialResponseConfig(input={}){
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
   if(!['available','strict'].includes(c.edgePolicy))throw Error('AXIAL_EDGE_POLICY');
-  return c;
+  return zffsConfig(input,c);
 }
 // RRI: normalized compact row tents. Merged: bracketing samples from the
 // union of the two directions. Ties split weight, independent of signal value.
@@ -49,6 +51,7 @@ export function axialPairWeights(c,a,b,z){
   return samples.filter(q=>q.weight>0).map(q=>({...q,weight:q.weight/sum}));
 }
 export async function computeAxialResponse(input={},hooks={}){
+  if(input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1')return computeZffsResponse(axialResponseConfig(input),hooks);
   const c=axialResponseConfig(input),nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
   const zObject=c.state*c.feed,padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
   const zs=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
