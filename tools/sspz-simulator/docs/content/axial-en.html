@@ -1,5 +1,13 @@
 <p class="lead">This simulator relates the spatial arrangement of acquired data to candidate selection and longitudinal interpolation through unwrapped diagrams and a model SSPz. The two cone models compare selection and interpolation rules using a shared acquisition model.</p>
 
+<h2>What changes between the three choices?</h2>
+<table><thead><tr><th scope="col">Choice</th><th scope="col">Candidates and weights</th><th scope="col">Purpose of comparison</th></tr></thead><tbody>
+<tr><th scope="row">1. Combine both directions; select two points</th><td>Pool direct and complementary data and linearly interpolate between the nearest positions below and above the plane.</td><td>Compare with 2 to examine candidate selection and weights under the same cone geometry and acquired data.</td></tr>
+<tr><th scope="row">2. Interpolate rows within each direction</th><td>Assign linear weights to adjacent rows within each direction, then normalize all supported weights to sum to one. This is the RRI-equivalent model: row-to-row interpolation.</td><td>Rows excluded by 1 can receive weight. The number of samples and their combined weights depend on acquisition support and detector boundaries.</td></tr>
+<tr><th scope="row">3. Select two points without beam divergence</th><td>Assume parallel rays in both transverse and axial directions and apply the same bracketing-position rule as 1.</td><td>Compare the nondivergent reference with the cone model. The source-angle interval and rebinning also differ; this does not vary only the cone angle.</td></tr>
+</tbody></table>
+<p>The two points in 1 refer to two positions. Samples coinciding at a position share its weight. Likewise, 2 does not always use exactly four samples. All three choices are axial response models, as described below.</p>
+
 <h2>What the model calculates</h2>
 <p>The object is an ideal point at a fixed location. Its acquired response includes the finite detector aperture and, when configured, axial focal blur. Rowwise fan-to-parallel rebinning, axial interpolation, angular averaging, and a rectangular average of width T produce the model SSPz, also called the axial interpolation response. No finite sphere or bead-measurement procedure is included.</p>
 <p>The current public model does not calculate transverse ramp filtering, FBP preweighting or backprojection weights, or an image volume. Using three-dimensional cone-ray geometry does not itself perform three-dimensional image reconstruction. This response should not be interpreted as Feldkamp reconstruction or as a particular scanner's complete 2D or 3D reconstruction.</p>

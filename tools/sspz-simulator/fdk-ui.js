@@ -77,8 +77,8 @@ function fdkParamsFromUrl(q){
 }
 function initializeFdkUi(initial){
   initial={...initial,method:'rri'};
-  const pick=document.createElement('label');pick.innerHTML=fdkText('体軸補間モデル','Axial interpolation model')+`<select id="computationModel" name="computationModel"><option value="axial">${fdkText('コーン幾何：候補を統合して2点補間','Cone geometry: merged bracketing pair')}</option><option value="fdk">${fdkText('コーン幾何：RRI相当の列間補間','Cone geometry: RRI-equivalent row interpolation')}</option><option value="parallel">${fdkText('比較基準：発散なし・2点補間','Reference: nondivergent, merged pair')}</option></select>`;
-  form.prepend(pick);pick.querySelector('select').value=initial.computationModel??'axial';
+  const modelChoice=initializeAxialModelChoice(initial),pick=modelChoice.element;
+  form.prepend(pick);
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   controls.innerHTML=`<p class="section-summary">${fdkText('共通の点対象・検出器開口から、候補の選択と体軸補間によるモデルSSPzを求めます。横断画像は再構成しません。','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('補間規則と共通の計算設定','Interpolation rules and shared numerical settings')}</summary>
@@ -128,6 +128,7 @@ function initializeFdkUi(initial){
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
   const axialViewHelp=viewHelp?.textContent;
   function modeChanged(){
+    modelChoice.sync();
     const hadResultOrPending=!!fdkResult||loadingCanvasStatuses.size>0;
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
