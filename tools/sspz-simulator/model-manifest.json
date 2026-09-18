@@ -158,7 +158,8 @@
     "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-17.6",
+  "webBuildVersion": "2026-09-18.12",
+  "selectedProfileDisplay": "The final full-width selected-angle SSPz appears once in playback panel (c), with FWHM, FWTM and a 600-dpi PNG export keyed to the movie angle. Section 3 contains the all-360 overlay only. Numerical profiles and exports are unchanged.",
   "threeDimensionalFbp": {
     "version": "2026-09-17.4",
     "core": "fdk-core.js",

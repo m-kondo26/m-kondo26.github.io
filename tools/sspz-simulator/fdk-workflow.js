@@ -12,8 +12,7 @@ function initializeFdkWorkflow(panel){
   firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('2B　選択されたデータと重み','2B  Selected data and weights'));
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('同じ開始角度・同じ対象位置の重みです。応答の体軸方向平均化を指定した場合は、その幅全体の重みを合計します。','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
-  const profile=block('fdk-profile-step',fdkText('3　選択角度のSSPzと全360条件','3  Selected SSPz and all 360 conditions'));
-  profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('選択角度：半値の交点とFWHM','Selected angle: half-maximum crossings and FWHM')}</h3><canvas id="fdk-selected-profile" width="1200" height="800"></canvas></article>`);
+  const profile=block('fdk-profile-step',fdkText('3　全360条件のSSPz','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('全360条件の重ね合わせ','Overlay of all 360 conditions');
   const shape=block('fdk-shape-step',fdkText('4　SSPzの形状変動','4  SSPz shape variation'));
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
@@ -29,7 +28,7 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-inspect').oninput=e=>selectFdkState(Number(e.target.value));
   document.getElementById('fdk-prev').onclick=()=>selectFdkState(selectedStateIndex-1,true);
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
-  for(const id of ['fdk-weights-rri','fdk-selected-profile','fdk-difference']){
+  for(const id of ['fdk-weights-rri','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('600 dpi PNG保存','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
   }
 }
@@ -64,7 +63,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-primary-weight-title').textContent=fdkText('③ 重ね合わせ','3. Overlay');
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('RRI：列間の線形補間','RRI: linear row interpolation');
   drawFdkRoleDiagrams(r);
-  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
   pairNote.textContent=fdkText('実線：実データ側。破線：対向側。補間対象の全周0～360°を表示し、各方向の両側の候補を同じ高さに示します。対向側自身の再配列角は±180°異なります。縦軸はX線管角度ではなく、2Cの表でその対応を確認できます。','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
@@ -211,11 +210,6 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   canvas.dataset.backgroundTurns=turns.join(',');
 }
 function fdkArrow(a,fw,level,color){const {ctx,s}=a,yy=a.y(level);ctx.strokeStyle=color;ctx.lineWidth=2*s;ctx.setLineDash([5*s,5*s]);for(const v of [fw.left,fw.right]){ctx.beginPath();ctx.moveTo(a.x(v),a.b.bottom);ctx.lineTo(a.x(v),yy);ctx.stroke();}ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(a.x(fw.left),yy);ctx.lineTo(a.x(fw.right),yy);for(const [v,d] of [[fw.left,1],[fw.right,-1]]){ctx.moveTo(a.x(v)+d*9*s,yy-6*s);ctx.lineTo(a.x(v),yy);ctx.lineTo(a.x(v)+d*9*s,yy+6*s);}ctx.stroke();}
-function drawFdkSelectedProfile(canvas){
-  const r=fdkResult,groups=fdkGroups(r),low=Math.min(0,...groups.map(([,g])=>Math.min(...g.profiles[selectedStateIndex].profile)));
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,1.02,'z position (mm)','Normalized SSPz','(d)',low<0?[Math.floor(low*10)/10,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],120);
-  groups.forEach(([name,g],i)=>{const p=g.profiles[selectedStateIndex],color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;fdkDrawLines(a,g.z,[p.profile],color);fdkArrow(a,p.fwhm,.5,color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.font=`${23*a.s}px Arial`;a.ctx.fillText(`${name} / +${selectedStateIndex}°: FWHM ${p.fwhm.width.toFixed(2)} mm; FWTM ${p.fwtm.width.toFixed(2)} mm`,(a.b.left+a.b.right)/2,(50+i*35)*a.s);});canvas.dataset.startIndex=selectedStateIndex;
-}
 function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
@@ -244,7 +238,6 @@ async function exportFdkWorkflowCanvas(id){
   }
   else if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
-  else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else drawFdkDifference(c,fdkResult);
   const frame=id.startsWith('fdk-geometry')&&geometryPlayback.scene&&geometryPlayback.fraction<1?`_draw-${Math.round(geometryPlayback.fraction*1000)}`:'';
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}_600dpi.png`,await pngWithResolution(blob,600),'image/png');

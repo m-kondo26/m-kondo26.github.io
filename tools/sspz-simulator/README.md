@@ -1,3 +1,7 @@
+## Selected SSPz shown once (2026-09-18.12)
+
+Playback panel (c) and the former selected-profile panel (d) read the same saved profile at matching start angles. The duplicate selected-profile card was removed; panel (c) retains the half-maximum arrow, adds FWTM, and saves its displayed angle as a 600-dpi PNG. The movie angle can be inspected independently until applied to the other figures. Section 3 now contains only the all-360 overlay, followed by the unchanged shape comparisons. Visible result panels are relabelled sequentially. Numerical models, profiles, and full numerical exports are unchanged.
+
 ## Mori static-table explanation with finite focal blur (2026-09-18.11)
 
 `mori-static.html` provides a separate, interactive explanation inspired by Mori et al., Fig.6.25: select a row-corresponding reconstruction plane, inspect the rotating source and row brackets, view weighted axial kernels, accumulate a full turn, and compare 16 planes at radii 0/80/160 mm. It now defaults to the 1.2 mm effective axial focal width adopted from Fig.6.6, convolved with the detector aperture before row interpolation. A point-focus comparison remains available. The 7-degree target angle is recorded as the reference condition; directional changes in apparent focal shape are outside this reduced axial model. See `MORI_STATIC_METHOD.md`. This is not full image FDK or an exact reproduction of the book figure. CSV and vector SVG exports use the same computed data. The main helical response operator is unchanged.

@@ -3342,7 +3342,7 @@ function initializeAxialMovie(after){
     <article class="chart-card"><h3 id="axial-movie-total-title">${fdkText('','(b) Weights accumulated within T')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-total" width="900" height="960"></canvas></div></article>
   </div>
   <p id="axial-movie-detail">${fdkText('','Click a weight marker to inspect both roles of the same datum.')}</p>
-  <article class="chart-card axial-movie-ssp"><h3>${fdkText('','(c) Model SSPz at the same start angle: after the complete T average')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-profile" width="1200" height="540"></canvas></div></article>
+  <article class="chart-card axial-movie-ssp"><h3>${fdkText('','(c) Model SSPz at the same start angle: after the complete T average')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-profile" width="1200" height="540"></canvas></div><button type="button" class="secondary" id="axial-movie-profile-png" disabled>${fdkText('','Save 600-dpi PNG')}</button></article>
   <p id="axial-movie-note"></p>
   <button type="button" class="secondary" id="axial-movie-apply" disabled>${fdkText('','Show this start angle in the other figures')}</button>
   <details class="reading-details"><summary>${fdkText('','How to read the animation')}</summary><p>${fdkText('','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Every output direction is shown, including reuse of the same datum in direct and complementary roles. Averaging over all directions preserves the SSPz.')}</p><p>${fdkText('','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
@@ -3357,6 +3357,7 @@ function initializeAxialMovie(after){
   el('pair').onchange=()=>{stopAxialMovie();axialMovie.selectedPair=Number(el('pair').value);renderAxialMovie();};
   el('instant').onclick=event=>inspectAxialMoviePair(event);
   el('total').onclick=event=>inspectAxialMovieMarker(event);
+  el('profile-png').onclick=exportAxialMovieProfile;
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopAxialMovie();});
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduced.matches)el('speed').value='500';
   reduced.addEventListener('change',()=>{stopAxialMovie();if(reduced.matches)el('speed').value='500';});
@@ -3379,6 +3380,7 @@ function requestAxialMovie(index){
   if(!fdkResult?.profiles?.length||!worker)return;
   clearTimeout(axialMovie.timer);axialMovie.index=((index%fdkResult.profiles.length)+fdkResult.profiles.length)%fdkResult.profiles.length;
   axialMovie.request++;axialMovie.pending=true;
+  document.getElementById('axial-movie-profile-png').disabled=true;
   document.getElementById('axial-movie-status').textContent=fdkText('','Preparing candidate frames… (Pause remains available)');
   const key=axialMovie.mode+':'+axialMovie.index;
   if(axialMovie.cache.has(key)){receiveAxialMovie({requestId:axialMovie.request,index:axialMovie.index,audit:axialMovie.cache.get(key)});return;}
@@ -3516,12 +3518,24 @@ function renderAxialMovie(){
   el('note').textContent=fdkText('','Red: averaging centre. Blue: plane moving within T. (a) and (b) explain the central response; (c) is the SSPz at all evaluation positions. Markers are sampled every ')+`${(360*audit.stride/c.viewSamples).toFixed(1)}°`+fdkText('','; background trajectories also include neighboring turns outside the selected interval.');
   renderAxialAngleReading(frame);
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
-  const p=fdkResult.profiles[axialMovie.index],xs=fdkResult.z,plot=fdkAxes(el('profile'),xs[0],xs.at(-1),0,1.05,'z position (mm)','Normalized SSPz','', [0,.5,1],70);
+  drawAxialMovieProfile(el('profile'));
+  el('detail').textContent=fdkText('','Click a marker in (b) to inspect both roles of that datum.');
+}
+function drawAxialMovieProfile(canvas,index=axialMovie.index){
+  const p=fdkResult.profiles[index],xs=fdkResult.z,phase=p.phase*180/Math.PI;
+  const plot=fdkAxes(canvas,xs[0],xs.at(-1),0,1.05,'z position (mm)','Normalized SSPz','(c)', [0,.5,1],70);
   fdkDrawLines(plot,xs,[p.profile],FDK_PRIMARY_COLOR);fdkArrow(plot,p.fwhm,.5,FDK_PRIMARY_COLOR);
   plot.ctx.strokeStyle='#555';plot.ctx.setLineDash([5,5]);plot.ctx.beginPath();plot.ctx.moveTo(plot.x(0),plot.b.top);plot.ctx.lineTo(plot.x(0),plot.b.bottom);plot.ctx.stroke();plot.ctx.setLineDash([]);
-  plot.ctx.fillStyle=FDK_PRIMARY_COLOR;plot.ctx.textAlign='center';plot.ctx.font='24px Arial';plot.ctx.fillText(`FWHM ${p.fwhm.width.toFixed(2)} mm / ${phase.toFixed(1)}°`,(plot.b.left+plot.b.right)/2,38);
-  el('profile').dataset.startIndex=axialMovie.index;el('profile').dataset.profileSource='full-acquired-view-result';
-  el('detail').textContent=fdkText('','Click a marker in (b) to inspect both roles of that datum.');
+  plot.ctx.fillStyle=FDK_PRIMARY_COLOR;plot.ctx.textAlign='center';plot.ctx.font='24px Arial';plot.ctx.fillText(`FWHM ${p.fwhm.width.toFixed(2)} mm / FWTM ${p.fwtm.width.toFixed(2)} mm / ${phase.toFixed(1)}°`,(plot.b.left+plot.b.right)/2,38);
+  canvas.dataset.startIndex=index;canvas.dataset.profileSource='full-acquired-view-result';
+}
+async function exportAxialMovieProfile(){
+  if(!fdkResult||!axialMovie.audit||axialMovie.pending)return;
+  stopAxialMovie();const index=axialMovie.index,source=document.getElementById('axial-movie-profile'),canvas=document.createElement('canvas');
+  canvas.width=Math.round(180/25.4*600);canvas.height=Math.round(canvas.width*source.height/source.width);
+  drawAxialMovieProfile(canvas,index);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve));
+  downloadBlob(`${fdkFileStem(fdkResult)}_selected-profile_angle-${index}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }
 function inspectAxialMovieMarker(event){
   if(!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
@@ -3545,8 +3559,7 @@ function initializeFdkWorkflow(panel){
   firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('','2B  Selected data and weights'));
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
-  const profile=block('fdk-profile-step',fdkText('','3  Selected SSPz and all 360 conditions'));
-  profile.insertAdjacentHTML('beforeend',`<article class="chart-card"><h3>${fdkText('','Selected angle: half-maximum crossings and FWHM')}</h3><canvas id="fdk-selected-profile" width="1200" height="800"></canvas></article>`);
+  const profile=block('fdk-profile-step',fdkText('','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('','Overlay of all 360 conditions');
   const shape=block('fdk-shape-step',fdkText('','4  SSPz shape variation'));
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
@@ -3562,7 +3575,7 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-inspect').oninput=e=>selectFdkState(Number(e.target.value));
   document.getElementById('fdk-prev').onclick=()=>selectFdkState(selectedStateIndex-1,true);
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
-  for(const id of ['fdk-weights-rri','fdk-selected-profile','fdk-difference']){
+  for(const id of ['fdk-weights-rri','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
   }
 }
@@ -3597,7 +3610,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-primary-weight-title').textContent=fdkText('','3. Overlay');
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('','RRI: linear row interpolation');
   drawFdkRoleDiagrams(r);
-  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
   pairNote.textContent=fdkText('','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
@@ -3744,11 +3757,6 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   canvas.dataset.backgroundTurns=turns.join(',');
 }
 function fdkArrow(a,fw,level,color){const {ctx,s}=a,yy=a.y(level);ctx.strokeStyle=color;ctx.lineWidth=2*s;ctx.setLineDash([5*s,5*s]);for(const v of [fw.left,fw.right]){ctx.beginPath();ctx.moveTo(a.x(v),a.b.bottom);ctx.lineTo(a.x(v),yy);ctx.stroke();}ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(a.x(fw.left),yy);ctx.lineTo(a.x(fw.right),yy);for(const [v,d] of [[fw.left,1],[fw.right,-1]]){ctx.moveTo(a.x(v)+d*9*s,yy-6*s);ctx.lineTo(a.x(v),yy);ctx.lineTo(a.x(v)+d*9*s,yy+6*s);}ctx.stroke();}
-function drawFdkSelectedProfile(canvas){
-  const r=fdkResult,groups=fdkGroups(r),low=Math.min(0,...groups.map(([,g])=>Math.min(...g.profiles[selectedStateIndex].profile)));
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),Math.floor(low*10)/10,1.02,'z position (mm)','Normalized SSPz','(d)',low<0?[Math.floor(low*10)/10,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],120);
-  groups.forEach(([name,g],i)=>{const p=g.profiles[selectedStateIndex],color=i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR;fdkDrawLines(a,g.z,[p.profile],color);fdkArrow(a,p.fwhm,.5,color);a.ctx.fillStyle=color;a.ctx.textAlign='center';a.ctx.font=`${23*a.s}px Arial`;a.ctx.fillText(`${name} / +${selectedStateIndex}°: FWHM ${p.fwhm.width.toFixed(2)} mm; FWTM ${p.fwtm.width.toFixed(2)} mm`,(a.b.left+a.b.right)/2,(50+i*35)*a.s);});canvas.dataset.startIndex=selectedStateIndex;
-}
 function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
@@ -3777,7 +3785,6 @@ async function exportFdkWorkflowCanvas(id){
   }
   else if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
-  else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else drawFdkDifference(c,fdkResult);
   const frame=id.startsWith('fdk-geometry')&&geometryPlayback.scene&&geometryPlayback.fraction<1?`_draw-${Math.round(geometryPlayback.fraction*1000)}`:'';
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
@@ -4003,7 +4010,7 @@ function drawFdkProfileLegend(a,r){
 }
 function fdkDrawProfile(canvas,r){
   const ymin=Math.min(0,...fdkGroups(r).flatMap(([,g])=>g.profiles.map(p=>Math.min(...p.profile)))),low=ymin<0?Math.floor(ymin*10)/10:0;
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.04,'z position (mm)','Normalized SSPz','(e)',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),low,1.04,'z position (mm)','Normalized SSPz','(d)',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
   for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,r.z,g.profiles.map(p=>p.profile),i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
   a.ctx.save();a.ctx.strokeStyle=MUTED;a.ctx.lineWidth=1;a.ctx.setLineDash([5,4]);
   for(const level of [.5,.1]){a.ctx.beginPath();a.ctx.moveTo(a.b.left,a.y(level));a.ctx.lineTo(a.b.right,a.y(level));a.ctx.stroke();}a.ctx.restore();
@@ -4013,7 +4020,7 @@ function fdkDrawProfile(canvas,r){
 }
 function drawFdkDifference(canvas,r){
   const limit=Math.ceil(Math.max(.02,...fdkGroups(r).flatMap(([,g])=>g.meanDifference.map(p=>Math.max(...p.map(Math.abs)))))/.02)*.02;
-  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(f)');
+  const a=fdkAxes(canvas,r.z[0],r.z.at(-1),-limit,limit,'z position (mm)','SSPz minus mean','(e)');
   for(const [i,[,g]] of fdkGroups(r).entries())fdkDrawLines(a,g.z,g.meanDifference,i?FDK_REFERENCE_COLOR:FDK_PRIMARY_COLOR);
   a.ctx.textAlign='center';a.ctx.fillStyle=INK;a.ctx.font=`21px ${FIGURE_FONT}`;a.ctx.fillText(r.reference?'CBA (red) / RRI (blue); each minus its own mean':'Each profile minus the mean SSPz',(a.b.left+a.b.right)/2,49);
   canvas.dataset.profileOpacity='0.13';canvas.dataset.yMin=String(-limit);canvas.dataset.yMax=String(limit);
@@ -4050,7 +4057,7 @@ function fdkDrawImage(canvas,r,coronal){
   values.forEach((v,i)=>{const shade=Math.round(Math.max(0,Math.min(1,v/peak))*255);im.data.set([shade,shade,shade,255],4*i);});tc.putImageData(im,0,0);physical.ctx.imageSmoothingEnabled=false;physical.ctx.drawImage(temp,cx-rx*scale,cy-ry*scale,2*rx*scale,2*ry*scale);
   physical.ctx.textAlign='center';physical.ctx.fillStyle='#000';physical.ctx.font=`${22*a.s}px Arial`;physical.ctx.fillText(`Point response: black 0 / white ${peak.toFixed(2)}`,(a.b.left+a.b.right)/2,49*a.s);
 }
-function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(g)'});}
+function drawFdkShape(canvas){SSPZShapeDisplay.draw(canvas,fdkShapeGroups,{title:`FWHM-midpoint aligned; r = ${fdkResult.config.radius} mm; n = ${fdkResult.profiles.length}`,panel:'(f)'});}
 function renderFdkResult(r){
   const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Preparing the selected-angle view.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} rows / ${c.viewSamples} views/turn / ${r.profiles.length} start angles`;
@@ -4163,7 +4170,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.10 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.12 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
