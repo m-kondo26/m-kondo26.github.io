@@ -1,8 +1,8 @@
-// Opposite-direction display is a partition of existing weights, not a new
-// acquisition or a second copy of each datum's total coefficient.
+// Full-direction display preserves the angular-averaged physical coefficients.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import '../axial-angle-display.js';
 import {computeAxialResponse} from '../axial-response-core.js';
 import {cbaCoordinates} from '../cba-core.js';
 const near=(a,b,label)=>assert.ok(Math.abs(a-b)<2e-10,`${label}: ${a} != ${b}`);
@@ -10,7 +10,7 @@ const app=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const workflow=fs.readFileSync(new URL('../fdk-workflow.js',import.meta.url),'utf8');
 const helper=name=>{const i=app.indexOf(`function ${name}(`),j=app.indexOf('\nfunction ',i+1);assert.ok(i>=0);return app.slice(i,j);};
 let scene;
-const context=vm.createContext({fdkText:(_,en)=>en,selectedStateIndex:0,drawDiagram:(_,s)=>scene=s});
+const context=vm.createContext({SSPZAngles,fdkText:(_,en)=>en,selectedStateIndex:0,drawDiagram:(_,s)=>scene=s});
 vm.runInContext(['symmetricNiceAxis','niceNearestStep','fixedFormatterForTicks','stepFromTicks','decimalPlacesForStep'].map(helper).join('\n')+'\n'+workflow.slice(workflow.indexOf('function drawFdkCandidateDiagram('),workflow.indexOf('function fdkArrow(')),context);
 let scenes=0,markers=0;
 const configs=[
@@ -22,6 +22,8 @@ const configs=[
 for(const config of configs){
  const r=await computeAxialResponse({rows:4,rowWidth:1,beamPitch:.875,radius:100,viewSamples:180,zStep:.1,zExtent:8,phaseCount:1,...config});
  const before=JSON.stringify(r),c=r.config,a=r.weightAudit,V=c.viewSamples;
+ const directional=SSPZAngles.expand(a.pairedSamples,c);
+ const directionalMap=new Map(directional.map(q=>[`${q.referenceView}:${q.view}:${q.row}`,q]));
  const base=Math.ceil((2*Math.PI*r.zObject/c.feed-Math.PI)/(2*Math.PI/V)-1e-12);
  const accumulated=new Map();
  for(const p of a.pairedSamples){
@@ -52,10 +54,10 @@ for(const config of configs){
    }
   }
   for(const p of s.weightedPoints){
-   const q=a.pairedSamples.find(q=>q.referenceView===p.referenceViewIndex&&q.view===p.absoluteViewIndex&&q.row===p.row);
+   const q=directionalMap.get(`${p.referenceViewIndex}:${p.absoluteViewIndex}:${p.row}`);
    assert.ok(q);assert.equal(q.weight,p.weight);assert.equal(q.z,p.x);
    assert.equal(p.traceFamilyId,q.direction?'complementary-rebinned':'acquired');
-   const i=((q.referenceView-base)%V+V)%V,turn=Math.floor((q.referenceView-base)/V),t=s.traceFamilies[q.direction];
+   const i=((q.referenceView-base)%V+V)%V,turn=Math.round((q.view-base-i-q.direction*V/2)/V),t=s.traceFamilies[q.direction];
    near(p.y,i*360/V,'common reference angle');
    near(t.axial[i]+turn*c.feed+t.scales[i]*g.rowOffsets[p.row]-r.zObject,p.x,'marker on its own direction trajectory');
    markers++;

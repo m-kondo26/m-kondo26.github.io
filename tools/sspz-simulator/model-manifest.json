@@ -351,7 +351,7 @@
       }
     },
     "diagram": {
-      "version": "2026-09-17.8",
+      "version": "2026-09-18.5",
       "gridDisplayVersion": "2026-09-17.11",
       "screenLayoutVersion": "2026-09-17.12",
       "legendDisplayVersion": "2026-09-17.13",
@@ -359,11 +359,11 @@
       "screenCardMaxWidthCssPx": 720,
       "otherResultCardMaxWidthCssPx": 900,
       "layerOrder": "extent band; gray grid; trajectories; weight markers; target plane; black frame/ticks/labels; footer legend",
-      "defaultOffCoordinate": "common direct-side rebinned theta; complementary family at theta+pi",
+      "defaultOffCoordinate": "full-turn output interpolation direction; complementary data at theta +/- pi within the same acquisition window",
       "encoding": "direct solid/circle; complementary dashed/triangle; detector-row colour",
-      "weightAudit": "pairedSamples partitions original samples by reference pair and direction; no duplicated total coefficients",
-      "verification": "tests/axial-paired-diagram.mjs",
-      "unchanged": "SSPz calculation and z-FFS physical-view display"
+      "weightAudit": "Full-direction coefficient sums use angular mean 1/V and preserve physical view/row identity. Original pairedSamples and Selected_weights retain their equivalent 2/V representation; do not add alternative audits.",
+      "verification": "tests/axial-full-directions.mjs; tests/axial-paired-diagram.mjs; tests/axial-angle-display.mjs",
+      "unchanged": "Numerical SSP kernel and acquisition-window selection; separate z-FFS physical-view panels"
     }
   },
   "loadingDisplay": {

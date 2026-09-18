@@ -61,14 +61,14 @@ function renderFdkSelected(){
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
-  pairNote.textContent=fdkText('実線：実データ側。破線：対向側。両側を補間対の基準角にそろえています。対向側自身の再配列角は＋180°です。縦軸はX線管角度ではありません。2Cで角度の並べ方を切り替えて確認できます。','Solid: direct. Dashed: complementary. Both share their pair’s reference angle; the complementary data’s own rebinned angle is +180°. This axis is not tube angle. Switch coordinates in 2C to inspect the correspondence.');
+  pairNote.textContent=fdkText('実線：実データ側。破線：対向側。補間対象の全周0～360°を表示し、各方向の両側の候補を同じ高さに示します。対向側自身の再配列角は±180°異なります。縦軸はX線管角度ではなく、2Cの表でその対応を確認できます。','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   // Reduced response has no image volume.
   document.getElementById('fdk-weight-scope').textContent=fdkText('対象点の位置で、幅Tにわたり合算した補間重みです。フィルタ前の取得応答と掛け合わせて、同じ位置の応答を再計算できます。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights sum over T at the object point. Combined with unfiltered acquired responses, they reproduce that response sample. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
-  if(r.weightAudit?.pairedSamples)document.getElementById('fdk-weight-scope').textContent=fdkText('○は実データ側、△は対向データ側です。各補間ペアの重みを幅Tにわたり合算しています。同じデータが別のペアでも使われる場合は区別し、全重みはExcel・JSONに保存します。','Circles: direct side; triangles: complementary side. Weights are accumulated over T for each interpolation pair. Reuse of a datum in another pair remains distinct; Excel and JSON retain all weights.');
+  if(r.weightAudit?.pairedSamples)document.getElementById('fdk-weight-scope').textContent=fdkText('○は実データ側、△は対向データ側です。各補間対象方向について、同じデータに掛かる重みを幅Tにわたり合算しています。同じデータが180°異なる方向で対向側として使われる場合も表示します。全方向の重みはExcel・JSONに保存します。','Circles: direct; triangles: complementary. For each output direction, weights on the same datum are summed over T. Reuse as complementary data for the opposing output direction is also shown. Excel and JSON retain full-direction weights.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('展開図・重み・モデルSSPzは、選択した同じ開始角度に対応しています。','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
@@ -82,7 +82,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   if(r.config.zFfsEnabled)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
-  const paired=!!audit.pairedSamples,samples=paired?audit.pairedSamples:audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
+  const paired=!!audit.pairedSamples,samples=paired?SSPZAngles.expand(audit.pairedSamples,c):audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
   const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
   const rebinned=r.coordinateSystem==='rebinned-theta'||!!r.reference;
   const physical=!zoom&&!rebinned;
@@ -130,7 +130,8 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
-  const stride=Math.max(1,Math.ceil(c.viewSamples/72));
+  let stride=Math.max(1,Math.ceil(c.viewSamples/72));
+  if(paired)while((c.viewSamples/2)%stride!==0)stride++;
   const trace={id:'acquired',family:'direct',angles,axial,scales};
   const traceFamilies=[trace];
   if(paired)traceFamilies.push({id:'complementary-rebinned',family:'complementary',angles,axial:opposedAxial,scales:opposedScales});
@@ -151,10 +152,10 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
   if(paired){
-    diagram.yAxisLabel=fdkText('基準の再配列角度差 (°)','Reference rebinned angle offset (°)');
+    diagram.yAxisLabel=fdkText('補間対象方向の角度差 (°)','Output interpolation direction (°)');
     diagram.directLegendLabel=fdkText('実データ側 ○','Direct ○');
-    diagram.weightLegendNote=fdkText('幅Tの合計重み。△自身の再配列角は基準角＋180°。','T-summed weights. Own △ angle: reference +180°.');
-    diagram.angleCoordinate='common direct-side rebinned theta; complementary at theta+pi; relative to centre turn';
+    diagram.weightLegendNote=fdkText('各方向で幅Tの重みを合算。対向側の角度は±180°。','T-summed weights per output direction; opposing data: ±180°.');
+    diagram.angleCoordinate='full-turn output interpolation direction; complementary at theta +/- pi; relative to centre turn';
   }
   if(!zoom&&!paired)diagram.directLegendLabel=rebinned?fdkText('再配列後の列軌跡','Rebinned row trajectories'):fdkText('検出器列の軌跡','Detector-row trajectories');
   if(!rebinned&&zoom){
@@ -172,7 +173,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
   canvas.dataset.markerEncoding='fixed-radius;row-colour;weight-fill';
   canvas.dataset.familyEncoding=paired?'direct solid/circle; complementary dashed/triangle; common direct-side rebinned angle':'each sample at its own acquired angle; no direct-reference folding';
-  if(paired)canvas.dataset.diagramDisplayVersion='2026-09-17.8';
+  if(paired)canvas.dataset.diagramDisplayVersion='2026-09-18.5';
   canvas.dataset.backgroundTraceScope='geometric-context-independent-of-selected-weight-support';
   canvas.dataset.backgroundTurns=turns.join(',');
 }
@@ -189,8 +190,10 @@ function addFdkWorkflowSheets(sheets){
   if(r.config.zFfsEnabled){sheets.push(['zFFS_acquired_weights',zffsWeightRows(r)]);sheets.push(['zFFS_rebinned_weights',[['view_index','focus','row_index','theta_rad','beta_rad','z_relative_mm','weight','rebinned_value'],...r.rebinnedWeightAudit.map(q=>[q.view,q.focus?'B':'A',q.row,q.theta,q.beta,q.z,q.weight,q.acquiredValue])]]);}
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
   if(r.weightAudit.pairedSamples){
-    sheets[0][1].push(['paired_diagram','Common direct-side rebinned angle; complementary coordinates evaluated at theta+pi. Paired_weights partitions Selected_weights by reference pair; do not add the two sheets together.']);
+    sheets[0][1].push(['paired_diagram','Full-turn output interpolation directions. Directional_weights uses angular factor 1/V; legacy Paired_weights and Selected_weights use 2/V. Alternative representations of the same response: do not add sheets together. Opposite views can be +V/2 or -V/2.']);
     sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
+    const directional=SSPZAngles.weightAudit(r);
+    sheets.push(['Directional_weights',[['start_index','output_view_unwrapped','opposite_views_unwrapped','direction','rebinned_view_unwrapped','row_index','output_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...directional.samples.map(q=>[selectedStateIndex,q.referenceView,q.oppositeViews.join(';'),q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,directional.angularMeanFactor,q.acquiredValue])]]);
   }
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }

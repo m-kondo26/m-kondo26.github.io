@@ -84,15 +84,16 @@ has its own labelled start angle; a button applies it to the other figures.
 Playback is off until requested and stops on pause, the last frame, hidden
 page, changed settings, new calculation, or error. The display-angle lattice
 is closed under a half-turn, so both roles of the same rebinned view/row are
-retained. Role categories use full-T coefficients and do not duplicate a
-datum's total weight. Optional z-FFS retains focal-state identity.
+retained. The side filter shows direct or complementary uses at every output
+direction. Role weights are accumulated over full T, before angular averaging.
+Optional z-FFS retains focal-state identity.
 
 `tests/axial-animation.mjs` checks native-integral coefficients, partial-window
 normalization, direct/complementary role sums, exact agreement with existing
 weight audits, focal switching, multirow cases, cancellation and non-mutation.
 These are display/implementation checks, not scanner validation.
 
-Web 2026-09-18.4 consistently aligns both members of an interpolation pair
+Historical Web 2026-09-18.4 aligned both members of an interpolation pair
 at the reference member's rebinned angle. Direct trajectories/circles are
 solid; complementary trajectories/triangles are dashed. The own-angle
 switch introduced in Web 2026-09-18.3 was removed because its all-solid
@@ -102,10 +103,10 @@ boxed and each member's own angles remain available in the numeric table.
 Under this code's sign convention beta = theta + gamma. Beta is a rebinning
 query angle, generally evaluated using neighboring acquired source views.
 The plot folds angle offsets relative to a fixed centre-turn reference; its
-zero is not tube angle zero. Half-turn coverage by pair-reference markers
-does not indicate that half the acquired directions were discarded or that
-a short-scan image reconstruction was performed. The distinction is checked
-by `tests/axial-angle-display.mjs`; numerical model/worker files are unchanged.
+zero is not tube angle zero. However, this half-turn display did not let readers
+check the interpolation at every output direction. It was superseded by the
+full-turn directional display described below; the older display must not be
+interpreted as half-scan reconstruction. Numerical model/worker files are unchanged.
 
 `tests/axial-response.mjs` checks independent all-row weight enumeration, Cartesian rays from the chapter, direct all-row response summation, exact response/weight-trace closure, selected-phase/series identity, and 4/80/160/320-row cases. These establish implementation consistency, not clinical or scanner validation. Results and cases are in `tests/axial-response-verification.json`.
 
@@ -122,7 +123,7 @@ URL schema v11 and model version 2026-09-17.6 identify this change. Old URLs loa
 
 The supplied textbook scan is not redistributed by this website.
 
-## Paired unwrapped display (Web 2026-09-17.8)
+## Historical paired unwrapped display (Web 2026-09-17.8; superseded below)
 
 With z-FFS off, the overview and weight detail use a common direct-side rebinned angle. Solid curves/circles refer to theta; dashed curves/triangles refer to theta+pi. Each family's row positions use its own source z and ray length L from the equations above. The complementary family is not a copy of the direct family's z coordinates, and theta+pi does not imply an exact pi difference between the original fan-beam source angles. Both families retain complete visible geometric turns independently of the selected-weight support.
 
@@ -136,3 +137,30 @@ The additional `weightAudit.pairedSamples` / Excel `Paired_weights` audit retain
 ## Optional focal switching (Web 2026-09-17.7)
 
 z-FFS is off by default. When enabled, acquired point data, within-focus rebinning, four-family candidate weights and model SSPz use the new explicitly declared acquisition model. See [ZFFS_METHOD.md](ZFFS_METHOD.md) for equations, assumptions, the total-view-count definition and verification. The off response equations above remain unchanged.
+
+
+## Full-turn directional display (Web 2026-09-18.5)
+
+The numerical kernel retains V/2 opposing pairs and angular mean factor 2/V.
+The display now expands each pair into both output interpolation directions over
+0–360 degrees. The same physical rebinned view, focus, detector row, position and
+coefficient are retained; the direct/complementary roles reverse at the opposite
+output direction. Within the existing finite window, the opposing view may lie
+at either +V/2 or -V/2. Complementary traces remain dashed and markers triangular.
+
+Over the T window, contributions with the same output direction, role and
+physical datum are summed before drawing. Distinct opposite-view identities are
+retained in the exported lists. The full-direction angular mean factor is 1/V:
+sum(weight * acquiredValue / V) reproduces the original pair-averaged response.
+Directional_weights (Excel) and directionalWeightAudit (JSON) are alternative
+representations of the existing audits; they must not be added to those audits.
+
+The animation's direction selector covers the complete turn (with the stated
+display-angle sampling). Its angle table uses the actual opposite view, including
+negative half-turn offsets. The 360-degree endpoint repeats zero and is not an
+additional direction. The ordinary diagram and animation share this convention.
+
+This is a display and audit change. It is not half-scan image reconstruction,
+does not add acquired views, and does not establish image reconstruction
+sufficiency. The finite candidate-window selection is unchanged; the separate
+question of nearby data excluded by that window remains open.
