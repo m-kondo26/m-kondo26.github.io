@@ -1,4 +1,8 @@
 const replacements = [
+  ["焦点―検出器距離", "Source–detector distance"],
+  ["有限焦点のぼけと、z-FFSの幾何に共通の距離です。", "Shared distance for finite-focal blur and z-FFS geometry."],
+  ["体軸方向の実効焦点寸法", "Effective axial focal size"],
+  ["図6.6の1.2 mmを既定値とします。0で点焦点と比較できます。", "The default 1.2 mm follows Fig.6.6. Enter 0 for a point-focus comparison."],
   ["面内開口幅とチャネル間隔の既定値0.58 mmは、『CTとMRI』（コロナ社）の幾何情報に基づく回転中心換算の概算です。開口幅＝チャネル間隔とする理想設定で、実機の仕様値ではありません。", "The default transaxial aperture and channel spacing of 0.58 mm are approximate isocenter values derived from the geometry in CT and MRI (Corona Publishing). Aperture width equals channel spacing in this idealized setting; these are not scanner specifications."],
   ["図6.25：検出器列とSSPの関係を見る", "Figure 6.25: explore detector rows and SSP"],
   ["『CTとMRI』で説明された、寝台を静止した条件の計算過程を別ページで確認できます。", "Explore the stationary-table calculation described in CT and MRI on a separate page."],

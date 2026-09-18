@@ -8,7 +8,7 @@ function initializeZffsUi(initial,changed){
   <p id="zffs-unavailable" hidden>${fdkText('焦点移動は、ピッチが正のコーン幾何モデルで使用できます。','Focal switching requires cone geometry and positive pitch.')}</p>
   <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. The default interlaces rows at half spacing at isocentre.')}</p>
   <details class="reading-details"><summary>${fdkText('焦点移動の幾何条件','Focal-switching geometry')}</summary><div class="parameter-grid">
-  <label>${fdkText('線源–検出器間距離 / 線源–回転中心間距離','Source–detector / source–isocentre distance')}<input id="zffs-magnification" type="number" min="1.01" max="4" step="any" value="${1072/600}"></label>
+  <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('回転中心での片側移動量 / 列間隔','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
   <p>${fdkText('固定した円筒検出器に対し、焦点を体軸方向だけに移動する理想モデルです。実機の設定値ではありません。回転中心から離れると、列間隔は一様に半分にはなりません。','An ideal model of pure axial focal motion relative to a fixed cylindrical detector, not scanner settings. Away from isocentre, the interlaced spacing is not uniformly halved.')}</p>
   <a href="ZFFS_METHOD.md">${fdkText('計算方法と検証範囲','Method and verification scope')}</a> · <a href="https://doi.org/10.1118/1.2828403">Mori (2008)</a></details></div>`;
@@ -34,6 +34,7 @@ function initializeZffsUi(initial,changed){
   syncZffsUi();
 }
 function syncZffsUi(){
+  syncSharedFocalControls();
   const e=document.getElementById('zffs-enabled');if(!e)return;
   const available=document.getElementById('computationModel').value!=='parallel'&&Number(form.elements.namedItem('beamPitch').value)>0;
   if(!available)e.checked=false;e.disabled=runButton.disabled||!available;

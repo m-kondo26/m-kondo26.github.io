@@ -1,14 +1,14 @@
 # Optional axial flying focal spot model
 
-Web release 2026-09-17.7; optional acquisition extension 2026-09-17.1.
+Current finite-focus integration: Web 2026-09-18.13; axial response 2026-09-18.8. The original optional acquisition extension is 2026-09-17.1.
 
-The z-FFS switch is **off by default**. Enabling it changes acquired point data, candidate geometry, rebinning, interpolation weights and model SSPz together. A shared URL explicitly stores the switch and its geometry. Opening the base URL or resetting the controls starts with z-FFS off. Existing off results use the unchanged axial-response equations.
+The z-FFS switch is **off by default**. Enabling it changes acquired point data, candidate geometry, rebinning, interpolation weights and model SSPz together. A shared URL explicitly stores the switch and its geometry. Opening the base URL or resetting the controls starts with z-FFS off. Focus size 0 preserves the historical point-source branch. New/reset conditions use the shared 1.2 mm finite focus; it is integrated separately within each acquired exposure. See [FOCAL_BLUR_METHOD.md](FOCAL_BLUR_METHOD.md).
 
 ## Geometry and source
 
-Mori I., *Antialiasing backprojection for helical MDCT*, Medical Physics 35 (2008), DOI [10.1118/1.2828403](https://doi.org/10.1118/1.2828403), Fig. 4 and Eqs. (19)–(22), describe alternating focal positions, isocentre interlacing and nonuniform off-centre sampling. The example distances R = 600 mm and source–detector distance D = 1072 mm motivate the editable default ratio M = D/R. Their shifted backprojection, image filtering and artifact results are **not** implemented or claimed here.
+Mori I., *Antialiasing backprojection for helical MDCT*, Medical Physics 35 (2008), DOI [10.1118/1.2828403](https://doi.org/10.1118/1.2828403), Fig. 4 and Eqs. (19)–(22), describe alternating focal positions, isocentre interlacing and nonuniform off-centre sampling. The example distances R = 600 mm and source–detector distance D = 1072 mm motivated the historical ratio M = D/R. The current UI derives M from the common source–detector distance (new/reset D = 1070 mm, based on CTとMRI Fig.6.6); legacy z-FFS conditions retain their earlier distance. Their shifted backprojection, image filtering and artifact results are **not** implemented or claimed here.
 
-The explicit idealization is pure axial focal motion with a fixed cylindrical detector. Anode-related radial motion, exposure duration, focal-spot size, noise, motion and manufacturer timing are omitted. It is an explanatory acquisition model, not a scanner preset.
+The explicit idealization is pure axial focal motion with a fixed cylindrical detector. Anode-related radial motion, exposure duration, noise, motion and manufacturer timing are omitted. A finite effective axial focal size is supported by the shared acquisition model; transverse focal size and target-angle dependence are omitted. It is an explanatory acquisition model, not a scanner preset.
 
 Let d be the detector-row pitch at isocentre, N the number of rows, V the **total actual acquisitions per turn**, h = N d p the table feed, and φ the start angle. A physical view v (including unwrapped negative indices) has:
 
@@ -32,7 +32,7 @@ The same unit-integral ideal point and finite detector cells as the off model ar
 
 P = √(R² + w_ray²) / [L_v² (aperture/R) d],
 
-with the existing half-cell boundary convention. Transaxial channel spacing and active aperture remain distinct common inputs. No response is assigned to a detector gap.
+This expression is the point-source limit. With finite axial focus, row membership and ray length are evaluated throughout the focal support and integrated with unit total source weight before rebinning; see [FOCAL_BLUR_METHOD.md](FOCAL_BLUR_METHOD.md). The point limit retains the existing half-cell boundary convention. Transaxial channel spacing and active aperture remain distinct common inputs. No response is assigned to a detector gap.
 
 ## Rebinning, selection and SSPz
 

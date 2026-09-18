@@ -3,11 +3,11 @@
 // The two selection rules are explicit reduced models, not commercial 2D/3D FBP.
 import {fdkConfig,fdkWidth,fdkSlabMean,fdkSlabCoefficients} from './fdk-core.js';
 import {cbaCoordinates,cbaRebinAt} from './cba-core.js';
-import {detectorPointProjection,detectorRowReadout} from './detector-aperture.js';
+import {detectorPointProjection,detectorRowReadout,finiteFocusConfig,focalBlurMetadata} from './detector-aperture.js';
 import {zffsConfig} from './zffs-geometry.js';
 import {computeZffsResponse} from './zffs-response.js';
 import {computeSourceSupportedAxialResponse} from './axial-source-response.js';
-export const AXIAL_RESPONSE_VERSION='2026-09-18.7';
+export const AXIAL_RESPONSE_VERSION='2026-09-18.8';
 const AR_TAU=2*Math.PI;
 export function axialResponseConfig(input={}){
   const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
@@ -25,7 +25,9 @@ export function axialResponseConfig(input={}){
   if(!Number.isFinite(c.fullFanAngleDeg)||c.fullFanAngleDeg<=0||c.fullFanAngleDeg>=180)throw Error('AXIAL_FAN: full fan opening must be > 0 and < 180 degrees');
   if(rule!=='parallel'&&c.candidateSearch==='source-fan-window'&&2*Math.asin(c.radius/c.sourceRadius)*180/Math.PI>c.fullFanAngleDeg+1e-10)throw Error('AXIAL_FAN: evaluation point is outside the declared full fan opening');
   if(!['one-turn','source-fan-window'].includes(c.candidateSearch))throw Error('AXIAL_CANDIDATE_SEARCH');
-  return zffsConfig(input,c);
+  const ffsInput=Number(input.focalSizeMm??0)>0&&input.focalSourceDetectorMm!=null&&input.zFfsMagnification==null
+    ?{...input,zFfsMagnification:Number(input.focalSourceDetectorMm)/c.sourceRadius}:input;
+  return finiteFocusConfig(input,zffsConfig(ffsInput,c));
 }
 // RRI: normalized compact row tents. Merged: bracketing samples from the
 // union of the two directions. Ties split weight, independent of signal value.
@@ -118,7 +120,7 @@ export async function computeAxialResponse(input={},hooks={}){
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))return {config:c,z,zObject,raw,geometryOnly:true,reason:'no-acquired-point-response',profiles:[],volume:null,
-    coordinateSystem:'rebinned-theta',model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule},
+    coordinateSystem:'rebinned-theta',model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c)},
     weightAudit:{db:1/half,centerValue:0,axialAverageMm:c.axialAverageMm,samples:[...weights.values()],pairedSamples:[...pairedWeights.values()]}};
   const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline));
   const fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
@@ -127,7 +129,7 @@ export async function computeAxialResponse(input={},hooks={}){
   return {config:c,z,zObject,raw,profile,fwhm,fwtm,min,max,baseline,counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit,
     volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'rebinned-theta',
     acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerSlice:nv,rebinnedPairsPerSlice:half},
-    model:{version:'2026-09-17.6',kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
+    model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
       geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
       interpolation:c.axialRule==='rri'?'linear row interpolation within each direction; normalize acquired rows over pair':'nearest bracketing pair from union of both acquired row sets; split coincident samples',
       object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',

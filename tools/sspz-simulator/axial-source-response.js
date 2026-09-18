@@ -1,6 +1,6 @@
 import {sourceSupportedAxialWeights,axialSourceWindow,axialSourceStencil} from './axial-source-support.js';
 import {cbaCoordinates} from './cba-core.js';
-import {detectorPointProjection,detectorRowReadout} from './detector-aperture.js';
+import {detectorPointProjection,detectorRowReadout,focalBlurMetadata} from './detector-aperture.js';
 import {fdkSlabMean,fdkSlabCoefficients,fdkWidth} from './fdk-core.js';
 import {zffsShift,zffsRebinStencil,zffsRowGeometry,ZFFS_VERSION} from './zffs-geometry.js';
 import {zffsPointProjection} from './zffs-response.js';
@@ -89,7 +89,7 @@ export async function computeSourceSupportedAxialResponse(c,hooks={}){
   }
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  const model={version:'2026-09-18.7',kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
+  const model={version:'2026-09-18.8',kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
     geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
     candidateSearch:'source-fan-window',fullFanAngleDeg:c.fullFanAngleDeg,sourceAngleSpanDeg:c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg,
     interpolation:c.axialRule==='rri'?'compact row tents normalized across source-supported directions and turns':'nearest bracketing row centres within finite source-angle support; split coincident endpoints',

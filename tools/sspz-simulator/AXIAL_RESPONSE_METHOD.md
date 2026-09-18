@@ -1,4 +1,6 @@
-# Shared axial interpolation response — 2026-09-18.7
+# Shared axial interpolation response — 2026-09-18.8
+
+The browser now supports a finite effective axial focal width shared by both cone models. Each acquired cell is averaged over a uniform source before angular rebinning, candidate selection, and T averaging. The detector stays fixed. Candidate centres and interpolation coefficients use the mean focal position. See [finite focal acquisition](FOCAL_BLUR_METHOD.md) for the ray integral, the isocentre-matched parallel reference, and the distinction from focal switching. Width 0 exactly retains the previous point-focus calculation; no final-SSP smoothing is applied. New/reset browser conditions use 1.2 mm and source–detector distance 1070 mm from the adopted book example. Existing saved conditions and old URLs without these fields retain a point focus.
 
 The public model compares candidate selection and longitudinal interpolation, using the same acquisition operator. It is called a **model SSPz / axial interpolation response**, not a reconstructed-image SSP from full 2D or 3D filtered backprojection (FBP). A three-dimensional cone-ray geometry does not, by itself, imply that three-dimensional image reconstruction has been performed.
 
@@ -71,7 +73,7 @@ For T=0 in the numerical API, B=A. The browser uses its single configured thickn
 
 The published browser no longer uses the former finite-K Taguchi shifted sum. Taguchi and Aradate's filter-interpolation concept motivates averaging longitudinal interpolants, but the current continuous piecewise-linear integral is a declared numerical choice. The former finite-K API and full FBP APIs remain available in their unchanged source modules for reproducing historical results. The previous rebinned-one-turn axial calculation is retained only as explicit numerical API option `candidateSearch: 'one-turn'`; the browser uses `source-fan-window`. This support correction can change candidates, weights, profiles and widths, and is not merely a display change.
 
-The output half-domain is `max(1 mm, T + 2d(1+r/R))`, plus the padding required for the integral. The calculation checks both width crossings and response tails; it does not silently accept a cropped response. An object entirely in inactive detector space produces geometry-only output and no invented width.
+The output half-domain starts at `max(1 mm, T + 2d(1+r/R))` and is enlarged for finite focal support and any focal switching, plus the padding required for the integral. The calculation checks both width crossings and response tails; it does not silently accept a cropped response. An object entirely in inactive detector space produces geometry-only output and no invented width.
 
 Each curve is independently min–max normalized by default; peak-only normalization is optional. FWHM and FWTM use linear native-sample crossings. All 360 start phases, separated by 1 degree, use a fixed object position. This is not the former sweep of object position through one table feed.
 

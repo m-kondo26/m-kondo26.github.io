@@ -7,13 +7,30 @@ let fdkShapeGroups=null;
 const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[[fdkMethodName(r),r]];
 const fdkSheetPrefix=name=>name.includes('z-FFS')?name.replace(' + z-FFS','_FFS').replace(' axial',''):name;
-const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm_focus-'+(r.config.focalSizeMm??0)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
+function syncSharedFocalControls(){
+  const R=Number(form.elements.namedItem('sourceRadius')?.value),radius=Number(form.elements.namedItem('radius')?.value),focal=Number(form.elements.namedItem('focalSizeMm')?.value),distance=form.elements.namedItem('focalSourceDetectorMm'),D=Number(distance?.value);
+  if(distance&&Number.isFinite(R))distance.min=String(R+(focal>0?radius:0)+1);
+  const ratio=document.getElementById('zffs-magnification');
+  if(ratio&&R>0&&Number.isFinite(D))ratio.value=String(D/R);
+}
+function fdkCsvRows(r){return [
+  ['# model_version',r.model.version],
+  ['# focalSizeMm',r.config.focalSizeMm??0],
+  ['# focalSourceDetectorMm',r.config.focalSourceDetectorMm??1070],
+  ['# focal_model_metadata',JSON.stringify(r.model.focalBlur??{})],
+  ['# configuration',JSON.stringify(r.config)],
+  ['# focal_model','uniform effective axial source integrated over acquired detector cells before interpolation; unit total source weight'],
+  ['# focal_reference','CT and MRI Fig.6.6; target-angle dependence not modelled'],
+  ...fdkProfileRows(r),
+];}
 function syncFdkMethodControls(){syncZffsUi();const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
 function readFdkParams(){
+  syncSharedFocalControls();
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
@@ -21,7 +38,13 @@ function readFdkParams(){
   out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
   out.axialRule=out.computationModel==='fdk'?'rri':out.computationModel==='parallel'?'parallel':'merged';
   const d=Number(form.elements.namedItem('rowWidth').value),r=Number(form.elements.namedItem('radius').value),R=Number(form.elements.namedItem('sourceRadius').value);
+  out.focalSizeMm=Number(form.elements.namedItem('focalSizeMm').value);
+  out.focalSourceDetectorMm=Number(form.elements.namedItem('focalSourceDetectorMm').value);
   out.zExtent=Math.max(1,out.axialAverageMm+2*d*(1+r/R));
+  // Retain the entire finite-focus support in addition to the aperture and
+  // averaging support. The parallel reference uses the centre-projected width.
+  const focalScale=out.axialRule==='parallel'?Math.abs(1-R/out.focalSourceDetectorMm):Math.max(Math.abs(1-(R-r)/out.focalSourceDetectorMm),Math.abs(1-(R+r)/out.focalSourceDetectorMm));
+  out.zExtent+=out.focalSizeMm*focalScale/2;
   out.state=0;out.method='rri';
   out.objectModel='point';
   out.thicknessMapping='configured-rectangular';
@@ -42,6 +65,7 @@ function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
+  if(q.has('fd'))out.zFfsMagnification=Number(q.get('fd'))/Number(q.get('R')??600);
   out.sourceSupportMigrated=!!q.get('v')&&Number(q.get('v'))<12;
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
@@ -58,6 +82,7 @@ function initializeFdkUi(initial){
   controls.innerHTML=`<p class="section-summary">${fdkText('共通の点対象・検出器開口から、候補の選択と体軸補間によるモデルSSPzを求めます。横断画像は再構成しません。','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('補間規則と共通の計算設定','Interpolation rules and shared numerical settings')}</summary>
   <p>${fdkText('候補統合では、実・対向方向の列データ全体から評価位置を挟む2点を選びます。RRI（row-to-row interpolation）は各方向の隣接列を線形補間し、対向ペアで重みを正規化します。どちらもX線管角360°＋2Φの同じ有限取得範囲を用います。Φは全ファン角です。発散なしの基準は、別の幾何仮定です。','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same finite source-angle support of 360° + 2Φ, where Φ is the full fan opening. The nondivergent reference uses a separate geometry assumption.')}</p>
+  <p>${fdkText('焦点寸法は『CTとMRI』図6.6の実効焦点1.2 × 1.2 mmのうち体軸方向の1.2 mmを参照します。焦点内の各位置から固定した検出器開口に入る信号を平均し、その取得応答に補間を適用します。ターゲット角7°による方向依存性や面内方向の焦点ぼけは含めません。発散なしの比較基準には、回転中心へ投影した一定の焦点ぼけ幅を適用します。','The effective axial focal size defaults to 1.2 mm from the 1.2 × 1.2 mm focus in CT and MRI Fig.6.6. Signals from uniformly distributed positions within the focus are averaged within each fixed detector cell before interpolation. Directional changes due to the 7° target angle and transverse focal blur are omitted. The nondivergent reference uses a constant focal-blur width projected to isocentre.')}</p>
   <div class="parameter-grid">
   <input type="hidden" id="fdk-method" value="rri"><input type="hidden" id="fdk-objectModel" value="point"><input type="hidden" id="fdk-axialAverageMm" value="1"><input type="hidden" id="fdk-xyExtent" value="0.5"><input type="hidden" id="fdk-xySamples" value="5"><input type="hidden" id="fdk-zExtent" value="3"><input type="hidden" id="fdk-state" value="0"><input type="hidden" id="fdk-phaseCount" value="360">
   <label>${fdkText('全ファン角 Φ (°)','Full fan opening Φ (°)')}<input id="fdk-fullFanAngleDeg" type="number" min="1" max="179" step="0.1" value="50"><small>${fdkText('取得範囲は360°＋2Φ。初期値50°はモデル設定であり、装置固有値ではありません。','Source support is 360° + 2Φ. The default 50° is a model setting, not a scanner specification.')}</small></label>
@@ -65,7 +90,7 @@ function initializeFdkUi(initial){
   <label>${fdkText('基準開始角度 (rad)','Base start angle (rad)')}<input id="fdk-phase" type="number" min="0" max="6.28318530718" step="0.01" value="0"></label>
   <label>${fdkText('検出器端の扱い','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('取得済みの列を使用','Use acquired rows')}</option><option value="strict">${fdkText('選択した方向の隣接列を要求','Require complete selected brackets')}</option></select></label>
   <label>${fdkText('正規化','Normalization')}<select id="fdk-normalization"><option value="minmax">${fdkText('最小値0・最大値1','Minimum 0, maximum 1')}</option><option value="peak">${fdkText('最大値1','Peak 1')}</option></select></label>
-  </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はTと検出器列幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain follows T and detector-row width to include the tails.')}</p>
+  </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はT、検出器列幅、焦点ぼけ幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain includes the tails from T, detector-row width and focal blur.')}</p>
   <p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算式と適用範囲','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
   if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('取得範囲の判定を再配列角360°からX線管角360°＋2Φへ修正しました。旧版とは候補・重み・SSPzが変わる場合があります。全ファン角を確認して再計算してください。','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
@@ -95,7 +120,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：選択した体軸補間モデル。0.01 mm格子への線形補間、偏差ビン幅0.002を用い、濃さは各ビンの割合の0.35乗です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: the selected axial interpolation model. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('応答・重み・条件をJSON保存','Export response, weights and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口で取得した理想点応答に候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz is obtained by selecting and linearly interpolating finite-aperture point measurements and averaging over angles. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('両コーンモデルの差は、共通幾何における候補選択・補間規則の差です。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The two cone models differ in candidate selection and interpolation under shared geometry. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('両コーンモデルの差は、共通幾何における候補選択・補間規則の差です。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The two cone models differ in candidate selection and interpolation under shared geometry. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：点の位置位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は点の位置からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('RRI相当の線形補間：計算方法と適用範囲','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -117,11 +142,11 @@ function initializeFdkUi(initial){
   initializeZffsUi(initial,modeChanged);
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
-  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
+  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of shared ideal-point data, after T averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];

@@ -1,3 +1,7 @@
+## Finite axial focal blur in the main simulator (2026-09-18.13)
+
+Both cone interpolation models now average the signal within each acquired detector cell over a uniform effective axial focal width, before rebinning and axial interpolation. New/reset conditions use 1.2 mm and a common source–detector distance of 1070 mm, following the adopted book example. Focal width 0 reproduces the previous point-source result. Old URLs/saved conditions without focal fields remain at 0; new URLs record `ff` and `fd`. z-FFS uses the same detector distance and preserves each physical exposure's identity. The nondivergent comparator uses a constant, isocentre-matched axial blur as an explicit reference assumption. See `FOCAL_BLUR_METHOD.md` for equations and limits. This is an axial acquisition model; it does not add transverse focal blur, target-angle-dependent apparent focus, or full image reconstruction.
+
 ## Selected SSPz shown once (2026-09-18.12)
 
 Playback panel (c) and the former selected-profile panel (d) read the same saved profile at matching start angles. The duplicate selected-profile card was removed; panel (c) retains the half-maximum arrow, adds FWTM, and saves its displayed angle as a 600-dpi PNG. The movie angle can be inspected independently until applied to the other figures. Section 3 now contains only the all-360 overlay, followed by the unchanged shape comparisons. Visible result panels are relabelled sequentially. Numerical models, profiles, and full numerical exports are unchanged.

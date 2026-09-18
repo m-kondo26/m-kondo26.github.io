@@ -1,4 +1,4 @@
-> Version note (2026-09-17.6): the public browser now uses the reduced [shared axial interpolation response](AXIAL_RESPONSE_METHOD.md). Image-reconstruction and prior-browser descriptions below document the retained historical APIs; they do not describe the current public calculation. Detector-cell acquisition definitions remain shared.
+> Version note (2026-09-18.8): the public browser uses the reduced [shared axial interpolation response](AXIAL_RESPONSE_METHOD.md), now with [finite axial focal acquisition](FOCAL_BLUR_METHOD.md). The point-source formulas below remain the exact zero-focus limit. Image-reconstruction and prior-browser descriptions below document historical APIs; they do not describe the current public calculation. Detector-cell definitions remain shared. New/reset browser transverse aperture and pitch are 0.58 mm at isocentre; the 0.25 mm value below is the historical default.
 
 # Shared detector aperture (2026-09-17.4)
 

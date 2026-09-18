@@ -13,6 +13,77 @@ function detectorCellMembership(coordinate, pitch, aperture, count) {
   return out;
 }
 
+const FINITE_FOCUS_VERSION='2026-09-18.1';
+// Effective axial focal width at the source, not the physical target length.
+// The source-detector distance belongs to the fixed detector geometry. With
+// z-FFS, its existing magnification defines that same physical distance.
+function finiteFocusConfig(input,c){
+  c.focalSizeMm=Number(input.focalSizeMm??0);
+  c.focalSourceDetectorMm=Number(input.focalSourceDetectorMm??(c.zFfsEnabled?c.zFfsSourceDetectorMm:1070));
+  if(!Number.isFinite(c.focalSizeMm)||c.focalSizeMm<0)throw Error('FOCAL_SIZE: effective axial focal width must be finite and >= 0 mm');
+  if(!Number.isFinite(c.focalSourceDetectorMm)||c.focalSourceDetectorMm<=0)throw Error('FOCAL_GEOMETRY: source-detector distance must be finite and > 0 mm');
+  if(c.zFfsEnabled){
+    if(c.focalSizeMm>0&&input.focalSourceDetectorMm!=null&&Math.abs(c.focalSourceDetectorMm-c.zFfsSourceDetectorMm)>1e-9*Math.max(1,c.focalSourceDetectorMm))throw Error('FOCAL_GEOMETRY: focal source-detector distance conflicts with z-FFS detector magnification');
+    c.focalSourceDetectorMm=c.zFfsSourceDetectorMm;
+  }
+  if(c.focalSizeMm>0&&c.focalSourceDetectorMm<=c.sourceRadius+c.radius)throw Error('FOCAL_GEOMETRY: detector must lie beyond the evaluation point for every view');
+  return c;
+}
+function focalBlurWidth(c,L=c.sourceRadius){
+  return (c.focalSizeMm??0)*Math.abs(1-L/(c.zFfsEnabled?c.zFfsSourceDetectorMm:(c.focalSourceDetectorMm??1070)));
+}
+function focalBlurMetadata(c){
+  return {version:FINITE_FOCUS_VERSION,kind:c.focalSizeMm>0?'uniform-effective-axial-source':'point-source',
+    focalSizeMm:c.focalSizeMm??0,sourceDetectorMm:c.zFfsEnabled?c.zFfsSourceDetectorMm:(c.focalSourceDetectorMm??1070),
+    distribution:'unit-integral uniform axial source; fixed total exposure',
+    integration:'exact source intervals within each acquired detector cell, with ray Jacobian',
+    candidateGeometry:'mean focal position; candidate centres and interpolation coefficients unchanged',
+    parallelReference:'same isocentre-projected axial blur, fixed with position and angle; no divergent-ray Jacobian',
+    targetAngle:'effective focal width is already projected; no additional target-angle factor',
+    scope:'axial finite-focus acquisition only; no transverse focal blur, heel effect or direction-dependent apparent focal shape'};
+}
+// Stable average of sqrt(R^2+w^2) over a linear w interval. This is the exact
+// antiderivative difference, with asinh(b)-asinh(a) expressed via atanh to
+// avoid cancellation for short intervals near the central ray.
+function meanRayLength(R,a,b){
+  const h0=Math.hypot(R,a),h1=Math.hypot(R,b),sum=h0+h1,q=(b-a)/sum;
+  return .5*(h1+a*(a+b)/sum+2*R*R/sum*(q===0?1:Math.atanh(q)/q));
+}
+// Integrate a single physical exposure over its finite axial focal support.
+// w0 is its mean-focus coordinate on the FIXED detector; wRay0 is relative
+// to that mean focus. The two coordinates differ for z-FFS. The returned
+// signal is already averaged over source emission; no new views are added.
+function detectorAxialFocusRows(c,w0,wRay0,L,parallel=false){
+  const f=c.focalSizeMm??0,R=c.sourceRadius,d=c.rowWidth;
+  const aperture=c.channelApertureMm??c.channelWidth;
+  const D=c.zFfsEnabled?c.zFfsSourceDetectorMm:(c.focalSourceDetectorMm??1070);
+  const slope=R/D-R/L,raySlope=-R/L;
+  const scale=parallel?1/(aperture*d):1/(L*L*(aperture/R)*d);
+  if(!(f>0)){
+    const signal=parallel?scale:scale*Math.hypot(R,wRay0);
+    return detectorCellMembership(w0,d,d,c.rows).map(([row,weight])=>[row,signal*weight]);
+  }
+  const half=f/2,loW=w0-Math.abs(slope)*half,hiW=w0+Math.abs(slope)*half;
+  const k0=Math.max(0,Math.ceil(loW/d+(c.rows-1)/2-.5));
+  const k1=Math.min(c.rows-1,Math.floor(hiW/d+(c.rows-1)/2+.5));
+  const out=[];
+  for(let row=k0;row<=k1;row++){
+    const centre=(row-(c.rows-1)/2)*d;
+    let lo=-half,hi=half;
+    if(slope===0){
+      const membership=detectorCellMembership(w0,d,d,c.rows).find(q=>q[0]===row)?.[1]??0;
+      if(membership)out.push([row,scale*(parallel?1:meanRayLength(R,wRay0+raySlope*lo,wRay0+raySlope*hi))*membership]);
+      continue;
+    }
+    const a=(centre-d/2-w0)/slope,b=(centre+d/2-w0)/slope;
+    lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));
+    if(!(hi>lo))continue;
+    const ray=parallel?1:meanRayLength(R,wRay0+raySlope*lo,wRay0+raySlope*hi);
+    out.push([row,(hi-lo)/f*scale*ray]);
+  }
+  return out;
+}
+
 // A unit-integral Cartesian point projected onto the source-centred cylinder.
 // Transaxial coordinates are R*gamma; axial coordinates are cylinder heights.
 // parallel=true is the explicitly nondivergent reference acquisition, not FBP.
@@ -22,6 +93,15 @@ function detectorPointProjection(c,beta,zObject,parallel=false){
   const sourceZ=c.sourceZ, w=parallel?zObject-sourceZ:R*(zObject-sourceZ)/L;
   const aperture=c.channelApertureMm??c.channelWidth;
   const js=detectorCellMembership(transverse,c.channelWidth,aperture,c.channels);
+  if(c.focalSizeMm>0){
+    const ks=detectorAxialFocusRows(c,w,w,L,parallel);
+    const empty={j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0),transverse,w};
+    if(!js.length||!ks.length)return empty;
+    const j0=js[0][0],j1=js.at(-1)[0],k0=ks[0][0],k1=ks.at(-1)[0];
+    const width=j1-j0+1,height=k1-k0+1,data=new Float64Array(width*height);
+    for(const [j,a] of js)for(const [k,signal] of ks)data[(k-k0)*width+j-j0]=signal*a;
+    return {j0,j1,k0,k1,width,height,data,transverse,w};
+  }
   const ks=detectorCellMembership(w,c.rowWidth,c.rowWidth,c.rows);
   const empty={j0:0,j1:-1,k0:0,k1:-1,width:0,height:0,data:new Float64Array(0),transverse,w};
   if(!js.length||!ks.length)return empty;
@@ -3225,7 +3305,7 @@ function initializeZffsUi(initial,changed){
   <p id="zffs-unavailable" hidden>${fdkText('焦点移動は、ピッチが正のコーン幾何モデルで使用できます。','Focal switching requires cone geometry and positive pitch.')}</p>
   <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. The default interlaces rows at half spacing at isocentre.')}</p>
   <details class="reading-details"><summary>${fdkText('焦点移動の幾何条件','Focal-switching geometry')}</summary><div class="parameter-grid">
-  <label>${fdkText('線源–検出器間距離 / 線源–回転中心間距離','Source–detector / source–isocentre distance')}<input id="zffs-magnification" type="number" min="1.01" max="4" step="any" value="${1072/600}"></label>
+  <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('回転中心での片側移動量 / 列間隔','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
   <p>${fdkText('固定した円筒検出器に対し、焦点を体軸方向だけに移動する理想モデルです。実機の設定値ではありません。回転中心から離れると、列間隔は一様に半分にはなりません。','An ideal model of pure axial focal motion relative to a fixed cylindrical detector, not scanner settings. Away from isocentre, the interlaced spacing is not uniformly halved.')}</p>
   <a href="ZFFS_METHOD.md">${fdkText('計算方法と検証範囲','Method and verification scope')}</a> · <a href="https://doi.org/10.1118/1.2828403">Mori (2008)</a></details></div>`;
@@ -3251,6 +3331,7 @@ function initializeZffsUi(initial,changed){
   syncZffsUi();
 }
 function syncZffsUi(){
+  syncSharedFocalControls();
   const e=document.getElementById('zffs-enabled');if(!e)return;
   const available=document.getElementById('computationModel').value!=='parallel'&&Number(form.elements.namedItem('beamPitch').value)>0;
   if(!available)e.checked=false;e.disabled=runButton.disabled||!available;
@@ -3343,6 +3424,7 @@ function initializeAxialMovie(after){
   </div>
   <p id="axial-movie-detail">${fdkText('重みの点をクリックすると、同じデータの使用内訳を表示します。','Click a weight marker to inspect both roles of the same datum.')}</p>
   <article class="chart-card axial-movie-ssp"><h3>${fdkText('（c）同じ開始角度のモデルSSPz：幅T全体の平均化後','(c) Model SSPz at the same start angle: after the complete T average')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-profile" width="1200" height="540"></canvas></div><button type="button" class="secondary" id="axial-movie-profile-png" disabled>${fdkText('600 dpi PNG保存','Save 600-dpi PNG')}</button></article>
+  <p id="axial-movie-acquisition-note"></p>
   <p id="axial-movie-note"></p>
   <button type="button" class="secondary" id="axial-movie-apply" disabled>${fdkText('この開始角度をほかの図にも表示','Show this start angle in the other figures')}</button>
   <details class="reading-details"><summary>${fdkText('図の読み方','How to read the animation')}</summary><p>${fdkText('赤線は平均化の中心、青線は幅T内を動く断面です。（b）は下端から青線までの重みを、全幅Tを分母として積算します。終端で既存の合計重みと一致します。（c）は途中の積算値ではなく、全幅で平均化した最終SSPzです。全周の各補間対象方向を表示し、同じデータが実データ側・対向側として再利用される場合も示します。応答は全方向で平均するため、表示を全周に展開してもSSPzは変わりません。','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Every output direction is shown, including reuse of the same datum in direct and complementary roles. Averaging over all directions preserves the SSPz.')}</p><p>${fdkText('図の候補点は表示用に角度を抜粋しています。SSPzは設定した全取得ビューで計算した結果です。幅Tの矩形平均化は本モデルの仮定であり、実機固有の重みを示すものではありません。開始角度の再生は異なる撮影条件の比較であり、1回の撮影中の管球回転を再現した動画ではありません。','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
@@ -3519,6 +3601,11 @@ function renderAxialMovie(){
   renderAxialAngleReading(frame);
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
   drawAxialMovieProfile(el('profile'));
+  const focus=c.focalSizeMm??0;
+  el('acquisition-note').textContent=(focus>0
+    ?fdkText('取得応答に体軸方向の有限焦点を適用：','Finite axial focus applied to acquired data: ')+`${focus.toFixed(2)} mm. `
+    :fdkText('点焦点で計算。','Point-focus calculation. '))
+    +fdkText('候補点は列中心、マーカーの濃さは補間重みです。SSPzには、各取得データの検出器開口と焦点の応答を反映しています。','Candidate markers show row centres and interpolation weights. SSPz also includes each acquired datum’s detector-aperture and focal response.');
   el('detail').textContent=fdkText('（b）の点をクリックすると、同じデータの使用内訳を表示します。','Click a marker in (b) to inspect both roles of that datum.');
 }
 function drawAxialMovieProfile(canvas,index=axialMovie.index){
@@ -3623,6 +3710,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-inspection-status').textContent=fdkText('展開図・重み・モデルSSPzは、選択した同じ開始角度に対応しています。','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
+  document.getElementById('fdk-result-config').textContent+=` / axial focus = ${(c.focalSizeMm??0).toFixed(2)} mm / source–detector = ${c.focalSourceDetectorMm??1070} mm`;
   renderZffsSelected();
   if(!geometryPlayback.playing)syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
@@ -3799,13 +3887,30 @@ let fdkShapeGroups=null;
 const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[[fdkMethodName(r),r]];
 const fdkSheetPrefix=name=>name.includes('z-FFS')?name.replace(' + z-FFS','_FFS').replace(' axial',''):name;
-const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm';
+const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm_focus-'+(r.config.focalSizeMm??0)+'mm';
 function fdkWidthStats(r){const v=r.profiles.map(p=>p.fwhm.width),mean=v.reduce((s,x)=>s+x,0)/v.length;return {mean,sd:v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/(v.length-1)):null,min:Math.min(...v),max:Math.max(...v)};}
 const fdkWidthAnnotation=(mean,sd)=>sd===null?`${mean.toFixed(2)} mm`:sd<.001?`${mean.toFixed(2)} mm; SD < 0.001 mm`:`${mean.toFixed(2)} ± ${sd.toFixed(3)} mm`;
 function fdkProfileRows(r){const groups=fdkGroups(r);return [['z_position_mm',...groups.flatMap(([name,g])=>g.profiles.flatMap((_,i)=>[name+'_raw_'+i,name+'_normalized_'+i]))],...Array.from(r.z,(z,i)=>[z,...groups.flatMap(([,g])=>g.profiles.flatMap(p=>[p.raw[i],p.profile[i]]))])];}
 const fdkText=(ja,en)=>document.documentElement.lang.startsWith('en')?en:ja;
+function syncSharedFocalControls(){
+  const R=Number(form.elements.namedItem('sourceRadius')?.value),radius=Number(form.elements.namedItem('radius')?.value),focal=Number(form.elements.namedItem('focalSizeMm')?.value),distance=form.elements.namedItem('focalSourceDetectorMm'),D=Number(distance?.value);
+  if(distance&&Number.isFinite(R))distance.min=String(R+(focal>0?radius:0)+1);
+  const ratio=document.getElementById('zffs-magnification');
+  if(ratio&&R>0&&Number.isFinite(D))ratio.value=String(D/R);
+}
+function fdkCsvRows(r){return [
+  ['# model_version',r.model.version],
+  ['# focalSizeMm',r.config.focalSizeMm??0],
+  ['# focalSourceDetectorMm',r.config.focalSourceDetectorMm??1070],
+  ['# focal_model_metadata',JSON.stringify(r.model.focalBlur??{})],
+  ['# configuration',JSON.stringify(r.config)],
+  ['# focal_model','uniform effective axial source integrated over acquired detector cells before interpolation; unit total source weight'],
+  ['# focal_reference','CT and MRI Fig.6.6; target-angle dependence not modelled'],
+  ...fdkProfileRows(r),
+];}
 function syncFdkMethodControls(){syncZffsUi();const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
 function readFdkParams(){
+  syncSharedFocalControls();
   const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
@@ -3813,7 +3918,13 @@ function readFdkParams(){
   out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
   out.axialRule=out.computationModel==='fdk'?'rri':out.computationModel==='parallel'?'parallel':'merged';
   const d=Number(form.elements.namedItem('rowWidth').value),r=Number(form.elements.namedItem('radius').value),R=Number(form.elements.namedItem('sourceRadius').value);
+  out.focalSizeMm=Number(form.elements.namedItem('focalSizeMm').value);
+  out.focalSourceDetectorMm=Number(form.elements.namedItem('focalSourceDetectorMm').value);
   out.zExtent=Math.max(1,out.axialAverageMm+2*d*(1+r/R));
+  // Retain the entire finite-focus support in addition to the aperture and
+  // averaging support. The parallel reference uses the centre-projected width.
+  const focalScale=out.axialRule==='parallel'?Math.abs(1-R/out.focalSourceDetectorMm):Math.max(Math.abs(1-(R-r)/out.focalSourceDetectorMm),Math.abs(1-(R+r)/out.focalSourceDetectorMm));
+  out.zExtent+=out.focalSizeMm*focalScale/2;
   out.state=0;out.method='rri';
   out.objectModel='point';
   out.thicknessMapping='configured-rectangular';
@@ -3834,6 +3945,7 @@ function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
+  if(q.has('fd'))out.zFfsMagnification=Number(q.get('fd'))/Number(q.get('R')??600);
   out.sourceSupportMigrated=!!q.get('v')&&Number(q.get('v'))<12;
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
@@ -3850,6 +3962,7 @@ function initializeFdkUi(initial){
   controls.innerHTML=`<p class="section-summary">${fdkText('共通の点対象・検出器開口から、候補の選択と体軸補間によるモデルSSPzを求めます。横断画像は再構成しません。','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('補間規則と共通の計算設定','Interpolation rules and shared numerical settings')}</summary>
   <p>${fdkText('候補統合では、実・対向方向の列データ全体から評価位置を挟む2点を選びます。RRI（row-to-row interpolation）は各方向の隣接列を線形補間し、対向ペアで重みを正規化します。どちらもX線管角360°＋2Φの同じ有限取得範囲を用います。Φは全ファン角です。発散なしの基準は、別の幾何仮定です。','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same finite source-angle support of 360° + 2Φ, where Φ is the full fan opening. The nondivergent reference uses a separate geometry assumption.')}</p>
+  <p>${fdkText('焦点寸法は『CTとMRI』図6.6の実効焦点1.2 × 1.2 mmのうち体軸方向の1.2 mmを参照します。焦点内の各位置から固定した検出器開口に入る信号を平均し、その取得応答に補間を適用します。ターゲット角7°による方向依存性や面内方向の焦点ぼけは含めません。発散なしの比較基準には、回転中心へ投影した一定の焦点ぼけ幅を適用します。','The effective axial focal size defaults to 1.2 mm from the 1.2 × 1.2 mm focus in CT and MRI Fig.6.6. Signals from uniformly distributed positions within the focus are averaged within each fixed detector cell before interpolation. Directional changes due to the 7° target angle and transverse focal blur are omitted. The nondivergent reference uses a constant focal-blur width projected to isocentre.')}</p>
   <div class="parameter-grid">
   <input type="hidden" id="fdk-method" value="rri"><input type="hidden" id="fdk-objectModel" value="point"><input type="hidden" id="fdk-axialAverageMm" value="1"><input type="hidden" id="fdk-xyExtent" value="0.5"><input type="hidden" id="fdk-xySamples" value="5"><input type="hidden" id="fdk-zExtent" value="3"><input type="hidden" id="fdk-state" value="0"><input type="hidden" id="fdk-phaseCount" value="360">
   <label>${fdkText('全ファン角 Φ (°)','Full fan opening Φ (°)')}<input id="fdk-fullFanAngleDeg" type="number" min="1" max="179" step="0.1" value="50"><small>${fdkText('取得範囲は360°＋2Φ。初期値50°はモデル設定であり、装置固有値ではありません。','Source support is 360° + 2Φ. The default 50° is a model setting, not a scanner specification.')}</small></label>
@@ -3857,7 +3970,7 @@ function initializeFdkUi(initial){
   <label>${fdkText('基準開始角度 (rad)','Base start angle (rad)')}<input id="fdk-phase" type="number" min="0" max="6.28318530718" step="0.01" value="0"></label>
   <label>${fdkText('検出器端の扱い','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('取得済みの列を使用','Use acquired rows')}</option><option value="strict">${fdkText('選択した方向の隣接列を要求','Require complete selected brackets')}</option></select></label>
   <label>${fdkText('正規化','Normalization')}<select id="fdk-normalization"><option value="minmax">${fdkText('最小値0・最大値1','Minimum 0, maximum 1')}</option><option value="peak">${fdkText('最大値1','Peak 1')}</option></select></label>
-  </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はTと検出器列幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain follows T and detector-row width to include the tails.')}</p>
+  </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はT、検出器列幅、焦点ぼけ幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain includes the tails from T, detector-row width and focal blur.')}</p>
   <p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算式と適用範囲','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
   if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('取得範囲の判定を再配列角360°からX線管角360°＋2Φへ修正しました。旧版とは候補・重み・SSPzが変わる場合があります。全ファン角を確認して再計算してください。','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
@@ -3887,7 +4000,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：選択した体軸補間モデル。0.01 mm格子への線形補間、偏差ビン幅0.002を用い、濃さは各ビンの割合の0.35乗です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: the selected axial interpolation model. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('応答・重み・条件をJSON保存','Export response, weights and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口で取得した理想点応答に候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz is obtained by selecting and linearly interpolating finite-aperture point measurements and averaging over angles. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('両コーンモデルの差は、共通幾何における候補選択・補間規則の差です。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The two cone models differ in candidate selection and interpolation under shared geometry. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('両コーンモデルの差は、共通幾何における候補選択・補間規則の差です。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The two cone models differ in candidate selection and interpolation under shared geometry. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：点の位置位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は点の位置からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('RRI相当の線形補間：計算方法と適用範囲','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -3909,11 +4022,11 @@ function initializeFdkUi(initial){
   initializeZffsUi(initial,modeChanged);
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
-  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkProfileRows(r).map(row=>row.join(',')).join('\r\n'));};
+  document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of shared ideal-point data, after T averaging'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
@@ -4090,6 +4203,8 @@ const WEB_DEFAULT_PARAMS = Object.freeze({
   ...DEFAULT_PARAMS,
   channelWidth: 0.58,
   channelApertureMm: 0.58,
+  focalSizeMm: 1.2,
+  focalSourceDetectorMm: 1070,
   detectorModel: "finite-channel",
   thicknessMapping: "configured-rectangular",
 });
@@ -4170,7 +4285,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.12 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.13 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4220,6 +4335,8 @@ function readParams() {
     rowWidth: Number(data.get("rowWidth")),
     channelWidth: Number(data.get("channelWidth")),
     channelApertureMm: Number(data.get("channelApertureMm")),
+    focalSizeMm: Number(data.get("focalSizeMm")),
+    focalSourceDetectorMm: Number(data.get("focalSourceDetectorMm")),
     detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
     sourceRadius: Number(data.get("sourceRadius")),
@@ -4249,6 +4366,7 @@ function writeParams(params) {
 }
 
 function updateInputDecorations() {
+  syncSharedFocalControls();
   const thickness=Number(form.elements.namedItem('sliceThicknessMm').value);
   form.elements.namedItem('filterWidthMm').value=thickness;
   const average=document.getElementById('fdk-axialAverageMm');if(average)average.value=thickness;
@@ -4265,9 +4383,11 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 12,
+    v: 13,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
+    ff: params.focalSizeMm,
+    fd: params.focalSourceDetectorMm,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -4308,6 +4428,10 @@ function paramsFromUrl() {
     rowWidth: get("d", DEFAULT_PARAMS.rowWidth),
     channelWidth: get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelWidth)),
     channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelApertureMm))),
+    // Missing focus parameters identify historical point-focus conditions.
+    focalSizeMm: get("ff", 0),
+    focalSourceDetectorMm: get("fd", query.has('zffs_m')||query.get('zffs')==='1'
+      ? get('zffs_m',1072/600)*get('R',DEFAULT_PARAMS.sourceRadius) : 1070),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
@@ -7492,6 +7616,10 @@ const initial = paramsFromUrl() ?? (() => {
       ...DEFAULT_PARAMS, ...stored,
       channelWidth: stored.channelWidth ?? DEFAULT_PARAMS.channelWidth,
       channelApertureMm: stored.channelApertureMm ?? stored.channelWidth ?? DEFAULT_PARAMS.channelApertureMm,
+      focalSizeMm: stored.focalSizeMm ?? 0,
+      focalSourceDetectorMm: stored.focalSourceDetectorMm
+        ?? ((stored.zFfsMagnification!=null||stored.zFfsEnabled)
+          ? (stored.zFfsMagnification??1072/600)*(stored.sourceRadius??DEFAULT_PARAMS.sourceRadius) : 1070),
       zFfsEnabled: false,
     };
   }

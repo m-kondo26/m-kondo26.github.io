@@ -32,6 +32,7 @@ function initializeAxialMovie(after){
   </div>
   <p id="axial-movie-detail">${fdkText('重みの点をクリックすると、同じデータの使用内訳を表示します。','Click a weight marker to inspect both roles of the same datum.')}</p>
   <article class="chart-card axial-movie-ssp"><h3>${fdkText('（c）同じ開始角度のモデルSSPz：幅T全体の平均化後','(c) Model SSPz at the same start angle: after the complete T average')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-profile" width="1200" height="540"></canvas></div><button type="button" class="secondary" id="axial-movie-profile-png" disabled>${fdkText('600 dpi PNG保存','Save 600-dpi PNG')}</button></article>
+  <p id="axial-movie-acquisition-note"></p>
   <p id="axial-movie-note"></p>
   <button type="button" class="secondary" id="axial-movie-apply" disabled>${fdkText('この開始角度をほかの図にも表示','Show this start angle in the other figures')}</button>
   <details class="reading-details"><summary>${fdkText('図の読み方','How to read the animation')}</summary><p>${fdkText('赤線は平均化の中心、青線は幅T内を動く断面です。（b）は下端から青線までの重みを、全幅Tを分母として積算します。終端で既存の合計重みと一致します。（c）は途中の積算値ではなく、全幅で平均化した最終SSPzです。全周の各補間対象方向を表示し、同じデータが実データ側・対向側として再利用される場合も示します。応答は全方向で平均するため、表示を全周に展開してもSSPzは変わりません。','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Every output direction is shown, including reuse of the same datum in direct and complementary roles. Averaging over all directions preserves the SSPz.')}</p><p>${fdkText('図の候補点は表示用に角度を抜粋しています。SSPzは設定した全取得ビューで計算した結果です。幅Tの矩形平均化は本モデルの仮定であり、実機固有の重みを示すものではありません。開始角度の再生は異なる撮影条件の比較であり、1回の撮影中の管球回転を再現した動画ではありません。','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
@@ -208,6 +209,11 @@ function renderAxialMovie(){
   renderAxialAngleReading(frame);
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
   drawAxialMovieProfile(el('profile'));
+  const focus=c.focalSizeMm??0;
+  el('acquisition-note').textContent=(focus>0
+    ?fdkText('取得応答に体軸方向の有限焦点を適用：','Finite axial focus applied to acquired data: ')+`${focus.toFixed(2)} mm. `
+    :fdkText('点焦点で計算。','Point-focus calculation. '))
+    +fdkText('候補点は列中心、マーカーの濃さは補間重みです。SSPzには、各取得データの検出器開口と焦点の応答を反映しています。','Candidate markers show row centres and interpolation weights. SSPz also includes each acquired datum’s detector-aperture and focal response.');
   el('detail').textContent=fdkText('（b）の点をクリックすると、同じデータの使用内訳を表示します。','Click a marker in (b) to inspect both roles of that datum.');
 }
 function drawAxialMovieProfile(canvas,index=axialMovie.index){

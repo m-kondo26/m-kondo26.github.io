@@ -158,7 +158,17 @@
     "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-18.12",
+  "webBuildVersion": "2026-09-18.13",
+  "finiteFocalAcquisition": {
+    "version": "2026-09-18.1",
+    "responseVersion": "2026-09-18.8",
+    "method": "FOCAL_BLUR_METHOD.md",
+    "newBrowserFocalSizeMm": 1.2,
+    "newBrowserSourceDetectorMm": 1070,
+    "legacyMissingFocalSizeMm": 0,
+    "operator": "Unit-integral uniform effective axial source integrated in each acquired detector cell before rebinning and interpolation; mean-focus candidate geometry retained.",
+    "scope": "Axial focal distribution only. Shared detector distance with z-FFS. Parallel comparator uses constant isocentre-matched blur. No transverse focal blur or target-angle-dependent apparent focal shape."
+  },
   "selectedProfileDisplay": "The final full-width selected-angle SSPz appears once in playback panel (c), with FWHM, FWTM and a 600-dpi PNG export keyed to the movie angle. Section 3 contains the all-360 overlay only. Numerical profiles and exports are unchanged.",
   "threeDimensionalFbp": {
     "version": "2026-09-17.4",

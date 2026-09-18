@@ -77,6 +77,14 @@
         <label>Source-to-isocenter distance <span class="unit">mm</span>
           <input id="sourceRadius" name="sourceRadius" type="number" min="100" max="2000" step="1" value="600">
         </label>
+        <label>Source–detector distance <span class="unit">mm</span>
+          <input id="focalSourceDetectorMm" name="focalSourceDetectorMm" type="number" min="601" max="6000" step="1" value="1070">
+          <small class="field-help">Shared distance for finite-focal blur and z-FFS geometry.</small>
+        </label>
+        <label>Effective axial focal size <span class="unit">mm</span>
+          <input id="focalSizeMm" name="focalSizeMm" type="number" min="0" max="5" step="0.1" value="1.2">
+          <small class="field-help">The default 1.2 mm follows Fig.6.6. Enter 0 for a point-focus comparison.</small>
+        </label>
         <label>Transaxial position: radial distance from isocenter <span class="unit">mm</span>
           <input id="radius" name="radius" type="number" min="0" max="250" step="1" value="100">
           <small class="field-help">A radius of 250 mm is the geometric edge of a 500-mm-diameter field of view (FOV).</small>
@@ -487,10 +495,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-18.12 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-18.13 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-18.12"></script>
-  <script src="app-bundle-en.js?v=2026-09-18.12"></script>
+  <script src="worker-source-en.js?v=2026-09-18.13"></script>
+  <script src="app-bundle-en.js?v=2026-09-18.13"></script>
 </body>
 </html>

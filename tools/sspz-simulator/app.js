@@ -12,6 +12,8 @@ const WEB_DEFAULT_PARAMS = Object.freeze({
   ...DEFAULT_PARAMS,
   channelWidth: 0.58,
   channelApertureMm: 0.58,
+  focalSizeMm: 1.2,
+  focalSourceDetectorMm: 1070,
   detectorModel: "finite-channel",
   thicknessMapping: "configured-rectangular",
 });
@@ -92,7 +94,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.12 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.13 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -142,6 +144,8 @@ function readParams() {
     rowWidth: Number(data.get("rowWidth")),
     channelWidth: Number(data.get("channelWidth")),
     channelApertureMm: Number(data.get("channelApertureMm")),
+    focalSizeMm: Number(data.get("focalSizeMm")),
+    focalSourceDetectorMm: Number(data.get("focalSourceDetectorMm")),
     detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
     sourceRadius: Number(data.get("sourceRadius")),
@@ -171,6 +175,7 @@ function writeParams(params) {
 }
 
 function updateInputDecorations() {
+  syncSharedFocalControls();
   const thickness=Number(form.elements.namedItem('sliceThicknessMm').value);
   form.elements.namedItem('filterWidthMm').value=thickness;
   const average=document.getElementById('fdk-axialAverageMm');if(average)average.value=thickness;
@@ -187,9 +192,11 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 12,
+    v: 13,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
+    ff: params.focalSizeMm,
+    fd: params.focalSourceDetectorMm,
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
@@ -230,6 +237,10 @@ function paramsFromUrl() {
     rowWidth: get("d", DEFAULT_PARAMS.rowWidth),
     channelWidth: get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelWidth)),
     channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelApertureMm))),
+    // Missing focus parameters identify historical point-focus conditions.
+    focalSizeMm: get("ff", 0),
+    focalSourceDetectorMm: get("fd", query.has('zffs_m')||query.get('zffs')==='1'
+      ? get('zffs_m',1072/600)*get('R',DEFAULT_PARAMS.sourceRadius) : 1070),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
@@ -3414,6 +3425,10 @@ const initial = paramsFromUrl() ?? (() => {
       ...DEFAULT_PARAMS, ...stored,
       channelWidth: stored.channelWidth ?? DEFAULT_PARAMS.channelWidth,
       channelApertureMm: stored.channelApertureMm ?? stored.channelWidth ?? DEFAULT_PARAMS.channelApertureMm,
+      focalSizeMm: stored.focalSizeMm ?? 0,
+      focalSourceDetectorMm: stored.focalSourceDetectorMm
+        ?? ((stored.zFfsMagnification!=null||stored.zFfsEnabled)
+          ? (stored.zFfsMagnification??1072/600)*(stored.sourceRadius??DEFAULT_PARAMS.sourceRadius) : 1070),
       zFfsEnabled: false,
     };
   }

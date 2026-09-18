@@ -1,4 +1,4 @@
-import {detectorCellMembership} from './detector-aperture.js';
+import {detectorCellMembership,detectorAxialFocusRows,focalBlurMetadata} from './detector-aperture.js';
 import {fdkSlabMean,fdkSlabCoefficients,fdkWidth} from './fdk-core.js';
 import {zffsState,zffsShift,zffsRowGeometry,zffsRebinStencil,ZFFS_VERSION} from './zffs-geometry.js';
 
@@ -12,6 +12,11 @@ export function zffsPointProjection(c,view,zObject){
   const wRay=R*(zObject-sourceZ)/L,w=wRay+shift/c.zFfsMagnification;
   const aperture=c.channelApertureMm??c.channelWidth;
   const js=detectorCellMembership(transverse,c.channelWidth,aperture,c.channels);
+  if(c.focalSizeMm>0){
+    const ks=detectorAxialFocusRows(c,w,wRay,L),data=new Map();
+    for(const [j,a] of js)for(const [k,signal] of ks)data.set(k+':'+j,signal*a);
+    return {data,transverse,w,wRay,sourceZ};
+  }
   const ks=detectorCellMembership(w,c.rowWidth,c.rowWidth,c.rows);
   const signal=Math.hypot(R,wRay)/(L*L*(aperture/R)*c.rowWidth);
   const data=new Map();for(const [j,a] of js)for(const [k,b] of ks)data.set(k+':'+j,signal*a*b);
@@ -83,7 +88,7 @@ export async function computeZffsResponse(c,hooks={}){
   if(!counts.every(v=>v===nv))throw Error('AXIAL_INTERNAL: z-FFS angular count mismatch');
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
   const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  const model={version:'2026-09-17.7',kind:'axial-'+c.axialRule,zFfsVersion:ZFFS_VERSION,algorithm:'reduced axial interpolation response with alternating axial focal positions',geometry:'fixed cylindrical detector; ideal pure axial focal switching',rebinning:'within each focal state separately; never interpolate alternating states as one detector trajectory',interpolation:c.axialRule==='rri'?'normalize row tents over both directions and both focal states':'nearest bracketing pair across both directions and focal states',filter:'no transverse ramp or FBP',angularWeight:'one slice-centred turn; paired angular mean',profileReadout:'fixed ideal point; moving evaluation plane; no image reconstruction',axialAverageMm:c.axialAverageMm,viewsDefinition:'viewSamples is total physical acquisitions per turn; half at each focal position',scientificScope:'ideal acquisition-model extension; not a scanner implementation or shifted backprojection'};
+  const model={version:'2026-09-18.8',focalBlur:focalBlurMetadata(c),kind:'axial-'+c.axialRule,zFfsVersion:ZFFS_VERSION,algorithm:'reduced axial interpolation response with alternating axial focal positions',geometry:'fixed cylindrical detector; ideal pure axial focal switching',rebinning:'within each focal state separately; never interpolate alternating states as one detector trajectory',interpolation:c.axialRule==='rri'?'normalize row tents over both directions and both focal states':'nearest bracketing pair across both directions and focal states',filter:'no transverse ramp or FBP',angularWeight:'one slice-centred turn; paired angular mean',profileReadout:'fixed ideal point; moving evaluation plane; no image reconstruction',axialAverageMm:c.axialAverageMm,viewsDefinition:'viewSamples is total physical acquisitions per turn; half at each focal position',scientificScope:'ideal acquisition-model extension; not a scanner implementation or shifted backprojection'};
   const audit={definition:'Actual acquired cell weights including within-focus angular/channel rebinning and T averaging; multiply by db and raw cell value to reproduce centre response.',db:1/half,axialAverageMm:c.axialAverageMm,centerValue:raw[(raw.length-1)/2],samples:[...physical.values()]};
   const out={config:c,z,zObject,raw,min,max,baseline,model,volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'zffs-acquired',counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit:hooks.profileOnly?null:audit,rebinnedWeightAudit:hooks.profileOnly?null:[...rebinned.values()],acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerTurn:nv,viewsPerFocusPerTurn:nv/2,rebinnedPairsPerSlice:half}};
   if(!(max>baseline))return {...out,geometryOnly:true,reason:'no-acquired-point-response',profiles:[]};
