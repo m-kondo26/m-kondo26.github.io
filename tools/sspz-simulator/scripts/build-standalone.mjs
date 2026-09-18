@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { finalizeEnglishHtml, translateEnglishSource } from "./english-replacements.mjs";
+import { buildMethods } from "./build-methods.mjs";
 
 const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");
@@ -45,4 +46,5 @@ await writeFile(new URL("../worker-en.js", import.meta.url), englishWorkerBundle
 await writeFile(new URL("../worker-source-en.js", import.meta.url), englishWorkerSource, "utf8");
 await writeFile(new URL("../app-bundle-en.js", import.meta.url), englishAppBundle, "utf8");
 await writeFile(new URL("../index-en.html", import.meta.url), englishHtml, "utf8");
+await buildMethods();
 console.log("Built Japanese and English bundles for direct file:// and HTTP use.");

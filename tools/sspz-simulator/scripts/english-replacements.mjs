@@ -738,6 +738,8 @@ export function finalizeEnglishHtml(source) {
     )
     .replace('href="https://m-kondo26.github.io/ja/#contact"', 'href="https://m-kondo26.github.io/#contact"')
     .replace('href="mori-static.html"', 'href="mori-static.html?lang=en"')
+    .replace(/href="methods\.html\?topic=([a-z-]+)"/g, 'href="methods.html?topic=$1&amp;lang=en"')
+    .replace('計算式・仮定・適用範囲', 'Equations, assumptions and scope')
     .replace(/src="worker-source\.js(\?[^\"]*)?"/g, 'src="worker-source-en.js$1"')
     .replace(/src="app-bundle\.js(\?[^\"]*)?"/g, 'src="app-bundle-en.js$1"');
 }

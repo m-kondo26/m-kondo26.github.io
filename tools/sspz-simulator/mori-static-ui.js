@@ -5,6 +5,7 @@ const query=new URLSearchParams(location.search),en=query.get('lang')==='en',tr=
 document.documentElement.lang=en?'en':'ja';
 document.title=tr('寝台静止時の再構成位置とSSPz','Reconstruction positions and SSPz with a stationary table');
 document.querySelectorAll('[data-ja]').forEach(el=>el.textContent=en?el.dataset.en:el.dataset.ja);
+$('static-method-link').href=`methods.html?topic=static${en?'&lang=en':''}`;
 if(en){document.querySelector('.controls').setAttribute('aria-label','Conditions');for(const [id,label] of Object.entries({orbit:'Source, rotation axis and evaluation point',geometry:'Detector rows and selected reconstruction plane',instant:'Per-angle response and row contributions',accumulation:'Partial sum and completed full-turn SSP'}))$(id).setAttribute('aria-label',label);}
 $('back').textContent=tr('← SSPzシミュレーション','← SSPz simulator');$('back').href=en?'index-en.html':'./';
 if(query.has('main')){const back=new URL($('back').href);back.search=query.get('main');$('back').href=back.href;}

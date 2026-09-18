@@ -1,0 +1,47 @@
+<p>Axial flying focal spot (z-FFS) switches the source centre between positions A and B across acquisitions. It is off by default. Enabling it changes acquired responses, candidate geometry, rebinning, interpolation weights, and model SSPz together. It does not simply add points to a diagram.</p>
+<p>This is an idealized model of purely axial focal motion with a fixed cylindrical detector. It does not reproduce scanner-specific focal motion or image reconstruction.</p>
+
+<h2>Enabling z-FFS does not increase the total view count</h2>
+<p>V is the total number of actual acquisitions per turn. Alternating A and B requires an even V and gives V/2 acquisitions to each focal position. No extra exposure is created at the same angle. To compare at the same number of views per focal position as the off condition, explicitly double the total view count V.</p>
+<p>New/reset conditions use z-FFS off, the shared effective focal size of 1.2 mm, and nominal source-to-detector distance D = 1070 mm. A finite focus is integrated within each exposure. Focal size zero retains the historical point-source calculation, and conditions stored in old URLs are preserved. <a href="methods.html?topic=focus&amp;lang=en">Blur from finite focal size</a> and displacement of the focal centre are separate effects.</p>
+
+<h2>Acquisition geometry</h2>
+<p>Let N be the row count, d the isocentre-scaled row spacing, p the beam pitch, h = Ndp the table feed per turn, and φ the start angle. Acquisition index v retains negative indices and previous/next turns. Magnification is M = D/R. Parameter q is the one-sided isocentre focal offset in row spacings; its default is 0.25.</p>
+<pre class="equation"><code>β_v = φ + 2πv/V
+b_v = hv/V
+δ = qd / (1 − 1/M)
+δ_v = −δ (even v: focus A)
+δ_v = +δ (odd v: focus B)</code></pre>
+<p>For an evaluation point at (r, 0), transverse ray length L<sub>v</sub> and the axial position z<sub>vk</sub> of row k projected onto that point are given below. Row index k runs from 0 to N−1.</p>
+<pre class="equation"><code>L_v = √[(R cosβ_v − r)² + (R sinβ_v)²]
+z_vk = b_v + δ_v(1 − L_v/D)
+       + [k − (N−1)/2] d L_v/R</code></pre>
+<p>At isocentre, hypothetical A and B positions at the same nominal angle and table position are separated by d/2 under the default setting. Actual A/B acquisitions also differ in angle and table position. Away from isocentre, row spacing and focal separation change with L<sub>v</sub>; uniformly doubled sampling density is not assumed.</p>
+<p>Fig. 4 and Eqs. (19)–(22) of <a href="https://doi.org/10.1118/1.2828403">Mori, “Antialiasing backprojection for helical MDCT” (2008)</a> describe alternating focal positions and nonuniform sampling. Its example used R = 600 mm and D = 1072 mm. Current new conditions derive M from the shared D = 1070 mm based on Fig. 6.6 of <cite>CTとMRI</cite>; historical z-FFS distances are preserved. The paper's shifted backprojection, image filtering, and artifact-suppression results are not implemented here.</p>
+
+<h2>Acquired point response</h2>
+<p>The model uses the same unit-integral ideal point and finite detector apertures as the off condition. No sphere diameter is introduced. For object axial position z<sub>o</sub> and active transverse aperture a, the point-source expressions are:</p>
+<pre class="equation"><code>γ = atan2(−r sinβ_v, R − r cosβ_v)
+w_ray = R(z_o − b_v − δ_v) / L_v
+w_det = w_ray + δ_v/M
+P = √(R² + w_ray²) / [L_v² (a/R) d]</code></pre>
+<p>P is assigned when the ray enters the cell. Row membership uses w<sub>det</sub>, while the ray-dependent factor uses w<sub>ray</sub>; the detector does not move with the source. With a finite focus, membership and response are integrated over its support before rebinning. Transverse channel spacing and active aperture are separate common inputs. No response is assigned to a detector gap.</p>
+
+<h2>From rebinning to SSPz</h2>
+<ol>
+<li>Separate A and B, then rebin each focal state to common parallel directions using neighbouring views of that same focus (view-index stride two) and neighbouring channels.</li>
+<li>Apply the selected candidate and weighting rule to four row families: A/direct, B/direct, A/opposing, and B/opposing.</li>
+<li>Move the evaluation plane past the fixed point object, then use the common width-T rectangular average, normalization, and width measurement on numerical samples.</li>
+</ol>
+<p>Interpolating adjacent views without separating A and B would treat focal switching as a single continuous row trajectory. Rebinning therefore stays within each focal state. Geometry is evaluated at the continuous source angle for the target ray, but linear rebinning at a finite view count remains an approximation.</p>
+<p>The merged model selects the nearest bracketing samples from the union of the four families and shares weights between exactly coincident candidates. The RRI-equivalent model uses linear row weights and normalizes over available families. This four-family extension is a definition of this simulator, not Mori's reconstruction algorithm. At exactly zero focal displacement, coincident trajectories collapse to the original full-view rebinning grid, recovering the off response to floating-point precision.</p>
+<p>Candidate support uses the common finite source-angle window of 360° + 2Φ, where Φ is the full fan opening. Every contributing original view in a rebinning stencil must lie within that window. When multiple turns of a direction family qualify, they enter the same interpolation rule. See <a href="methods.html?topic=axial&amp;lang=en">Axial interpolation and model SSPz</a> for details.</p>
+
+<h2>Reading the diagrams and exports</h2>
+<p>The diagrams show focus A, focus B, A+B, and selected acquired-data weights on common axes. Their angles are physical acquisition angles, not rebinned angles. The origin β<sub>ref</sub> is the start of the slice-centred acquisition window. Displayed angles fold into 0–360°, while original acquisition and turn indices are retained. Angular viewports are 10°, 60°, and 360°.</p>
+<p>Acquired-data weights are traced back through within-focus angle/channel interpolation and width-T averaging. Each plotted row weight sums channel coefficients and includes angular averaging. The intensity maximum is stated below the panel. These are weights, not signal contributions or SSPz heights.</p>
+<p>CSV, Excel, and JSON retain individual cell coefficients, focal state, row, channel, original acquisition index, actual source position, and acquired value. Multiplying cell coefficients by the angular averaging factor and acquired values, then summing all acquisitions, reproduces the unnormalized centre response. This sum includes data outside a zoomed viewport. JSON also retains intermediate rebinned weights. PNG uses the screen renderer, and numerical exports retain unrounded values.</p>
+
+<h2>What the checks establish</h2>
+<p>Checks cover independent Cartesian ray geometry, focal separation at isocentre, A/B parity for negative acquisition indices, within-focus rebinning, four-family weights, direct response calculation, off and zero-displacement equivalence, comparisons across 4/80/160/320 rows, and closure from acquired-cell weights to the response. They establish implementation consistency within the declared model.</p>
+<p>Exposure duration, anode-related radial source motion, noise, object motion, and manufacturer-specific timing are omitted. These checks are not full 3D FBP or image reconstruction, proof of artifact suppression, or a convergence assessment of manuscript calculation conditions. At fixed total V, each focus has half as many angular samples; effects of that sampling change must not be mistaken for an intrinsic benefit or penalty of focal switching.</p>

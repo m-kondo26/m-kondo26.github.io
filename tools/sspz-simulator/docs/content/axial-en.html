@@ -1,0 +1,86 @@
+<p class="lead">This simulator relates the spatial arrangement of acquired data to candidate selection and longitudinal interpolation through unwrapped diagrams and a model SSPz. The two cone models compare selection and interpolation rules using a shared acquisition model.</p>
+
+<h2>What the model calculates</h2>
+<p>The object is an ideal point at a fixed location. Its acquired response includes the finite detector aperture and, when configured, axial focal blur. Rowwise fan-to-parallel rebinning, axial interpolation, angular averaging, and a rectangular average of width T produce the model SSPz, also called the axial interpolation response. No finite sphere or bead-measurement procedure is included.</p>
+<p>The current public model does not calculate transverse ramp filtering, FBP preweighting or backprojection weights, or an image volume. Using three-dimensional cone-ray geometry does not itself perform three-dimensional image reconstruction. This response should not be interpreted as Feldkamp reconstruction or as a particular scanner's complete 2D or 3D reconstruction.</p>
+
+<h2>Shared acquisition conditions</h2>
+<table>
+  <caption>Main quantities shared by the two cone models</caption>
+  <thead><tr><th scope="col">Quantity</th><th scope="col">Meaning</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">N, d, p</th><td>Detector row count, isocentre-scaled row width, and beam pitch. Table feed per turn is h = Ndp. This idealized detector uses the same d for axial active aperture and row spacing.</td></tr>
+    <tr><th scope="row">Transaxial aperture and channel spacing</th><td>Both are specified at isocentre but are separate quantities. Aperture is the active acquisition width; spacing is the distance between channel centres. Signal falling into inactive gaps is not redistributed to neighbouring cells.</td></tr>
+    <tr><th scope="row">R, r</th><td>Source–rotation-centre distance and the target's distance from the rotation centre. The fixed transverse target is at (r, 0).</td></tr>
+    <tr><th scope="row">V</th><td>Actual acquired views per turn. This is distinct from the number of displayed markers or the 360 start-angle conditions.</td></tr>
+    <tr><th scope="row">Φ, γ</th><td>Φ is the full fan opening; γ is an individual ray's fan angle. The default Φ of 50° is an example model condition, not a scanner specification.</td></tr>
+    <tr><th scope="row">T</th><td>Configured slice thickness, used here as the longitudinal rectangular averaging width. The output FWHM is not fitted to T.</td></tr>
+  </tbody>
+</table>
+<p>See <a href="methods.html?topic=aperture&amp;lang=en">Detector aperture and acquired data</a> for aperture and spacing definitions, and <a href="methods.html?topic=focus&amp;lang=en">Finite focus and axial blur</a> for focal-size handling. The optional nondivergent reference uses a different acquisition assumption; it is not an additional fan-beam image reconstruction.</p>
+
+<h2>Angles and unwrapped coordinates</h2>
+<p>β is the source angle, θ the rebinned angle, and β₀ the reference phase. The model's sign convention gives β = θ + γ. Directions θ and θ + 180° share the same transverse line direction, but their different axial positions mean that their three-dimensional rays need not be collinear.</p>
+<pre><code>t = −x sin θ + y cos θ
+γ = asin(t / R)
+β = θ + γ
+L = √(R² − t²) − x cos θ − y sin θ
+zᵢ(θ) = h(β − β₀) / (2π) + (i − (N − 1)/2)dL/R
+i = 0, …, N − 1</code></pre>
+<p>L is the transverse distance from source to target. The projected row-centre spacing at that target is dL/R. Rebinning linearly reads neighbouring acquired angles and transaxial channels while retaining detector-row identity. This rebinning approximation is shared by both models.</p>
+<p>Under this convention, the opposite direction's source angle is β′ = β + 180° − 2γ. A source defining positive fan angle in the opposite direction writes a plus sign before 2γ. Angle conventions must therefore be matched before comparing formulas. Reversing the vertical direction of a plot alone does not change a formula's sign.</p>
+<p>The diagram uses a common vertical axis for the interpolation direction. Direct-side trajectories and markers use solid lines and circles; complementary-side data use dashed lines and triangles. A triangle's own rebinned angle differs by 180° from the displayed interpolation direction. Data from different turns, rows, or focal states retain separate identities even when their plotted positions overlap. The vertical zero is an offset from the display reference, not physical source angle zero.</p>
+
+<h2>The acquired-source range for candidate selection</h2>
+<p>For evaluation-plane position z, the centre of the source-angle interval is βc = β₀ + 2πz/h. The full fan opening Φ defines the finite interval:</p>
+<pre><code>βc − (180° + Φ) ≤ β ≤ βc + (180° + Φ)
+Total acquired-source span = 360° + 2Φ</code></pre>
+<p>For example, Φ = 50° gives 460°. Φ is the full opening, not the half-fan angle or an individual ray angle γ. Changing target radius r does not change Φ. The nondivergent reference uses an effective Φ of zero.</p>
+<p>This envelope follows the classical opposing-beam interpolation description of a central turn plus a full-fan interval on either side. Applying it to this reduced multirow response is an explicit modelling choice. It is not a data-sufficiency theorem shared by all multislice reconstruction algorithms.</p>
+<p>All neighbouring acquired views with nonzero rebinning coefficients must also lie within the interval. Endpoints are not rounded outward to acquire extra views. Within this finite set, there is no additional axial-distance or T-based cutoff. Missing bracketing support is reported explicitly. Increasing pitch does not authorize an unlimited-turn search.</p>
+<p><strong>The acquisition interval and the diagram's 0–360° axis are different quantities.</strong> The diagram folds the direct/complementary relation into one turn at every interpolation direction. It expands the numerical opposite-direction pairs into both directions; it does not imply half-scan image reconstruction from only 180°.</p>
+
+<h2>The two selection and interpolation rules</h2>
+<h3>Merged bracketing pair</h3>
+<p>The model combines row centres from both directions within the source interval and selects the nearest positions below and above evaluation plane z. For selected positions zlo and zhi, the linear coefficients are:</p>
+<pre><code>wlo = (zhi − z) / (zhi − zlo)
+whi = (z − zlo) / (zhi − zlo)</code></pre>
+<p>When several candidates coincide at an endpoint, its coefficient is divided equally. This is the current model definition. It does not always prioritize direct-side data or optimize the selection for noise.</p>
+<h3>RRI-equivalent row interpolation</h3>
+<p>RRI means row-to-row interpolation. For each supported direction and turn, fractional row coordinate f gives row i the compact weight max(0, 1 − |f − i|). These weights are normalized over the acquired rows. When two directions both provide complete brackets, this equals the mean of the two ordinary linear interpolants. More than two direction/turn groups may fall within the source interval.</p>
+<p>Omitting unavailable rows and renormalizing at detector edges is an explicitly added model policy. The numerical API also provides a strict policy requiring complete brackets in every group receiving nonzero weight. A single row is allowed, but a row tent without support is not extrapolated.</p>
+<p>The RRI-equivalent rule refers to the linear comparison method discussed by Hsieh and colleagues. Their quadratic CBA, or conjugate cone-beam algorithm, is not implemented here. The merged rule refers to Hu's neighbouring-sample interpolation concept. <strong>Differences between these outputs are selection/interpolation differences under common geometry. They do not isolate geometry alone or establish a general 2D-versus-3D image-reconstruction effect.</strong></p>
+
+<h2>From candidate weights to a model SSPz</h2>
+<p>The point and its acquired data remain fixed while evaluation-plane position z moves. Candidates are reselected at each position. Their coefficients multiply the acquired responses Pk, followed by angular averaging. A rectangular average of this response over width T gives the unnormalized model SSPz.</p>
+<pre><code>A(z) = (2/V) Σopposite-direction pairs [Σk wk(z) Pk]
+B(z) = (1/T) ∫[z − T/2, z + T/2] A(u) du</code></pre>
+<p>This does not stretch a single central-plane weight pattern. The calculation accumulates candidates and coefficients reselected at every position u within T. Integration is exact for the piecewise-linear representation of the sampled A(u), not necessarily for the underlying continuous acquisition/interpolation process.</p>
+<p>With finite focal width, each acquired cell's response is averaged over the source while the detector stays fixed, before rebinning and candidate selection. It is not smoothing of the completed SSPz. Candidate centres and nominal interpolation coefficients use the mean focal position. Zero focal width retains the point-focus calculation.</p>
+<p>By default, each curve is independently normalized to minimum zero and maximum one; peak-only normalization is optional. FWHM and FWTM use linear crossings between native calculation samples. Neither width is fitted to T. The calculation checks response tails and width crossings so that a cropped response is not silently accepted as a complete profile.</p>
+
+<h2>Reading the diagrams and playback</h2>
+<p>Background trajectories show row positions; markers show selected points; intensity represents interpolation weight. Direct-side, complementary-side, and combined views filter roles from the same result. They are not new calculations whose weights should be added together.</p>
+<ul>
+  <li><strong>Constructing the diagram:</strong> the start phase stays fixed while successive acquired source angles reveal more row trajectories. A partially drawn diagram does not trigger a new SSPz calculation.</li>
+  <li><strong>Moving the plane across T:</strong> the evaluation plane moves from −T/2 to +T/2. The panels show its selected candidates and the accumulated weights up to that plane, always divided by the full T. The final frame reproduces the full-window weights. The SSPz panel shows the final full-direction, full-T profile throughout.</li>
+  <li><strong>Changing start angle:</strong> 360 conditions compare tube start angles in 1° steps for a fixed object. This is distinct from tube rotation during one acquisition.</li>
+</ul>
+<p>The standard candidate-marker view samples at most about 72 directions around the full turn; at 2400 acquired views it displays 60 directions. “30° detail: no subsampling” retains every native output direction within the selected interval so that row transitions can be inspected. The lower boundary is included and the upper boundary excluded. This setting applies to 2B/2C and 2B image exports. Model SSPz calculations and numerical exports continue to use every computed direction.</p>
+<p>Increasing N at fixed row width d and pitch p increases feed Ndp, but leaves local row spacing dL/R unchanged. The number of selected points near a plane therefore need not grow proportionally to row count. Row transitions may nevertheless become faster, so a subsampled angular display can miss intermediate selections. An absent marker alone does not establish that a datum was excluded from calculation.</p>
+
+<h2>Verification and applicability</h2>
+<p>Numerical exports retain unrounded values and candidate identities. Multiplying each coefficient by its acquired response and angular-mean factor, then summing, reproduces the unnormalized response. Opposite-direction-pair and full-direction lists are alternative representations of the same response and must not be added together.</p>
+<p>Optional <a href="methods.html?topic=zffs&amp;lang=en">axial focal switching (z-FFS)</a> is OFF by default. When enabled, acquisition, rebinning, candidate selection, and SSPz retain distinct focal states. Focal switching is separate from blur due to finite focal size.</p>
+<p>Checks cover independent candidate enumeration, direct response summation, trajectory correspondence, full-direction display, and source support across 1–320 rows. These establish consistency between the declared model and its implementation. They do not validate clinical scanner reconstruction, cone-beam data sufficiency, or image artifacts. Publication conditions require separate convergence checks for acquired-view count and axial calculation spacing.</p>
+<p>Historical finite-sphere, full-FBP, and finite shifted-sum results are not interchangeable with the current response. Check the model and acquisition conditions before comparing earlier numerical results or manuscript figures.</p>
+
+<h2>Primary references</h2>
+<ol class="references">
+  <li>Hsieh J et al. <cite>Conjugate cone-beam reconstruction algorithm.</cite> Optical Engineering. 2007;46:067001. <a href="https://doi.org/10.1117/1.2746866">doi:10.1117/1.2746866</a>. Reference for rowwise rebinning and the linear RRI comparison.</li>
+  <li>Hu H. <cite>Multi-slice helical CT: Scan and reconstruction.</cite> Medical Physics. 1999;26:5–18. <a href="https://doi.org/10.1118/1.598470">doi:10.1118/1.598470</a>.</li>
+  <li>Taguchi K, Aradate H. <cite>Algorithm for image reconstruction in multi-slice helical CT.</cite> Medical Physics. 1998;25:550–561. <a href="https://doi.org/10.1118/1.598230">doi:10.1118/1.598230</a>. Reference for filter interpolation by averaging longitudinal interpolants. The current piecewise-linear integral is this model's numerical definition.</li>
+  <li>Toki Y. <cite>Computerized tomographic imaging method and apparatus utilizing data interpolation for helical scanning.</cite> <a href="https://patents.google.com/patent/EP0450152B1/en">EP0450152B1, Figs. 4–6</a>. Reference for source-angle support in classical opposing-beam interpolation.</li>
+  <li>Kudo H et al. <cite>Exact and approximate algorithms for helical cone-beam CT.</cite> Physics in Medicine and Biology. 2004;49:2913–2931. <a href="https://doi.org/10.1088/0031-9155/49/13/011">doi:10.1088/0031-9155/49/13/011</a>. Background on exact and approximate reconstruction; its exact reconstruction is not implemented here.</li>
+</ol>
+<p>Geometry formulas and image-reconstruction stages have also been checked against the supplied textbooks. The scanned books are not redistributed by this website.</p>

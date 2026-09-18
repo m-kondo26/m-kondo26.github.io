@@ -11,7 +11,7 @@ function initializeZffsUi(initial,changed){
   <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('回転中心での片側移動量 / 列間隔','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
   <p>${fdkText('固定した円筒検出器に対し、焦点を体軸方向だけに移動する理想モデルです。実機の設定値ではありません。回転中心から離れると、列間隔は一様に半分にはなりません。','An ideal model of pure axial focal motion relative to a fixed cylindrical detector, not scanner settings. Away from isocentre, the interlaced spacing is not uniformly halved.')}</p>
-  <a href="ZFFS_METHOD.md">${fdkText('計算方法と検証範囲','Method and verification scope')}</a> · <a href="https://doi.org/10.1118/1.2828403">Mori (2008)</a></details></div>`;
+  <a href="${fdkText('methods.html?topic=zffs','methods.html?topic=zffs&lang=en')}">${fdkText('計算方法と検証範囲','Method and verification scope')}</a> · <a href="https://doi.org/10.1118/1.2828403">Mori (2008)</a></details></div>`;
   document.getElementById('fdk-controls').prepend(box);
   const ref=document.createElement('li');ref.innerHTML=`<div class="reference-citation">Mori I. <a href="https://doi.org/10.1118/1.2828403" target="_blank" rel="noopener noreferrer">Antialiasing backprojection for helical MDCT.</a> <i>Medical Physics.</i> 2008;35:1065–1077.</div><p>${fdkText('図4・式（19）～（22）の焦点移動と標本配置を参照しました。純粋な体軸方向移動を仮定した追加モデルです。同報のシフト逆投影や実機のアーチファクト低減は再現していません。','Fig. 4 and Eqs. (19)–(22) motivate focal switching and sampling geometry. This extension assumes pure axial motion; it does not reproduce shifted backprojection or scanner artifact reduction.')}</p>`;document.querySelector('.reference-list').append(ref);
   document.getElementById('zffs-enabled').checked=initial.zFfsEnabled===true;

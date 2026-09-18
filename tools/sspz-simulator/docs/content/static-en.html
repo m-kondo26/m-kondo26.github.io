@@ -1,0 +1,71 @@
+<p>This calculation shows how the axial reconstruction position affects SSPz when the table is stationary. It separates detector-row geometry, linear interpolation between rows, distance weighting, and accumulation over one rotation.</p>
+<p><a href="mori-static.html?lang=en">Open reconstruction position and SSPz with a stationary table</a></p>
+
+<h2>What each curve represents</h2>
+<p>Each curve is the response of a fixed reconstruction plane at a position where one detector row projects onto the rotation axis. A 16-row configuration therefore provides 16 reconstruction positions. Within the calculation for one curve, the selected neighboring rows can change with projection angle. A curve is not the isolated contribution of one detector row.</p>
+<p>The reference is Mori et al., <cite>CT and MRI: Principles and System Technology</cite>, pp.72–74, Eq.6.34 and Figs.6.24–6.25. The book discusses the response in the context of Feldkamp backprojection. This implementation extracts an axial response model; it does not calculate the complete Feldkamp image reconstruction, including transverse ramp filtering and backprojection into an image volume.</p>
+
+<h2>Settings inherited from the main simulator</h2>
+<p>When opened through the main simulator, this page inherits the current number of rows N (1–320), row width d, source-to-isocentre distance R, source-to-detector distance D, effective axial focal-spot width, evaluation radius, views per rotation, and z step. The row width d serves as both row pitch and aperture width. The calculation evaluates N fixed reconstruction positions and compares the specified radius with the rotation centre.</p>
+<p>Table feed is fixed at zero. The main simulator's helical interpolation rule, rectangular averaging over T, finite transverse aperture and rebinning, and alternating focal positions (z-FFS) are not applied. This is an independent reference calculation available regardless of the main model selector. See the <a href="methods.html?topic=axial&amp;lang=en">axial interpolation response model</a> for the main calculation.</p>
+
+<h2>Reference conditions when no settings are supplied</h2>
+<p>The following defaults combine conditions reported in the book. Not all of them are restated for Fig.6.25, so they are not presented as a complete reproduction of that figure's numerical setup.</p>
+<table>
+  <thead><tr><th>Item</th><th>Reference setting</th><th>Source and scope</th></tr></thead>
+  <tbody>
+    <tr><td>Detector rows</td><td>16</td><td>Fig.6.25.</td></tr>
+    <tr><td>Axial row pitch and aperture</td><td>2 mm each at isocentre</td><td>The 2 mm value in Fig.6.25 is applied to ideal rows without gaps.</td></tr>
+    <tr><td>Evaluation radii</td><td>0, 80, and 160 mm</td><td>Fig.6.25.</td></tr>
+    <tr><td>Source-to-isocentre distance R</td><td>600 mm</td><td>Adopted from the example on p.54.</td></tr>
+    <tr><td>Source-to-detector distance D</td><td>1070 mm</td><td>Adopted from RF = 600 mm and RD = 470 mm on p.60.</td></tr>
+    <tr><td>Acquisition angles per rotation</td><td>900</td><td>Adopted from p.54, not established as the exact value used for Fig.6.25.</td></tr>
+    <tr><td>Effective axial focal width</td><td>1.2 mm</td><td>Adopted from the 1.2 × 1.2 mm specification in Fig.6.6 on p.60; represented as a uniform axial distribution.</td></tr>
+    <tr><td>Target angle</td><td>7°</td><td>Reference metadata from Fig.6.6. The already effective focal width is not multiplied by sin 7° again.</td></tr>
+    <tr><td>Detector geometry</td><td>An arc centred on the source</td><td>Row positions and apertures are projected according to the transverse distance to the evaluation position.</td></tr>
+    <tr><td>Displayed z-bin width</td><td>0.05 mm</td><td>A numerical display setting, not a finite test-object size or an additional z filter.</td></tr>
+  </tbody>
+</table>
+
+<h2>Row positions and projected blur widths</h2>
+<p>Distances are in mm. Let β be the source rotation angle and r the evaluation radius. The source z position is fixed at zero. In the equations, the row index k runs from 0 to N−1. The aperture a is specified at isocentre; this calculation uses a = d.</p>
+<pre><code>Source position                 Sβ = (R cosβ, R sinβ, 0)
+Transverse evaluation position  (r, 0)
+Transverse source distance      Lβ = √(R² + r² − 2Rr cosβ)
+Local scale                     αβ = Lβ / R
+Row centre at isocentre         qk = [k − (N−1)/2]d
+Local row centre                cβk = αβ qk
+Local detector aperture         aβ = αβ a
+Projected focal blur width      bβ = f |1 − Lβ/D|</code></pre>
+<p>Here f is the effective axial focal width. With the detector fixed, an axial source displacement t moves a ray by t(1−Lβ/D) at transverse distance Lβ. This gives bβ. At the rotation centre under the reference conditions, the detector aperture is 2 mm and the projected focal width is 1.2 × (1−600/1070), approximately 0.5271 mm.</p>
+<p>The finite focus is approximated by a uniform distribution on a fixed effective axial segment. The calculation does not include transverse focal blur, a two-dimensional spot on a tilted target, changes in apparent focus with viewing direction, or the heel effect. Row selection is not repeated at each focal position. See <a href="methods.html?topic=focus&amp;lang=en">finite focal-spot modelling</a> for the approximation.</p>
+
+<h2>Selecting rows around a reconstruction plane</h2>
+<p>Reconstruction plane j is fixed at Z = qj. At each angle, two neighboring projected row centres satisfying cβk ≤ Z ≤ cβ,k+1 are selected and assigned linear weights:</p>
+<pre><code>wβk   = (cβ,k+1 − Z) / (cβ,k+1 − cβk)
+wβ,k+1 = (Z − cβk) / (cβ,k+1 − cβk)</code></pre>
+<p>An exact match between a row centre and the reconstruction plane gives that row unit weight. Outside the outermost row centres, the nearest edge row is used with unit weight. This is an explicit model choice informed by the book's discussion of using inward data; the book does not specify every detail of the fallback operation.</p>
+<p>Edge fallback does not bracket the plane from both sides. Its number and fraction of acquisition angles are recorded separately from ordinary interpolation. This fraction does not establish whether the data are sufficient for image reconstruction.</p>
+
+<h2>Combining responses over one rotation</h2>
+<p>The horizontal coordinate z is the axial position of a signal relative to a fixed reconstruction plane. Π denotes a unit-height rectangular function, and ＊ denotes convolution.</p>
+<pre><code>Detector response    BD,βk(z) = Π[(z − cβk)/aβ]
+Focal response       BF,β(z) = (1/bβ) Π[z/bβ]       (bβ &gt; 0)
+Base response        Bβk(z) = BF,β ＊ BD,βk
+Row interpolation    hβj(z) = Σk wβk Bβk(z)
+Distance weight      Wβ = (R/Lβ)²
+One-rotation sum     Hj(z) = (1/M) Σβ Wβ hβj(z)
+Final SSPz           SSPj(z) = Hj(z) / ∫Hj(z) dz</code></pre>
+<p>The detector response BD has height one and area aβ. The focal response BF has unit area, an explicit assumption that preserves total source strength when the projected focal width changes. Their convolution is a trapezoid with area aβ, or a triangle when the two widths are equal. Setting the focal width to zero recovers the rectangular detector response. See also <a href="methods.html?topic=aperture&amp;lang=en">detector apertures</a>.</p>
+<p>The base response is not normalized to unit area at each angle. Its angular area contribution is Wβaβ. Although p.72 also discusses approximating spatially varying base responses by their central value, this calculation uses the local geometric scale for the detector aperture and focal blur.</p>
+<p>The distance weight R²/Lβ² corresponds to the distance factor discussed for equiangular fan coordinates on pp.20–21. The detector geometry is an arc; the corresponding flat-detector distance formula is not substituted without rebinning. Using this distance factor alone does not constitute a complete FDK implementation.</p>
+<p>Each final SSPz is normalized to unit area. During playback, the denominator is the final area obtained from all acquisition angles. Intermediate curves are not independently renormalized, so the display retains the progressive accumulation of the response.</p>
+
+<h2>Numerical display and verification limits</h2>
+<p>The trapezoidal base response is integrated analytically within each z bin and displayed as a bin average. The common range contains the aperture support and focal penumbra for every row and angle. An externally supplied grid that clips this support is rejected. Increasing the number of rows does not automatically coarsen the view count or z step.</p>
+<p>The centroid and σ are calculated from analytic moments of the continuous response mixture. Each base response has variance (aβ² + bβ²)/12. This σ describes the spread of one SSPz; it is not the standard deviation of FWHM across start angles. FWHM is the distance between the outer half-height crossings, using linear interpolation between display bins. For a multimodal curve it can include intervening valleys, so it does not fully describe the shape.</p>
+<p>Implementation checks cover independent row-intersection calculations and analytic moments, the known response at the rotation centre, symmetry, 360° periodicity, sums of angular contributions, the playback endpoint, area normalization, and numerical convergence. Tests for 1, 4, 80, 160, and 320 rows also cover support, physical row spacing, edge fallback, and normalization.</p>
+<p>These checks verify the declared operations. They are not an external comparison with numerical data from Fig.6.25 or scanner measurements, and do not establish exact reproduction of the book's figure or scanner reconstruction performance.</p>
+
+<h2>Reference</h2>
+<p>Mori et al., <a href="https://www.coronasha.co.jp/np/isbn/9784339072259/"><cite>CT and MRI: Principles and System Technology</cite>, Corona Publishing</a> (Japanese). The main references are the axial response on pp.72–74, the focal conditions in Fig.6.6 on p.60, and the geometric and acquisition example on p.54. The <a href="https://www.coronasha.co.jp/np/data/seigos/978-4-339-07225-9_1.pdf">publisher's errata</a> are also available.</p>

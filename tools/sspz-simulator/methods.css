@@ -1,0 +1,52 @@
+:root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif; color: #203848; background: #f3f7fa; }
+* { box-sizing: border-box; }
+body { margin: 0; font-size: 17px; line-height: 1.85; }
+a { color: #1764a2; text-underline-offset: .18em; overflow-wrap: anywhere; }
+a:hover { color: #104675; }
+a:focus-visible, summary:focus-visible { outline: 3px solid #e6a122; outline-offset: 4px; }
+.skip-link { position: absolute; top: -5rem; left: 1rem; padding: .5rem 1rem; background: white; z-index: 5; }
+.skip-link:focus { top: .5rem; }
+.guide-header { max-width: 960px; margin: 0 auto; padding: 1.25rem 2.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; font-size: .94rem; }
+.guide-shell { max-width: 960px; margin: 0 auto 3rem; padding: 2.5rem 3.5rem; background: white; border: 1px solid #d9e3eb; border-radius: 16px; }
+.eyebrow { margin: 0 0 .5rem; font-size: .9rem; color: #526c7e; }
+h1 { margin: 0 0 1.5rem; font-size: 1.9rem; line-height: 1.5; letter-spacing: .01em; }
+.topic-nav { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0 0 1.6rem; border-bottom: 1px solid #dce5ec; margin-bottom: 1.8rem; font-size: .88rem; }
+.topic-nav a { border: 1px solid #ccdbe6; border-radius: 7px; padding: .25rem .65rem; text-decoration: none; }
+.topic-nav a[aria-current="page"] { color: #fff; background: #246c9f; border-color: #246c9f; }
+article { min-width: 0; white-space: normal; overflow-wrap: break-word; }
+article p { margin: .8rem 0 1.1rem; white-space: normal; word-break: normal; }
+article .lead { font-size: 1.08rem; line-height: 1.95; }
+h2 { margin: 2.5rem 0 .85rem; font-size: 1.35rem; line-height: 1.6; padding-bottom: .4rem; border-bottom: 1px solid #dce5ec; }
+h3 { font-size: 1.12rem; margin: 1.6rem 0 .55rem; line-height: 1.65; }
+ul, ol { padding-left: 1.5rem; margin: .9rem 0 1.3rem; }
+li { margin: .55rem 0; padding-left: .12rem; }
+.table-scroll { width: 100%; overflow-x: auto; margin: 1rem 0 1.4rem; }
+table { border-collapse: collapse; width: 100%; font-size: .93rem; line-height: 1.75; }
+td, th { text-align: left; vertical-align: top; border: 1px solid #d5e0e8; padding: .65rem .8rem; min-width: 6rem; }
+th { font-weight: 600; background: #f2f6f9; }
+thead th { background: #eaf1f6; }
+code { font-family: Consolas, "Noto Sans Mono", monospace; font-size: .92em; overflow-wrap: anywhere; }
+pre { background: #f4f7f9; border: 1px solid #dce5ec; border-radius: 8px; padding: 1rem; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.equation { background: #f4f7f9; border-left: 3px solid #9bb9cf; padding: .8rem 1rem; font-family: "Cambria Math", Cambria, "Yu Mincho", serif; overflow-wrap: anywhere; }
+.note, .scope-note { padding: .8rem 1rem; background: #f1f7fb; border-left: 3px solid #8eb1cd; }
+details { margin: 1.3rem 0; padding: .8rem 1rem; border: 1px solid #d5e0e8; border-radius: 8px; }
+summary { cursor: pointer; font-weight: 600; }
+.guide-footer { margin-top: 3rem; border-top: 1px solid #dce5ec; padding-top: 1.3rem; font-size: .9rem; color: #5b7180; }
+.guide-footer p { font-size: .8rem; }
+@media (max-width: 620px) {
+  body { font-size: 16px; }
+  .guide-header { padding: 1rem; }
+  .guide-shell { padding: 1.5rem 1.15rem; margin: 0 .5rem 1rem; border-radius: 10px; }
+  h1 { font-size: 1.55rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; }
+  article .lead { font-size: 1rem; }
+  .topic-nav { gap: .4rem; }
+  td, th { padding: .5rem .6rem; }
+}
+@media print {
+  body { background: white; color: black; font-size: 11pt; }
+  .guide-header, .topic-nav, .skip-link, .guide-footer a { display: none; }
+  .guide-shell { max-width: none; padding: 0; border: 0; }
+  h2, h3 { break-after: avoid; }
+  tr { break-inside: avoid; }
+}

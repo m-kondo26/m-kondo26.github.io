@@ -1,0 +1,44 @@
+<p>A finite axial focal spot broadens the acquired detector response. This model averages each detector-cell value over the source before rebinning, candidate selection, axial interpolation, angular averaging, and the width-T rectangular average. It does not blur an already completed SSPz.</p>
+
+<h2>Focal size and focal motion are separate settings</h2>
+<p>The focal size f describes the source extent within one acquisition. <a href="methods.html?topic=zffs&amp;lang=en">Axial flying focal spot (z-FFS)</a> switches the source centre between positions A and B across acquisitions. With both settings enabled, a finite source is integrated around each actual A/B position within that exposure. Increasing focal size does not create additional views or independent exposures.</p>
+
+<h2>Inputs and source</h2>
+<table><thead><tr><th>Quantity</th><th>Meaning in this model</th></tr></thead><tbody>
+<tr><td>f</td><td>Effective axial focal width in mm, with a uniform source intensity distribution.</td></tr>
+<tr><td>R</td><td>Source-to-rotation-centre distance in mm.</td></tr>
+<tr><td>D</td><td>Nominal source-to-detector distance in mm. The detector remains fixed relative to the nominal tube position.</td></tr>
+<tr><td>d and a</td><td>Detector-row width d and active transverse aperture a, both scaled to isocentre. The aperture is distinct from transverse channel spacing.</td></tr>
+</tbody></table>
+<p>The new/reset values f = 1.2 mm and D = 1070 mm follow the example in Fig. 6.6 of Mori et al., <cite>CTとMRI</cite> (Corona; printed page 60). Its R = 600 mm and isocentre-to-detector distance of 470 mm give D = 1070 mm. The 1.2 mm value is an effective focal dimension; it is not multiplied again by the sine of the 7° target angle. These are textbook example values, not specifications for a particular scanner.</p>
+<p>Setting f = 0 uses the point-source calculation. Historical URLs that stored point-source conditions and the numerical API default preserve that setting. A finite focus requires D &gt; R + r, placing the detector beyond the evaluation point at every view. With z-FFS, magnification is M = D/R; conflicting distance and magnification inputs are rejected.</p>
+
+<h2>The source moves within its support; the detector stays fixed</h2>
+<p>Place the evaluation point at transverse coordinates (r, 0) and axial coordinate z<sub>o</sub>. Let β be the acquisition angle, b the nominal axial tube/detector position, and δ the mean focal displacement from z-FFS (zero when off). Position t within the source ranges from −f/2 to +f/2.</p>
+<pre class="equation"><code>L = √[(R cosβ − r)² + (R sinβ)²]
+source_z(t) = b + δ + t
+w_ray(t) = R(z_o − b − δ − t) / L
+w_det(t) = w_ray(t) + R(δ + t) / D</code></pre>
+<p>L is the transverse source-to-point distance. The coordinate w<sub>ray</sub> is referenced to the displaced source, whereas w<sub>det</sub> is referenced to the fixed detector. Row membership uses w<sub>det</sub>; the ray-dependent geometric factor uses w<sub>ray</sub>. Treating them as the same coordinate would incorrectly move the detector with the source.</p>
+<p>The projected detector aperture A<sub>z</sub> and the focal-blur support B<sub>z</sub> at the evaluation point are:</p>
+<pre class="equation"><code>A_z = d L/R
+B_z = f |1 − L/D|</code></pre>
+<p>With R = 600 mm, D = 1070 mm, and f = 1.2 mm, B<sub>z</sub> at isocentre is approximately 0.527 mm. The support of a single-row response is A<sub>z</sub> + B<sub>z</sub>. Wider tails do not necessarily mean a larger FWHM. The final model SSPz also includes candidate selection and averaging.</p>
+
+<h2>From acquired cells to SSPz</h2>
+<ol>
+<li>For each source position, trace the ray through the ideal point object to the fixed detector.</li>
+<li>Uniformly average the acquired cell response over the source. Total source weight is one.</li>
+<li>Apply the common rebinning, axial interpolation, and averaging steps to those acquired values to obtain the model SSPz.</li>
+</ol>
+<p>The point response J(t) and the mean acquired value for row k are given below. The interval [t<sub>lo</sub>, t<sub>hi</sub>] is the intersection of the source positions that enter that row aperture with [−f/2, +f/2].</p>
+<pre class="equation"><code>J(t) = √[R² + w_ray(t)²] / [L² (a/R) d]
+P_k = (1/f) ∫[t_lo, t_hi] J(t) dt</code></pre>
+<p>The integral uses an analytic antiderivative evaluated in a form that limits cancellation over short intervals. Contributions outside the detector are not acquired and are not renormalized back into the response. The existing half-membership convention at transverse channel boundaries is retained.</p>
+<p>Candidate-centre trajectories and interpolation coefficients remain defined at the mean focal position. Finite focal size changes the signal acquired by each selected cell. This is the nominal-ray approximation. The response range is extended to include the additional focal support, while acquisition-angle support, view count, and configured width T remain unchanged.</p>
+
+<h2>Comparison model and limits</h2>
+<p>The nondivergent comparison also receives the isocentre-projected focal support B<sub>0</sub> = f(1 − R/D), held constant across radius and angle. This defines a comparison with common focal blur; it is not a simulation of a physical finite-source parallel-beam scanner.</p>
+<p>Transverse focal blur, heel effect, target-tilt-dependent apparent focal shape, and noise are omitted. The model does not claim exact reproduction of textbook Fig. 6.25 or commercial image reconstruction. Relevant textbook material is on printed pages 58–60, Eqs. (6.6)–(6.10) and Fig. 6.6, and pages 72–74, Eq. (6.34) and Fig. 6.25.</p>
+<p>Implementation checks compare the calculation with an independent dense-source projection onto the fixed detector. They check response support, total weighting, z-FFS integration, unchanged candidate coefficients, acquired-value response closure, and agreement with historical output at f = 0. These establish consistency within the declared model, not agreement with a scanner-specific focal shape or measured SSPz.</p>
+<p>Related: <a href="methods.html?topic=axial&amp;lang=en">Axial interpolation and model SSPz</a> / <a href="methods.html?topic=aperture&amp;lang=en">Detector aperture and channel spacing</a></p>

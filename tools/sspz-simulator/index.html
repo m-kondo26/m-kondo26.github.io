@@ -14,7 +14,7 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-18.16">
+  <link rel="stylesheet" href="styles.css?v=2026-09-18.17">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -53,7 +53,7 @@
         </div>
       </div>
 
-      <p class="field-help" id="detector-model-guide">コーン幾何の2モデルは取得データ・検出器開口を共通にし、候補の選択と補間規則を比較します。<a href="DETECTOR_APERTURE_METHOD.md">開口幅と計算方法</a></p>
+      <p class="field-help" id="detector-model-guide">コーン幾何の2モデルは取得データ・検出器開口を共通にし、候補の選択と補間規則を比較します。<a href="methods.html?topic=aperture">開口幅と計算方法</a></p>
       <p class="field-help" id="detector-default-note">面内開口幅とチャネル間隔の既定値0.58 mmは、『CTとMRI』（コロナ社）の幾何情報に基づく回転中心換算の概算です。開口幅＝チャネル間隔とする理想設定で、実機の仕様値ではありません。</p>
       <form id="parameter-form" class="parameter-grid">
         <label>検出器列数 <span class="symbol">N</span>
@@ -473,7 +473,7 @@
           <p>図4～6の実・対向データ補間と、中央360°の両側に全ファン角分を加える取得範囲を参照します。本モデルでは360°＋2Φの有限取得範囲を明示し、Φを全ファン角とします。多列モデルへの適用は本Web版の仮定です。</p>
         </li>
       </ol>
-      <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p><a href="AXIAL_RESPONSE_METHOD.md">Equations, assumptions, version changes and verification</a></p></details></section>
+      <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p><a href="methods.html?topic=axial">計算式・仮定・適用範囲</a></p></details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
       <p class="step">6</p>
@@ -495,10 +495,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-18.16 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-18.17 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-18.16"></script>
-  <script src="app-bundle.js?v=2026-09-18.16"></script>
+  <script src="worker-source.js?v=2026-09-18.17"></script>
+  <script src="app-bundle.js?v=2026-09-18.17"></script>
 </body>
 </html>

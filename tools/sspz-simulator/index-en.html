@@ -14,7 +14,7 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-18.16">
+  <link rel="stylesheet" href="styles.css?v=2026-09-18.17">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -53,7 +53,7 @@
         </div>
       </div>
 
-      <p class="field-help" id="detector-model-guide">The two cone models share acquired data and detector apertures while comparing candidate selection and interpolation.<a href="DETECTOR_APERTURE_METHOD.md">Aperture and calculation method</a></p>
+      <p class="field-help" id="detector-model-guide">The two cone models share acquired data and detector apertures while comparing candidate selection and interpolation.<a href="methods.html?topic=aperture&amp;lang=en">Aperture and calculation method</a></p>
       <p class="field-help" id="detector-default-note">The default transaxial aperture and channel spacing of 0.58 mm are approximate isocenter values derived from the geometry in CT and MRI (Corona Publishing). Aperture width equals channel spacing in this idealized setting; these are not scanner specifications.</p>
       <form id="parameter-form" class="parameter-grid">
         <label>Number of detector rows <span class="symbol">N</span>
@@ -473,7 +473,7 @@
           <p>Figures 4–6 describe direct/opposing interpolation with one full fan opening on either side of a central turn. This model declares finite source support of 360° + 2Φ, with Φ the full fan opening. Its use for the multirow model is an explicit assumption.</p>
         </li>
       </ol>
-      <details class="reading-details"><summary>Axial model details</summary><p><a href="AXIAL_RESPONSE_METHOD.md">Equations, assumptions, version changes and verification</a></p></details></section>
+      <details class="reading-details"><summary>Axial model details</summary><p><a href="methods.html?topic=axial&amp;lang=en">Equations, assumptions and scope</a></p></details></section>
 
     <section class="method-card feedback-card" aria-labelledby="feedback-title">
       <p class="step">6</p>
@@ -495,10 +495,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-18.16 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-18.17 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-18.16"></script>
-  <script src="app-bundle-en.js?v=2026-09-18.16"></script>
+  <script src="worker-source-en.js?v=2026-09-18.17"></script>
+  <script src="app-bundle-en.js?v=2026-09-18.17"></script>
 </body>
 </html>

@@ -1,0 +1,55 @@
+<p class="lead">The transaxial detector aperture is the width over which one channel receives signal. Channel spacing is the distance between adjacent channel centres. The simulator uses both as shared acquisition settings when comparing candidate selection and axial interpolation.</p>
+
+<h2>Three detector dimensions</h2>
+<div class="table-scroll"><table>
+  <thead><tr><th>Setting</th><th>Meaning</th><th>Model definition</th></tr></thead>
+  <tbody>
+    <tr><th>Row width d</th><td>Detector-row width along the axial direction</td><td>Both the axial aperture and row-centre spacing equal d.</td></tr>
+    <tr><th>Transaxial aperture a</th><td>Active width of a transaxial channel</td><td>The projection signal is integrated over this width to obtain the cell average.</td></tr>
+    <tr><th>Channel spacing c</th><td>Distance between adjacent channel centres</td><td>The acquisition spacing must satisfy 0 &lt; a ≤ c.</td></tr>
+  </tbody>
+</table></div>
+<p>All three values are in millimetres projected to isocentre. They are different from physical detector dimensions and output-image pixel spacing. An aperture narrower than the channel spacing leaves an inactive gap. Signal in that gap is not redistributed to neighbouring channels.</p>
+
+<h2>Why the default is 0.58 mm</h2>
+<p>New and reset settings use 0.58 mm for both transaxial aperture and channel spacing. This is an approximate isocentre value based on the geometry in <em>CT and MRI</em>: a physical detector spacing of approximately 1.03 mm, a source–axis distance of 600 mm and a source–detector distance of 1070 mm.</p>
+<p class="equation">1.03 × 600 / 1070 ≈ 0.58 mm</p>
+<p>The default assumes an aperture equal to the spacing, with no inactive gaps. It is not a measured aperture specification for a particular scanner. Opening a URL with saved settings uses the values stored in that URL.</p>
+
+<h2>Where aperture enters the SSPz calculation</h2>
+<ol>
+  <li>For a fixed point object, calculate the signal acquired by each view, channel and row, including the finite detector aperture and configured focal size.</li>
+  <li>Rebin the acquired data row by row, select candidates using the chosen method, and apply linear axial interpolation.</li>
+  <li>Average over angle and apply an axial rectangular average of width T, the configured slice thickness. Normalize the result for the displayed model SSPz.</li>
+</ol>
+<p>Aperture affects the acquired signal before interpolation. The object is an ideal unit-integral point, not a finite sphere. The two cone-geometry interpolation methods share the acquired signal. The parallel-beam approximation uses the same cell dimensions with a separate, explicitly nondivergent reference geometry.</p>
+<p>See <a href="methods.html?topic=axial&amp;lang=en">axial interpolation and model SSPz</a> for candidate selection and averaging, and <a href="methods.html?topic=focus&amp;lang=en">focal-blur calculation</a> for the finite source.</p>
+
+<h2>How this differs from a finer calculation grid</h2>
+<p>A smaller SSPz calculation step samples the calculated response more finely. It does not reduce the detector aperture or acquisition spacing. Changing channel spacing at fixed aperture also changes acquisition sampling.</p>
+<p>Aperture is not a universal lower bound on FWHM. Geometry, interpolation, averaging and normalization also matter. The model does not fit or clip FWHM to the aperture width or configured slice thickness.</p>
+
+<h2>Acquired signal for a point focus</h2>
+<p>At a focal size of 0 mm, the cone-geometry detector-cell signal is defined by the following equation. With a finite focus, the signal is integrated over the source extent.</p>
+<p class="equation">P<sub>jk</sub> = √(R² + w²) / [L² (a/R) d] × A<sub>j</sub>(γ) × B<sub>k</sub>(w)</p>
+<div class="table-scroll"><table>
+  <thead><tr><th>Symbol</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><th>R, L</th><td>Source–axis distance and transverse source–point distance</td></tr>
+    <tr><th>γ, w</th><td>Point-object fan angle and axial coordinate on the detector cylinder of radius R</td></tr>
+    <tr><th>a, d</th><td>Transaxial aperture and row width projected to isocentre</td></tr>
+    <tr><th>j, k</th><td>Transaxial channel and axial detector row</td></tr>
+    <tr><th>A, B</th><td>Membership factors: 1 inside the aperture, 1/2 exactly on its boundary, and 0 outside</td></tr>
+  </tbody>
+</table></div>
+<p>For axial object position z<sub>o</sub> and source position z<sub>s</sub>, w = R(z<sub>o</sub> − z<sub>s</sub>)/L. The parallel-reference cell signal is A<sub>j</sub>B<sub>k</sub>/(ad). An even transaxial channel grid places its centres symmetrically on either side of the axis.</p>
+
+<h2>Scope of the model</h2>
+<p>The response includes acquisition geometry, finite aperture, focal size, candidate selection, axial interpolation and averaging. It omits the transaxial ramp filter and transverse image backprojection, so it does not directly reproduce a scanner’s image-based SSPz. Changes introduced with finite aperture also involve channel sampling, readout and geometric projection amplitude.</p>
+<p>Detector-cell integrals, boundaries, gaps and equality of acquired samples between the methods have been checked against analytic values, numerical integration and implementation comparisons. These checks establish computational consistency; they do not validate a particular clinical scanner.</p>
+
+<h2>References</h2>
+<ul>
+  <li><a href="https://www.coronasha.co.jp/np/isbn/9784339072259/">Mori et al., <em>CT and MRI</em>, Corona Publishing</a>: reference geometry for the detector and source.</li>
+  <li><a href="https://doi.org/10.1118/1.2829867">Chen et al. (2008), Medical Physics 35:724–734</a>: finite-detector integration of a point-object projection response. The cylindrical equation above is an explicit definition of this model, not a verbatim implementation of an equation attributed to that paper.</li>
+</ul>
