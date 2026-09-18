@@ -236,3 +236,25 @@ matched source-angle timing in both roles, complete visible support, and unchang
 response data. Browser verification additionally checks completed pixel identity,
 fixed weight/SSPz canvases, pause, scrub, repeat, and PNG output. These are display
 checks; the numerical model and worker are unchanged from 2026-09-18.7.
+
+## Axial-domain checks (Web 2026-09-18.18)
+
+The raw response is checked before minimum subtraction or peak normalization.
+If either endpoint exceeds 1e-10 of the raw peak, the calculation interval is
+expanded with the actual z-grid spacing preserved. A 360-start-angle series uses
+one common grid: a failure at any start angle restarts the series on the expanded
+grid. Selected-angle inspection and exports retain the successful grid. The
+requested and actual extents, expansion count, endpoint fraction, tolerance and
+80-mm half-range limit are recorded with the result.
+
+If the endpoint condition is still unmet at the largest grid within +/-80 mm,
+the calculation stops without reporting widths; the grid is not coarsened to fit.
+This check prevents a clipped positive tail from becoming an artificial zero
+baseline. It is an endpoint check, not a proof that no disconnected response can
+exist beyond the interval, and does not validate a clinical acquisition protocol.
+Candidate selection, interpolation and axial averaging rules are unchanged.
+
+The separate stationary-table response also requires D > R + max(radii), including
+per-call radius overrides and point-focus conditions, so evaluation points remain
+between the source and detector in every direction. These are calculation-domain
+and geometry checks, not a replacement for the model's stated approximations.

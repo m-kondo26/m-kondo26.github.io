@@ -95,6 +95,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   document.getElementById('fdk-result-config').textContent+=` / axial focus = ${(c.focalSizeMm??0).toFixed(2)} mm / source–detector = ${c.focalSourceDetectorMm??1070} mm`;
+  if(fdkResult.domainCheck?.expansions>0)document.getElementById('fdk-result-config').textContent+=fdkText(` / 裾の確認のため計算範囲を±${c.zExtent.toFixed(2)} mmに拡張`,` / calculation range expanded to ±${c.zExtent.toFixed(2)} mm to check tails`);
   renderZffsSelected();
   if(!geometryPlayback.playing)syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;

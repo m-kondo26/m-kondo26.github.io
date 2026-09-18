@@ -7,15 +7,19 @@ import {detectorPointProjection,detectorRowReadout,finiteFocusConfig,focalBlurMe
 import {zffsConfig} from './zffs-geometry.js';
 import {computeZffsResponse} from './zffs-response.js';
 import {computeSourceSupportedAxialResponse} from './axial-source-response.js';
-export const AXIAL_RESPONSE_VERSION='2026-09-18.8';
+import {assertAxialRawDomain,axialRawTailFraction,expandAxialDomain,AXIAL_TAIL_TOLERANCE,AXIAL_MAX_EXTENT_MM} from './axial-domain.js';
+export const AXIAL_RESPONSE_VERSION='2026-09-18.9';
 const AR_TAU=2*Math.PI;
 export function axialResponseConfig(input={}){
   const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
   if(!['merged','rri','parallel'].includes(rule))throw Error('AXIAL_RULE');
   const extent=Number(input.zExtent??3);
   if(!Number.isFinite(extent)||extent<1||extent>80)throw Error('AXIAL_DOMAIN: z extent must be 1 to 80 mm');
-  const c=fdkConfig({...input,response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
-  c.zExtent=extent;c.zSamples=2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=2*extent/(c.zSamples-1);
+  // Preserve an already-derived grid during inspection/animation. Reapplying
+  // ceil to its adjusted dz can otherwise add a spurious interval.
+  const derived=input.response==='axial-interpolation'&&Number.isInteger(input.zSamples)&&input.zSamples>=3&&input.zSamples%2===1&&Number.isFinite(input.zStep)&&input.zStep>=.01/1.01&&input.zStep<=.2&&Math.abs((input.zSamples-1)*input.zStep/2-extent)<=8*Number.EPSILON*Math.max(1,extent);
+  const c=fdkConfig({...input,...(derived?{zStep:Math.max(.01,input.zStep)}:{}),response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
+  c.zExtent=extent;c.zSamples=derived?input.zSamples:2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=derived?input.zStep:2*extent/(c.zSamples-1);
   if(c.beamPitch<=0)throw Error('AXIAL_GEOMETRY_ONLY: stationary table');
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
@@ -59,10 +63,27 @@ export function axialPairWeights(c,a,b,z){
   return samples.filter(q=>q.weight>0).map(q=>({...q,weight:q.weight/sum}));
 }
 export async function computeAxialResponse(input={},hooks={}){
-  const configured=axialResponseConfig(input);
-  if(configured.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(configured,hooks);
-  if(input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1')return computeZffsResponse(axialResponseConfig(input),hooks);
-  const c=axialResponseConfig(input),nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
+  let c=axialResponseConfig(input);const requested=c.zExtent;let expansions=0;
+  for(;;){
+    if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+    try{return withAxialDomain(await computeAxialResponseOnGrid(c,hooks),requested,expansions);}
+    catch(error){
+      if(error.code!=='AXIAL_DOMAIN_TAILS'||hooks.lockDomain)throw error;
+      if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+      c=expandAxialDomain(c);expansions++;
+      hooks.domainExpanded?.({extentMm:c.zExtent,expansions});
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  }
+}
+function withAxialDomain(result,requested,expansions){
+  return {...result,domainCheck:{requestedExtentMm:requested,actualExtentMm:result.config.zExtent,expansions,
+    rawTailFraction:axialRawTailFraction(result.raw,result.max??Math.max(...result.raw)),tolerance:AXIAL_TAIL_TOLERANCE,maxExtentMm:AXIAL_MAX_EXTENT_MM}};
+}
+async function computeAxialResponseOnGrid(c,hooks){
+  if(c.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(c,hooks);
+  if(c.zFfsEnabled)return computeZffsResponse(c,hooks);
+  const nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
   const zObject=c.state*c.feed,padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
   const zs=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
   const starts=Int32Array.from(zs,z=>Math.ceil((AR_TAU*z/c.feed-Math.PI)/db-1e-12));
@@ -118,7 +139,9 @@ export async function computeAxialResponse(input={},hooks={}){
   }
   if(!counts.every(n=>n===nv))throw Error('AXIAL_INTERNAL: angular count mismatch');
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
-  const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
+  const min=Math.min(...raw),max=Math.max(...raw);
+  assertAxialRawDomain(raw,max);
+  const baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))return {config:c,z,zObject,raw,geometryOnly:true,reason:'no-acquired-point-response',profiles:[],volume:null,
     coordinateSystem:'rebinned-theta',model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c)},
     weightAudit:{db:1/half,centerValue:0,axialAverageMm:c.axialAverageMm,samples:[...weights.values()],pairedSamples:[...pairedWeights.values()]}};
@@ -137,14 +160,27 @@ export async function computeAxialResponse(input={},hooks={}){
       profileReadout:'fixed transverse point; moving axial evaluation; no reconstructed image',scientificScope:'geometry and interpolation reference; not a 2D/3D FBP image SSP or commercial reconstruction'}};
 }
 export async function computeAxialResponseSeries(input={},hooks={}){
-  const c=axialResponseConfig(input),profiles=[];let selected;
-  for(let i=0;i<c.phaseCount;i++){
-    const phase=c.phase+AR_TAU*i/c.phaseCount;
-    const r=await computeAxialResponse({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
-    if(r.geometryOnly)return r;
-    selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline});
-    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
+  let c=axialResponseConfig(input);const requested=c.zExtent;let expansions=0;
+  for(;;){
+    const profiles=[];let selected;
+    try{
+      for(let i=0;i<c.phaseCount;i++){
+        if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+        const phase=c.phase+AR_TAU*i/c.phaseCount;
+        const r=withAxialDomain(await computeAxialResponseOnGrid({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)}),requested,expansions);
+        if(r.geometryOnly)return r;
+        selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline,rawTailFraction:r.domainCheck.rawTailFraction});
+        hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
+      }
+    }catch(error){
+      if(error.code!=='AXIAL_DOMAIN_TAILS'||hooks.lockDomain)throw error;
+      if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+      c=expandAxialDomain(c);expansions++;
+      hooks.domainExpanded?.({extentMm:c.zExtent,expansions});
+      await new Promise(resolve=>setTimeout(resolve,0));
+      continue;
+    }
+    const mean=Float64Array.from(selected.z,(_,j)=>profiles.reduce((s,p)=>s+p.profile[j],0)/profiles.length);
+    return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,j)=>v-mean[j]))};
   }
-  const mean=Float64Array.from(selected.z,(_,j)=>profiles.reduce((s,p)=>s+p.profile[j],0)/profiles.length);
-  return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,j)=>v-mean[j]))};
 }

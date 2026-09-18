@@ -115,9 +115,10 @@ self.onmessage = async event => {
       const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
+        domainExpanded: domain => self.postMessage({type:'domain-expansion',...domain}),
         progress: value => self.postMessage({type:'progress',value,label:`Axial interpolation ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
       });
-      fdkContext={params:message.params,first:result};
+      fdkContext={params:{...message.params,...result.config},first:result};
       self.postMessage({type:'fdk-result',result});
     } catch(error) {
       self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
@@ -140,7 +141,8 @@ self.onmessage = async event => {
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
       const reconstruct=computeAxialResponse;
-      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
+      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{lockDomain:true,cancelled:()=>cancelled||token!==fdkInspectionToken});
+      if(result.z.length!==context.first.z.length||!result.z.every((z,i)=>z===context.first.z[i]))throw Error('AXIAL_INTERNAL: selected-angle grid differs from the completed series');
       if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
     }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}
     return;

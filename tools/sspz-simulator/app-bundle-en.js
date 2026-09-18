@@ -3764,6 +3764,7 @@ function renderFdkSelected(){
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   document.getElementById('fdk-result-config').textContent+=` / axial focus = ${(c.focalSizeMm??0).toFixed(2)} mm / source–detector = ${c.focalSourceDetectorMm??1070} mm`;
+  if(fdkResult.domainCheck?.expansions>0)document.getElementById('fdk-result-config').textContent+=fdkText(` / 裾の確認のため計算範囲を±${c.zExtent.toFixed(2)} mmに拡張`,` / calculation range expanded to ±${c.zExtent.toFixed(2)} mm to check tails`);
   renderZffsSelected();
   if(!geometryPlayback.playing)syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
@@ -3968,6 +3969,7 @@ function fdkCsvRows(r){return [
   ['# focalSourceDetectorMm',r.config.focalSourceDetectorMm??1070],
   ['# focal_model_metadata',JSON.stringify(r.model.focalBlur??{})],
   ['# configuration',JSON.stringify(r.config)],
+  ['# axial_domain_check',JSON.stringify(r.domainCheck??{})],
   ['# focal_model','uniform effective axial source integrated over acquired detector cells before interpolation; unit total source weight'],
   ['# focal_reference','CT and MRI Fig.6.6; target-angle dependence not modelled'],
   ...fdkProfileRows(r),
@@ -4087,10 +4089,10 @@ function initializeFdkUi(initial){
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',modeChanged);modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
-  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],['axial_domain_check',JSON.stringify(r.domainCheck??{})],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
@@ -4128,6 +4130,7 @@ function runFdkSimulation(){
   const fail=text=>{setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',fdkText('','No valid response'),'error');releaseWorker();};
   worker.onmessage=({data:m})=>{
     if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;}
+    else if(m.type==='domain-expansion'){progress.value=0;status.textContent=fdkText(`裾を確認するため、計算範囲を±${m.extentMm.toFixed(2)} mmに広げて再計算しています。`,`Recomputing all angles over ±${m.extentMm.toFixed(2)} mm to check the response tails.`);document.getElementById('fdk-summary').textContent=status.textContent;}
     else if(m.type==='fdk-result'){
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
@@ -4152,7 +4155,8 @@ function runFdkSimulation(){
       if(text.startsWith('FDK_COVERAGE'))text=fdkText('',text);
       if(text.startsWith('FDK_DOMAIN')||text.startsWith('CBA_DOMAIN'))text=fdkText('',text);
       if(text.startsWith('CBA_COVERAGE'))text=fdkText('',text);
-      if(text.startsWith('AXIAL_DOMAIN'))text=fdkText('',text);
+      if(text.startsWith('AXIAL_DOMAIN_LIMIT'))text=fdkText('',text);
+      else if(text.startsWith('AXIAL_DOMAIN'))text=fdkText('',text);
       if(text.startsWith('ZFFS_GEOMETRY'))text=fdkText('',text);
       if(text.startsWith('AXIAL_COVERAGE'))text=fdkText('',text);
       if(text.startsWith('AXIAL_FAN'))text=fdkText('',text);
@@ -4349,7 +4353,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.17 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.18 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

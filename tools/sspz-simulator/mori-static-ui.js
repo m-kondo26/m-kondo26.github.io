@@ -1,7 +1,8 @@
-import {moriStaticConfig,moriStaticView,moriStaticAngleProfile,moriStaticCalculateSteps,moriStaticProgress} from './mori-static-core.js?v=20260918-15';
+import {moriStaticConfig,moriStaticView,moriStaticAngleProfile,moriStaticCalculateSteps,moriStaticProgress} from './mori-static-core.js?v=20260918-18';
 
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
 const query=new URLSearchParams(location.search),en=query.get('lang')==='en',tr=(ja,eng)=>en?eng:ja;
+const staticErrorText=e=>e.message.startsWith('detectorDistance must exceed sourceRadius + radius')?tr('評価点が全方向で検出器より手前になるよう、焦点―検出器距離Dを、焦点―回転中心距離Rと最大評価半径rの和より大きくしてください（D > R + r）。',e.message):e.message;
 document.documentElement.lang=en?'en':'ja';
 document.title=tr('寝台静止時の再構成位置とSSPz','Reconstruction positions and SSPz with a stationary table');
 document.querySelectorAll('[data-ja]').forEach(el=>el.textContent=en?el.dataset.en:el.dataset.ja);
@@ -20,7 +21,7 @@ const focusReference=numberParam('focusRef',inherited?numberParam('focus',1.2):n
 const comparisonRadii=[...new Set(query.has('radii')?[...query.get('radii').split(',').map(Number),requestedRadius]:inherited?[0,requestedRadius]:[0,80,160,requestedRadius])].filter(r=>r<sourceRadius).sort((a,b)=>a-b);
 let c;
 try{c=moriStaticConfig({rows:numberParam('n',16),rowPitch:numberParam('d',2),axialAperture:numberParam('d',2),sourceRadius,detectorDistance:numberParam('D',1070),viewSamples:numberParam('nv',900),zStep:numberParam('dz',.05),focalSizeMm:numberParam('focus',1.2),radii:comparisonRadii});if(requestedRadius<0||requestedRadius>=c.sourceRadius||!Number.isFinite(requestedRadius))throw new RangeError('r must be within the source radius');}
-catch(e){$('error').hidden=false;$('error').textContent=tr('計算条件を確認してください：','Check the calculation settings: ')+e.message;$('families').setAttribute('aria-busy','false');$('play').disabled=true;throw e;}
+catch(e){$('error').hidden=false;$('error').textContent=tr('計算条件を確認してください：','Check the calculation settings: ')+staticErrorText(e);$('families').setAttribute('aria-busy','false');$('play').disabled=true;throw e;}
 let row=Math.round(safe(query.get('row'),1,c.rows,inherited?Math.floor(c.rows/2)+1:Math.min(13,c.rows)))-1,radius=requestedRadius;
 let angle=safe(query.get('angle'),0,360,0),result=null,playing=false,lastTime=0,frameId=0,hold=0,progressCache=new Map(),calculationId=0;
 const reduced=matchMedia('(prefers-reduced-motion: reduce)');
@@ -132,7 +133,7 @@ function recalculate(){const ticket=++calculationId;result=null;progressCache.cl
   function advance(){if(ticket!==calculationId)return;try{const deadline=performance.now()+20;let next;
     do{next=steps.next();if(next.done){result=next.value;drawFamilies();displayView();$('download').disabled=false;$('save-svg').disabled=false;$('play').disabled=false;document.body.dataset.ready='true';return;}}while(performance.now()<deadline);
     const {completed,total}=next.value;status.textContent=tr(`応答を計算しています… ${completed} / ${total}（${Math.round(100*completed/total)}%）`,`Calculating responses… ${completed} / ${total} (${Math.round(100*completed/total)}%)`);$('progress-label').textContent=status.textContent;setTimeout(advance,0);
-  }catch(e){$('error').hidden=false;$('error').textContent=tr('計算を完了できませんでした：','Calculation failed: ')+e.message;$('families').setAttribute('aria-busy','false');$('play').disabled=true;status.textContent=tr('計算を中止しました。条件を確認してください。','Calculation stopped. Check the settings.');$('progress-label').textContent=status.textContent;console.error(e);}}
+  }catch(e){$('error').hidden=false;$('error').textContent=tr('計算を完了できませんでした：','Calculation failed: ')+staticErrorText(e);$('families').setAttribute('aria-busy','false');$('play').disabled=true;status.textContent=tr('計算を中止しました。条件を確認してください。','Calculation stopped. Check the settings.');$('progress-label').textContent=status.textContent;console.error(e);}}
   setTimeout(advance,30);
 }
 saveState();recalculate();

@@ -3353,6 +3353,31 @@ function zffsRebinStencil(c,theta,focus){
   return {beta,gamma,stencil:out};
 }
 
+// The ideal, noise-free point response has a known zero baseline. Check its
+// support BEFORE min-max normalization; subtracting a clipped tail hides it.
+const AXIAL_TAIL_TOLERANCE=1e-10;
+const AXIAL_MAX_EXTENT_MM=80;
+function axialRawTailFraction(raw,max){
+  return max>0?Math.max(Math.abs(raw[0]),Math.abs(raw[raw.length-1]))/max:0;
+}
+function assertAxialRawDomain(raw,max){
+  if(!Number.isFinite(max)||!raw.every(Number.isFinite))throw Error('AXIAL_NUMERIC: non-finite raw response');
+  const fraction=axialRawTailFraction(raw,max);
+  if(fraction>AXIAL_TAIL_TOLERANCE){
+    const error=Error('AXIAL_DOMAIN_TAILS: raw response extends beyond the axial calculation range');
+    error.code='AXIAL_DOMAIN_TAILS';error.rawTailFraction=fraction;
+    throw error;
+  }
+}
+function expandAxialDomain(c){
+  // Grow by whole grid intervals so widening never coarsens the requested
+  // sampling or moves the existing grid relative to the point object.
+  const half=(c.zSamples-1)/2;
+  const next=Math.min(2*half,Math.floor(AXIAL_MAX_EXTENT_MM/c.zStep));
+  if(next<=half)throw Error('AXIAL_DOMAIN_LIMIT: response tails exceed the maximum calculation range of +/-80 mm; widths were not reported');
+  return {...c,zSamples:2*next+1,zExtent:next*c.zStep};
+}
+
 // Point mass on a cylinder whose axial origin stays at the nominal tube z.
 // w is the detector coordinate; wRay is relative to the ACTUAL focal spot.
 function zffsPointProjection(c,view,zObject){
@@ -3438,8 +3463,10 @@ async function computeZffsResponse(c,hooks={}){
   }
   if(!counts.every(v=>v===nv))throw Error('AXIAL_INTERNAL: z-FFS angular count mismatch');
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
-  const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  const model={version:'2026-09-18.8',focalBlur:focalBlurMetadata(c),kind:'axial-'+c.axialRule,zFfsVersion:ZFFS_VERSION,algorithm:'reduced axial interpolation response with alternating axial focal positions',geometry:'fixed cylindrical detector; ideal pure axial focal switching',rebinning:'within each focal state separately; never interpolate alternating states as one detector trajectory',interpolation:c.axialRule==='rri'?'normalize row tents over both directions and both focal states':'nearest bracketing pair across both directions and focal states',filter:'no transverse ramp or FBP',angularWeight:'one slice-centred turn; paired angular mean',profileReadout:'fixed ideal point; moving evaluation plane; no image reconstruction',axialAverageMm:c.axialAverageMm,viewsDefinition:'viewSamples is total physical acquisitions per turn; half at each focal position',scientificScope:'ideal acquisition-model extension; not a scanner implementation or shifted backprojection'};
+  const min=Math.min(...raw),max=Math.max(...raw);
+  assertAxialRawDomain(raw,max);
+  const baseline=c.normalization==='minmax'?min:0;
+  const model={version:'2026-09-18.9',focalBlur:focalBlurMetadata(c),kind:'axial-'+c.axialRule,zFfsVersion:ZFFS_VERSION,algorithm:'reduced axial interpolation response with alternating axial focal positions',geometry:'fixed cylindrical detector; ideal pure axial focal switching',rebinning:'within each focal state separately; never interpolate alternating states as one detector trajectory',interpolation:c.axialRule==='rri'?'normalize row tents over both directions and both focal states':'nearest bracketing pair across both directions and focal states',filter:'no transverse ramp or FBP',angularWeight:'one slice-centred turn; paired angular mean',profileReadout:'fixed ideal point; moving evaluation plane; no image reconstruction',axialAverageMm:c.axialAverageMm,viewsDefinition:'viewSamples is total physical acquisitions per turn; half at each focal position',scientificScope:'ideal acquisition-model extension; not a scanner implementation or shifted backprojection'};
   const audit={definition:'Actual acquired cell weights including within-focus angular/channel rebinning and T averaging; multiply by db and raw cell value to reproduce centre response.',db:1/half,axialAverageMm:c.axialAverageMm,centerValue:raw[(raw.length-1)/2],samples:[...physical.values()]};
   const out={config:c,z,zObject,raw,min,max,baseline,model,volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'zffs-acquired',counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit:hooks.profileOnly?null:audit,rebinnedWeightAudit:hooks.profileOnly?null:[...rebinned.values()],acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerTurn:nv,viewsPerFocusPerTurn:nv/2,rebinnedPairsPerSlice:half}};
   if(!(max>baseline))return {...out,geometryOnly:true,reason:'no-acquired-point-response',profiles:[]};
@@ -3586,8 +3613,10 @@ async function computeSourceSupportedAxialResponse(c,hooks={}){
     if(performance.now()-lastYield>24){hooks.progress?.((v-base)/H);await new Promise(r=>setTimeout(r,0));lastYield=performance.now();}
   }
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
-  const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
-  const model={version:'2026-09-18.8',kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
+  const min=Math.min(...raw),max=Math.max(...raw);
+  assertAxialRawDomain(raw,max);
+  const baseline=c.normalization==='minmax'?min:0;
+  const model={version:'2026-09-18.9',kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
     geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
     candidateSearch:'source-fan-window',fullFanAngleDeg:c.fullFanAngleDeg,sourceAngleSpanDeg:c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg,
     interpolation:c.axialRule==='rri'?'compact row tents normalized across source-supported directions and turns':'nearest bracketing row centres within finite source-angle support; split coincident endpoints',
@@ -3611,15 +3640,18 @@ async function computeSourceSupportedAxialResponse(c,hooks={}){
 // Shared acquisition -> local axial interpolation -> angular mean -> T average.
 // No ramp, cone-FBP preweight, inverse-distance backprojection or image volume.
 // The two selection rules are explicit reduced models, not commercial 2D/3D FBP.
-const AXIAL_RESPONSE_VERSION='2026-09-18.8';
+const AXIAL_RESPONSE_VERSION='2026-09-18.9';
 const AR_TAU=2*Math.PI;
 function axialResponseConfig(input={}){
   const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
   if(!['merged','rri','parallel'].includes(rule))throw Error('AXIAL_RULE');
   const extent=Number(input.zExtent??3);
   if(!Number.isFinite(extent)||extent<1||extent>80)throw Error('AXIAL_DOMAIN: z extent must be 1 to 80 mm');
-  const c=fdkConfig({...input,response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
-  c.zExtent=extent;c.zSamples=2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=2*extent/(c.zSamples-1);
+  // Preserve an already-derived grid during inspection/animation. Reapplying
+  // ceil to its adjusted dz can otherwise add a spurious interval.
+  const derived=input.response==='axial-interpolation'&&Number.isInteger(input.zSamples)&&input.zSamples>=3&&input.zSamples%2===1&&Number.isFinite(input.zStep)&&input.zStep>=.01/1.01&&input.zStep<=.2&&Math.abs((input.zSamples-1)*input.zStep/2-extent)<=8*Number.EPSILON*Math.max(1,extent);
+  const c=fdkConfig({...input,...(derived?{zStep:Math.max(.01,input.zStep)}:{}),response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
+  c.zExtent=extent;c.zSamples=derived?input.zSamples:2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=derived?input.zStep:2*extent/(c.zSamples-1);
   if(c.beamPitch<=0)throw Error('AXIAL_GEOMETRY_ONLY: stationary table');
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
@@ -3663,10 +3695,27 @@ function axialPairWeights(c,a,b,z){
   return samples.filter(q=>q.weight>0).map(q=>({...q,weight:q.weight/sum}));
 }
 async function computeAxialResponse(input={},hooks={}){
-  const configured=axialResponseConfig(input);
-  if(configured.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(configured,hooks);
-  if(input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1')return computeZffsResponse(axialResponseConfig(input),hooks);
-  const c=axialResponseConfig(input),nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
+  let c=axialResponseConfig(input);const requested=c.zExtent;let expansions=0;
+  for(;;){
+    if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+    try{return withAxialDomain(await computeAxialResponseOnGrid(c,hooks),requested,expansions);}
+    catch(error){
+      if(error.code!=='AXIAL_DOMAIN_TAILS'||hooks.lockDomain)throw error;
+      if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+      c=expandAxialDomain(c);expansions++;
+      hooks.domainExpanded?.({extentMm:c.zExtent,expansions});
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  }
+}
+function withAxialDomain(result,requested,expansions){
+  return {...result,domainCheck:{requestedExtentMm:requested,actualExtentMm:result.config.zExtent,expansions,
+    rawTailFraction:axialRawTailFraction(result.raw,result.max??Math.max(...result.raw)),tolerance:AXIAL_TAIL_TOLERANCE,maxExtentMm:AXIAL_MAX_EXTENT_MM}};
+}
+async function computeAxialResponseOnGrid(c,hooks){
+  if(c.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(c,hooks);
+  if(c.zFfsEnabled)return computeZffsResponse(c,hooks);
+  const nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
   const zObject=c.state*c.feed,padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
   const zs=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
   const starts=Int32Array.from(zs,z=>Math.ceil((AR_TAU*z/c.feed-Math.PI)/db-1e-12));
@@ -3722,7 +3771,9 @@ async function computeAxialResponse(input={},hooks={}){
   }
   if(!counts.every(n=>n===nv))throw Error('AXIAL_INTERNAL: angular count mismatch');
   const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
-  const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
+  const min=Math.min(...raw),max=Math.max(...raw);
+  assertAxialRawDomain(raw,max);
+  const baseline=c.normalization==='minmax'?min:0;
   if(!(max>baseline))return {config:c,z,zObject,raw,geometryOnly:true,reason:'no-acquired-point-response',profiles:[],volume:null,
     coordinateSystem:'rebinned-theta',model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c)},
     weightAudit:{db:1/half,centerValue:0,axialAverageMm:c.axialAverageMm,samples:[...weights.values()],pairedSamples:[...pairedWeights.values()]}};
@@ -3741,16 +3792,29 @@ async function computeAxialResponse(input={},hooks={}){
       profileReadout:'fixed transverse point; moving axial evaluation; no reconstructed image',scientificScope:'geometry and interpolation reference; not a 2D/3D FBP image SSP or commercial reconstruction'}};
 }
 async function computeAxialResponseSeries(input={},hooks={}){
-  const c=axialResponseConfig(input),profiles=[];let selected;
-  for(let i=0;i<c.phaseCount;i++){
-    const phase=c.phase+AR_TAU*i/c.phaseCount;
-    const r=await computeAxialResponse({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)});
-    if(r.geometryOnly)return r;
-    selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline});
-    hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
+  let c=axialResponseConfig(input);const requested=c.zExtent;let expansions=0;
+  for(;;){
+    const profiles=[];let selected;
+    try{
+      for(let i=0;i<c.phaseCount;i++){
+        if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+        const phase=c.phase+AR_TAU*i/c.phaseCount;
+        const r=withAxialDomain(await computeAxialResponseOnGrid({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)}),requested,expansions);
+        if(r.geometryOnly)return r;
+        selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline,rawTailFraction:r.domainCheck.rawTailFraction});
+        hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
+      }
+    }catch(error){
+      if(error.code!=='AXIAL_DOMAIN_TAILS'||hooks.lockDomain)throw error;
+      if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+      c=expandAxialDomain(c);expansions++;
+      hooks.domainExpanded?.({extentMm:c.zExtent,expansions});
+      await new Promise(resolve=>setTimeout(resolve,0));
+      continue;
+    }
+    const mean=Float64Array.from(selected.z,(_,j)=>profiles.reduce((s,p)=>s+p.profile[j],0)/profiles.length);
+    return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,j)=>v-mean[j]))};
   }
-  const mean=Float64Array.from(selected.z,(_,j)=>profiles.reduce((s,p)=>s+p.profile[j],0)/profiles.length);
-  return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,j)=>v-mean[j]))};
 }
 
 // Display-only audit. Reuse the numerical model's candidate selectors and
@@ -3950,9 +4014,10 @@ self.onmessage = async event => {
       const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
         cancelled: () => cancelled,
+        domainExpanded: domain => self.postMessage({type:'domain-expansion',...domain}),
         progress: value => self.postMessage({type:'progress',value,label:`Axial interpolation ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),
       });
-      fdkContext={params:message.params,first:result};
+      fdkContext={params:{...message.params,...result.config},first:result};
       self.postMessage({type:'fdk-result',result});
     } catch(error) {
       self.postMessage({type:error.message==='FDK_CANCELLED'?'cancelled':'error',message:error.message});
@@ -3975,7 +4040,8 @@ self.onmessage = async event => {
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
       const reconstruct=computeAxialResponse;
-      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{cancelled:()=>cancelled||token!==fdkInspectionToken});
+      const result=index===0?context.first:await reconstruct({...context.params,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount},{lockDomain:true,cancelled:()=>cancelled||token!==fdkInspectionToken});
+      if(result.z.length!==context.first.z.length||!result.z.every((z,i)=>z===context.first.z[i]))throw Error('AXIAL_INTERNAL: selected-angle grid differs from the completed series');
       if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection',index,requestId:message.requestId,result});
     }catch(error){if(token===fdkInspectionToken)self.postMessage({type:'fdk-inspection-error',requestId:message.requestId,message:error.message});}
     return;

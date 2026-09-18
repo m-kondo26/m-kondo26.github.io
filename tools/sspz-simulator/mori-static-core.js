@@ -2,7 +2,7 @@
 // Mori et al., CT and MRI, pp.72–74 (Fig.6.25). See MORI_STATIC_METHOD.md.
 // This is an explicit reduced finite-focus benchmark, not an exact reproduction of that
 // figure, a full image FDK reconstruction, or the helical simulator's operator.
-export const MORI_STATIC_VERSION = '2026-09-18.3';
+export const MORI_STATIC_VERSION = '2026-09-18.4';
 export const MORI_STATIC_DEFAULTS = Object.freeze({
   rows:16,rowPitch:2,axialAperture:2,sourceRadius:600,detectorDistance:1070,
   viewSamples:900,zStep:.05,radii:Object.freeze([0,80,160]),
@@ -10,6 +10,13 @@ export const MORI_STATIC_DEFAULTS = Object.freeze({
 });
 const TAU=2*Math.PI;
 const EPS=1e-11;
+
+function validateDetectorGeometry(c,radius) {
+  // The farthest source-to-point distance in a full turn is R + radius.
+  // This physical acquisition boundary also applies when focalSizeMm is zero.
+  if(c.detectorDistance<=c.sourceRadius+radius)
+    throw Error(`detectorDistance must exceed sourceRadius + radius for every view (D > ${c.sourceRadius+radius} mm)`);
+}
 
 export function moriStaticConfig(input={}) {
   const c={...MORI_STATIC_DEFAULTS,...input};
@@ -19,13 +26,13 @@ export function moriStaticConfig(input={}) {
   if(!Number.isInteger(c.rows)||c.rows<1||c.rows>320)throw Error('rows: integer 1–320 required');
   if(!Number.isInteger(c.viewSamples)||c.viewSamples<4||c.viewSamples>14400)throw Error('viewSamples: integer 4–14400 required');
   if(c.axialAperture>c.rowPitch)throw Error('axialAperture must not exceed rowPitch');
-  if(c.detectorDistance<=c.sourceRadius)throw Error('detectorDistance is source-to-detector and must exceed sourceRadius');
   for(const name of ['focalSizeMm','focalTransverseMm'])
     if(!Number.isFinite(c[name])||c[name]<0)throw Error(`${name}: nonnegative finite value required`);
   if(!Number.isFinite(c.targetAngleDeg)||c.targetAngleDeg<=0||c.targetAngleDeg>=90)
     throw Error('targetAngleDeg: reference angle between 0 and 90 required');
   if(!c.radii.length||c.radii.length>10||c.radii.some(r=>!Number.isFinite(r)||r<0||r>=c.sourceRadius))
     throw Error('radii: up to ten nonnegative positions inside the source orbit required');
+  validateDetectorGeometry(c,Math.max(...c.radii));
   c.sourceZ=0;c.focalSpotModel=c.focalSizeMm===0?'ideal-point':'uniform-effective-axial';c.normalization='unit-area';
   c.targetAngleUse='reference-only-effective-size-already-specified';
   c.baseNormalization=c.focalSizeMm===0?'peak-one':'detector-peak-one-focus-unit-area';
@@ -38,6 +45,7 @@ function rowZ(c,row) {return (row-(c.rows-1)/2)*c.rowPitch;}
 function validateSelection(c,{row,radius,angleDeg}) {
   if(!Number.isInteger(row)||row<0||row>=c.rows)throw Error('row outside detector');
   if(!Number.isFinite(radius)||radius<0||radius>=c.sourceRadius)throw Error('radius outside source orbit');
+  validateDetectorGeometry(c,radius);
   if(!Number.isFinite(angleDeg))throw Error('angleDeg must be finite');
 }
 
@@ -97,6 +105,7 @@ function supportExtent(c,radius) {
 export function moriStaticGrid(config,{radius}={}) {
   const c=moriStaticConfig(config),r=radius??Math.max(...c.radii);
   if(!Number.isFinite(r)||r<0||r>=c.sourceRadius)throw Error('radius outside source orbit');
+  validateDetectorGeometry(c,r);
   // Full support of every acquired aperture plus focal blur, at every angle, plus two
   // empty bins. This avoids truncating outer-row shapes for normalization.
   const support=supportExtent(c,r);
@@ -175,7 +184,10 @@ function angleProfile(c,selection,z,g) {
 }
 
 export function moriStaticAngleProfile(config,selection={}) {
-  const c=moriStaticConfig(config),z=selection.z??moriStaticGrid(c,{radius:selection.radius});
+  const c=moriStaticConfig(config);
+  const {row=0,radius=c.radii[0],angleDeg=0}=selection;
+  validateSelection(c,{row,radius,angleDeg});
+  const z=selection.z??moriStaticGrid(c,{radius:selection.radius});
   const g=gridInfo(z);checkSupport(c,selection.radius??c.radii[0],z,g);
   return angleProfile(c,selection,z,g);
 }

@@ -106,6 +106,29 @@ assert.throws(()=>moriStaticConfig({radii:[600]}),/inside/);checks++;
 assert.throws(()=>moriStaticConfig({axialAperture:3}),/exceed/);checks++;
 assert.throws(()=>moriStaticAngleProfile(c,{radius:160,z:new Float64Array([-1,0,1])}),/support/);checks++;
 assert.throws(()=>moriStaticView(c,{row:16}),/outside/);checks++;
+// The detector must be beyond every evaluation point over the whole orbit,
+// even with a point source. R=600, r=160 reaches L=760 at 180 degrees;
+// D=650 previously passed D>R and silently extrapolated behind the detector.
+const detectorDomainError=/detectorDistance.*sourceRadius \+ radius/;
+for(const focalSizeMm of [0,1.2]){
+  for(const detectorDistance of [650,760]){
+    assert.throws(()=>moriStaticConfig({sourceRadius:600,detectorDistance,radii:[0,160],focalSizeMm}),detectorDomainError);checks++;
+  }
+  const valid=moriStaticConfig({sourceRadius:600,detectorDistance:760.001,radii:[0,160],focalSizeMm});
+  const far=moriStaticView(valid,{row:7,radius:160,angleDeg:180});
+  near(far.transverseDistance,760,1e-12,'farthest evaluation point');
+  assert.ok(far.transverseDistance<valid.detectorDistance);checks++;
+  // Single-view/grid APIs allow a radius override outside config.radii.
+  // Reject it even at a near-side angle where that one view fits; a full
+  // physical orbit is the declared acquisition, rather than an angle subset.
+  const centreOnly=moriStaticConfig({sourceRadius:600,detectorDistance:650,radii:[0],focalSizeMm});
+  assert.throws(()=>moriStaticView(centreOnly,{row:7,radius:160,angleDeg:0}),detectorDomainError);checks++;
+  assert.throws(()=>moriStaticGrid(centreOnly,{radius:160}),detectorDomainError);checks++;
+  assert.throws(()=>moriStaticAngleProfile(centreOnly,{row:7,radius:160,angleDeg:180,z:result.z}),detectorDomainError);checks++;
+  assert.throws(()=>moriStaticProgress(centreOnly,{row:7,radius:160,angleDeg:360,z:result.z}),detectorDomainError);checks++;
+  // A different radius remains usable when its complete orbit is valid.
+  assert.doesNotThrow(()=>moriStaticView(centreOnly,{row:7,radius:40,angleDeg:180}));checks++;
+}
 const one=moriStaticCalculate({...c,rows:1,radii:[0]});
 near(one.groups[0].profiles[0].fwhm,2,1e-10,'single row centre response');
 assert.equal(moriStaticGrid(c).length,result.z.length);checks++;

@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { finalizeEnglishHtml, translateEnglishSource } from "./english-replacements.mjs";
 import { buildMethods } from "./build-methods.mjs";
 
-const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
+const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");
 
 const detector = stripExports(await readFile(new URL("../detector-aperture.js", import.meta.url), "utf8"));
@@ -10,7 +10,7 @@ const core = detector+'\n'+stripExports(stripImports(await readFile(new URL("../
 const fdk = stripExports(stripImports(await readFile(new URL("../fdk-core.js", import.meta.url), "utf8")));
 const cba = stripExports(stripImports(await readFile(new URL("../cba-core.js", import.meta.url), "utf8")));
 const zffsGeometry=stripExports(await readFile(new URL('../zffs-geometry.js',import.meta.url),'utf8'));
-const zffsResponse=stripExports(stripImports(await readFile(new URL('../zffs-response.js',import.meta.url),'utf8')));
+const zffsResponse=stripExports(await readFile(new URL('../axial-domain.js',import.meta.url),'utf8'))+'\n'+stripExports(stripImports(await readFile(new URL('../zffs-response.js',import.meta.url),'utf8')));
 const sourceSupport=stripExports(stripImports(await readFile(new URL('../axial-source-support.js',import.meta.url),'utf8')))+'\n'+stripExports(stripImports(await readFile(new URL('../axial-source-response.js',import.meta.url),'utf8')));
 const axialResponse=sourceSupport+'\n'+stripExports(stripImports(await readFile(new URL("../axial-response-core.js",import.meta.url),'utf8')));
 const animation=stripExports(stripImports(await readFile(new URL('../axial-animation-core.js',import.meta.url),'utf8')));
