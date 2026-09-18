@@ -1,11 +1,12 @@
 // Static-table, reduced axial response following the operations described at
 // Mori et al., CT and MRI, pp.72–74 (Fig.6.25). See MORI_STATIC_METHOD.md.
-// This is an explicit point-focus benchmark, not an exact reproduction of that
+// This is an explicit reduced finite-focus benchmark, not an exact reproduction of that
 // figure, a full image FDK reconstruction, or the helical simulator's operator.
-export const MORI_STATIC_VERSION = '2026-09-18.1';
+export const MORI_STATIC_VERSION = '2026-09-18.2';
 export const MORI_STATIC_DEFAULTS = Object.freeze({
   rows:16,rowPitch:2,axialAperture:2,sourceRadius:600,detectorDistance:1070,
   viewSamples:900,zStep:.05,radii:Object.freeze([0,80,160]),
+  focalSizeMm:1.2,focalTransverseMm:1.2,targetAngleDeg:7,
 });
 const TAU=2*Math.PI;
 const EPS=1e-11;
@@ -19,10 +20,16 @@ export function moriStaticConfig(input={}) {
   if(!Number.isInteger(c.viewSamples)||c.viewSamples<4||c.viewSamples>14400)throw Error('viewSamples: integer 4–14400 required');
   if(c.axialAperture>c.rowPitch)throw Error('axialAperture must not exceed rowPitch');
   if(c.detectorDistance<=c.sourceRadius)throw Error('detectorDistance is source-to-detector and must exceed sourceRadius');
+  for(const name of ['focalSizeMm','focalTransverseMm'])
+    if(!Number.isFinite(c[name])||c[name]<0)throw Error(`${name}: nonnegative finite value required`);
+  if(!Number.isFinite(c.targetAngleDeg)||c.targetAngleDeg<=0||c.targetAngleDeg>=90)
+    throw Error('targetAngleDeg: reference angle between 0 and 90 required');
   if(!c.radii.length||c.radii.length>10||c.radii.some(r=>!Number.isFinite(r)||r<0||r>=c.sourceRadius))
     throw Error('radii: up to ten nonnegative positions inside the source orbit required');
-  c.sourceZ=0;c.focalSpotModel='ideal-point';c.normalization='unit-area';
-  c.baseNormalization='peak-one';c.apertureGeometry='local-cone-scaled';
+  c.sourceZ=0;c.focalSpotModel=c.focalSizeMm===0?'ideal-point':'uniform-effective-axial';c.normalization='unit-area';
+  c.targetAngleUse='reference-only-effective-size-already-specified';
+  c.baseNormalization=c.focalSizeMm===0?'peak-one':'detector-peak-one-focus-unit-area';
+  c.apertureGeometry='local-cone-scaled';
   c.edgePolicy='nearest-end-row';c.beamPitch=0;
   return c;
 }
@@ -55,21 +62,34 @@ export function moriStaticView(config,selection={}) {
     if(Math.abs(clipped-nearest)<EPS)selected=[{row:nearest,weight:1}];
     else {const lo=Math.floor(clipped),a=clipped-lo;selected=[{row:lo,weight:1-a},{row:lo+1,weight:a}];}
   }
-  selected=selected.map(s=>({...s,zCentre:rowCentres[s.row],apertureMm:c.axialAperture*scale}));
+  // A displacement t of the effective source with the detector fixed moves
+  // the ray's intersection at L by t(1-L/D). focalSizeMm is already effective:
+  // the reference target angle is not applied a second time.
+  const focalBlurMm=c.focalSizeMm*Math.abs(1-L/c.detectorDistance);
+  selected=selected.map(s=>({...s,zCentre:rowCentres[s.row],apertureMm:c.axialAperture*scale,
+    focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm}));
   // The curved-detector inverse-square factor is expressed using transverse
   // source-to-point distance. See the explicit convention in the method note.
   const backprojectionWeight=(R/L)**2;
   return {angleDeg,beta,row,radius,zPlane,source,transverseDistance:L,radialDistance:U,
     detectorDistance:c.detectorDistance,magnification:scale,rowScale:scale,physicalMagnification:c.detectorDistance/L,rowCentres,detectorRowCentres,
-    rowPitchMmAtPoint:spacing,selected,edgeFallback:edgeSide!==null,edgeSide,backprojectionWeight};
+    rowPitchMmAtPoint:spacing,focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm,
+    selected,edgeFallback:edgeSide!==null,edgeSide,backprojectionWeight};
+}
+
+function supportExtent(c,radius) {
+  const near=1-(c.sourceRadius-radius)/c.detectorDistance;
+  const far=1-(c.sourceRadius+radius)/c.detectorDistance;
+  const focusHalf=c.focalSizeMm*Math.max(Math.abs(near),Math.abs(far))/2;
+  return ((c.rows-1)*c.rowPitch+c.axialAperture)/2*(1+radius/c.sourceRadius)+focusHalf;
 }
 
 export function moriStaticGrid(config,{radius}={}) {
   const c=moriStaticConfig(config),r=radius??Math.max(...c.radii);
   if(!Number.isFinite(r)||r<0||r>=c.sourceRadius)throw Error('radius outside source orbit');
-  // Full support of every acquired aperture at every source angle, plus two
+  // Full support of every acquired aperture plus focal blur, at every angle, plus two
   // empty bins. This avoids truncating outer-row shapes for normalization.
-  const support=((c.rows-1)*c.rowPitch+c.axialAperture)/2*(1+r/c.sourceRadius);
+  const support=supportExtent(c,r);
   const half=Math.ceil(support/c.zStep)+2;
   if(2*half+1>50001)throw Error('Static axial grid exceeds 50001 bins');
   return Float64Array.from({length:2*half+1},(_,i)=>(i-half)*c.zStep);
@@ -85,9 +105,9 @@ function gridInfo(z) {
 }
 
 function checkSupport(c,radius,z,g) {
-  const support=((c.rows-1)*c.rowPitch+c.axialAperture)/2*(1+radius/c.sourceRadius);
+  const support=supportExtent(c,radius);
   if(g.left> -support+EPS||g.left+z.length*g.dz<support-EPS)
-    throw Error('Axial bins must contain full detector-aperture support');
+    throw Error('Axial bins must contain full detector-aperture and focal-blur support');
 }
 
 // Exact cell averages of a rectangle whose integral is mass. This is sampling
@@ -102,13 +122,42 @@ function addRectangle(out,z,g,centre,width,mass) {
   }
 }
 
+// Exact difference of the piecewise quadratic CDF of two uniform rectangles.
+// Factored differences avoid subtracting CDF values close to one in the right
+// tail. This integrates the trapezoid over each display bin; no smoothing of
+// an already sampled or normalized SSP is performed.
+function trapezoidProbability(left,right,widthA,widthB) {
+  const A=Math.max(widthA,widthB),B=Math.min(widthA,widthB);
+  const half=(A+B)/2,plateau=(A-B)/2;
+  const lo=Math.max(-half,left),hi=Math.min(half,right);
+  if(hi<=lo)return 0;
+  let p=0,a=lo,b=Math.min(hi,-plateau);
+  if(b>a)p+=(b-a)*(a+b+2*half)/(2*A*B);
+  a=Math.max(lo,-plateau);b=Math.min(hi,plateau);
+  if(b>a)p+=(b-a)/A;
+  a=Math.max(lo,plateau);b=hi;
+  if(b>a)p+=(b-a)*(2*half-a-b)/(2*A*B);
+  return Math.max(0,p);
+}
+
+function addBlurredRectangle(out,z,g,centre,apertureMm,focalBlurMm,mass) {
+  if(focalBlurMm===0){addRectangle(out,z,g,centre,apertureMm,mass);return;}
+  const half=(apertureMm+focalBlurMm)/2;
+  const first=Math.max(0,Math.floor((centre-half-g.left)/g.dz));
+  const last=Math.min(out.length-1,Math.ceil((centre+half-g.left)/g.dz)-1);
+  for(let i=first;i<=last;i++){
+    const left=g.left+i*g.dz-centre,right=g.left+(i+1)*g.dz-centre;
+    out[i]+=mass*trapezoidProbability(left,right,apertureMm,focalBlurMm)/g.dz;
+  }
+}
+
 function angleProfile(c,selection,z,g) {
   const view=moriStaticView(c,selection),raw=new Float64Array(z.length),components=[];
   for(const s of view.selected){
     const profile=new Float64Array(z.length);
     // Book Eq.6.8 defines B_D as a peak-one rectangle. Do not independently
     // area-normalize the angle kernels: final SSP normalization comes later.
-    addRectangle(profile,z,g,s.zCentre,s.apertureMm,s.apertureMm*s.weight*view.backprojectionWeight);
+    addBlurredRectangle(profile,z,g,s.zCentre,s.apertureMm,s.focalBlurMm,s.apertureMm*s.weight*view.backprojectionWeight);
     for(let i=0;i<raw.length;i++)raw[i]+=profile[i];
     components.push({...s,profile});
   }
@@ -129,9 +178,9 @@ function accumulate(c,row,radius,z,g,lastView=c.viewSamples) {
     weightSum+=v.backprojectionWeight/c.viewSamples;
     for(const s of v.selected){
       const mass=s.apertureMm*s.weight*v.backprojectionWeight/c.viewSamples;
-      addRectangle(raw,z,g,s.zCentre,s.apertureMm,mass);
+      addBlurredRectangle(raw,z,g,s.zCentre,s.apertureMm,s.focalBlurMm,mass);
       area+=mass;firstMoment+=mass*s.zCentre;
-      secondMoment+=mass*(s.zCentre*s.zCentre+s.apertureMm*s.apertureMm/12);
+      secondMoment+=mass*(s.zCentre*s.zCentre+(s.apertureMm*s.apertureMm+s.focalBlurMm*s.focalBlurMm)/12);
     }
   }
   return {raw,edgeCount,weightSum,moments:{area,firstMoment,secondMoment}};

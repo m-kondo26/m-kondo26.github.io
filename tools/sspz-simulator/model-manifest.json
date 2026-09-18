@@ -379,12 +379,16 @@
     "scope": "Screen and 600-dpi PNG; visibility threshold only. Full calculated/exported profiles and width metrics are retained. This normalized ordinate is not an integrated contribution fraction."
   },
   "moriStaticBenchmark": {
-    "version": "2026-09-18.1",
+    "version": "2026-09-18.2",
     "page": "mori-static.html",
     "core": "mori-static-core.js",
     "documentation": "MORI_STATIC_METHOD.md",
     "tests": "tests/mori-static.mjs",
-    "scope": "Static table, ideal point focus, local axial aperture, linear row interpolation, curved inverse-square distance weight and unit-area normalization; no full FDK or exact book reproduction",
+    "scope": "Static table, uniform effective axial focal width convolved with local axial detector aperture, linear row interpolation, curved inverse-square distance weight and unit-area normalization; point-focus comparison available; no full FDK or exact book reproduction",
+    "focalSizeMm": 1.2,
+    "focalSource": "Mori et al. CT and MRI, Fig.6.6; adoption for this axial benchmark is explicit, not a verified Fig.6.25 parameter identity",
+    "targetAngleReferenceDeg": 7,
+    "targetAngleUse": "Reference only; no additional sine scaling of effective focal size or tilted-target directional focal-shape model",
     "browserDefaultPitchMm": 0.58,
     "browserDefaultApertureMm": 0.58,
     "legacyExplicitInputsPreserved": true,
