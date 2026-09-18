@@ -166,6 +166,7 @@ function runFdkSimulation(){
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkRoleDiagrams(m.result);
+        prepareGeometryConstruction();
         document.querySelectorAll('[data-fdk-canvas^="fdk-geometry"],[data-fdk-canvas^="fdk-weights-primary"]').forEach(b=>b.disabled=false);
         status.textContent=fdkText('取得応答がないため、展開図のみ表示します。','No acquired point response; geometry only.');
         document.getElementById('fdk-summary').textContent=fdkText('点対象の信号を取得できません。検出器開口・隙間・標本間隔を確認してください。候補配置と重みは表示できますが、SSPz・幅指標は算出できません。','The point signal is not acquired. Check detector aperture, gaps and sampling. Candidate geometry and weights remain available; SSPz and widths are undefined.');

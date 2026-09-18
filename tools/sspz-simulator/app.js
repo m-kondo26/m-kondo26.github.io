@@ -81,7 +81,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.8 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.9 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -923,6 +923,11 @@ function drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit) {
     previousDelta = delta;
   }
   ctx.stroke();
+  if(trace.frontier&&angles.length){
+    const i=angles.length-1,delta=axial[i]+turn*feed+scales[i]*rowOffset-diagram.z0;
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=.95;ctx.fillStyle=rowColor(row,totalRows);
+    ctx.fillRect(x(delta)-3,yDown(angles[i])-3,6,6);
+  }
   ctx.restore();
 }
 
@@ -976,6 +981,14 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   // In particular, complementary markers are not drawn on direct-only traces.
   const traceFamilies = diagram.traceFamilies ?? [diagram.traceGeometry];
   for (const trace of traceFamilies) {
+    if(diagram.construction){
+      for(const turn of diagram.traceGeometry.turns){
+        const partial=SSPZConstruction.prefix(trace,turn,diagram.construction.cutoff);
+        if(!partial.angles.length)continue;
+        for(let row=0;row<diagram.totalRows;row++)drawCandidateTrace(ctx,diagram,partial,row,turn,x,yDown,xLimit);
+      }
+      continue;
+    }
     // Exact angular matches have only one distinct complementary family.
     if (trace.id === "complementary-upper") {
       const lower = traceFamilies.find(item => item.id === "complementary-lower");

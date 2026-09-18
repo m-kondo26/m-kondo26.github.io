@@ -35,13 +35,13 @@ function initializeFdkWorkflow(panel){
 }
 function fdkWorkflowAvailability(on){
   if(!on){resetGeometryPlayback();disableAxialMovie();}
-  document.getElementById('geometry-play').disabled=!on;
+  for(const id of ['geometry-play','geometry-restart','geometry-complete','geometry-progress'])document.getElementById(id).disabled=!on||!fdkSelectedResult;
   for(const id of ['fdk-inspect','fdk-prev','fdk-next'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
-function selectFdkState(index,immediate=false,playback=false){
+function selectFdkState(index,immediate=false){
   if(!fdkResult)return;
-  if(!playback)stopGeometryPlayback();
+  stopGeometryPlayback();
   stopAxialMovie();
   geometryPlayback.pending=true;updateGeometryPlayControl();
   selectedStateIndex=((Math.round(index)%360)+360)%360;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkSelectedResult=null;
@@ -49,7 +49,7 @@ function selectFdkState(index,immediate=false,playback=false){
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
   document.getElementById('fdk-inspect-label').textContent=`+${selectedStateIndex}° / ${fdkText('開始角度','start angle')} ${angle.toFixed(1)}°`;
   document.getElementById('fdk-inspection-status').textContent=fdkText('選択角度の展開図・重み・応答を更新中…','Updating geometry, weights and response for the selected angle…');
-  if(!playback)for(const id of ['fdk-geometry','fdk-geometry-direct','fdk-geometry-complementary','fdk-weights-primary','fdk-weights-primary-direct','fdk-weights-primary-complementary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
+  for(const id of ['fdk-geometry','fdk-geometry-direct','fdk-geometry-complementary','fdk-weights-primary','fdk-weights-primary-direct','fdk-weights-primary-complementary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
   syncZffsUi();for(const cv of document.querySelectorAll('#zffs-diagrams canvas'))drawCanvasStatus(cv,'z-FFS',fdkText('選択角度を計算中','Computing selected angle'));
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
@@ -83,7 +83,7 @@ function renderFdkSelected(){
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
 // Only the scene data differ; palette, opacity, marker size and layout are shared.
-function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
+function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',capture=false){
   if(r.config.zFfsEnabled&&!r.weightAudit?.pairedSamples)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
@@ -155,8 +155,12 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
       }
     }
   }
+  for(const t of traceFamilies)t.sourceAngles=angles.map((deg,i)=>{
+    const theta=c.phase+(base+i+(t.family==='complementary'?c.viewSamples/2:0))*step;
+    return rebinned&&c.axialRule!=='parallel'?theta+Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius):theta;
+  });
   const referenceView=q=>paired?q.referenceView:q.view;
-  const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
+  const diagram={totalRows:rows,z0:r.zObject,sourcePhase:c.phase,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
     weightedPoints:zoom?samples.filter(q=>((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
@@ -191,8 +195,10 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
     diagram.traceFamilies=diagram.traceFamilies.filter(t=>t.family===role);
     diagram.weightedPoints=diagram.weightedPoints.filter(p=>p.traceFamilyId.startsWith('complementary-')===(role==='complementary'));
   }
+  if(capture)return diagram;
   drawDiagram(canvas,diagram,zoom?'zoom':'overview');
   canvas.dataset.visibleRole=role;
+  canvas.dataset.constructionProgress='1';
   for(const key of Object.keys(canvas.dataset))if(canvas.dataset[key]==='undefined')delete canvas.dataset[key];
   canvas.dataset.renderState='ready';
   canvas.dataset.complementaryMarkerShape=paired?'triangle':'not-applicable-in-own-angle-coordinate';
@@ -231,9 +237,15 @@ function addFdkWorkflowSheets(sheets){
 async function exportFdkWorkflowCanvas(id){
   if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id.startsWith('fdk-geometry')||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
   const role=id.endsWith('-complementary')?'complementary':id.endsWith('-direct')?'direct':'all';
-  if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
+  if(id.startsWith('fdk-geometry')&&geometryPlayback.scene){
+    stopGeometryPlayback();c.dataset.renderScale=String(c.width/900);
+    const p=geometryPlayback,cutoff=p.fraction>=1?null:p.window.start+p.fraction*(p.window.end-p.window.start);
+    drawDiagram(c,SSPZConstruction.role(p.scene,role,cutoff),'overview');
+  }
+  else if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
   else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else drawFdkDifference(c,fdkResult);
-  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
+  const frame=id.startsWith('fdk-geometry')&&geometryPlayback.scene&&geometryPlayback.fraction<1?`_draw-${Math.round(geometryPlayback.fraction*1000)}`:'';
+  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }

@@ -2988,15 +2988,67 @@ globalThis.SSPZShapeDisplay = (() => {
   return { draw, fromFdk, intensity, ticks, exponent };
 })();
 
-// Replays complete start-angle results, never animates a substitute SSP.
-const geometryPlayback={playing:false,pending:false,timer:null,cache:new Map()};
+// Drawing order only: each row trajectory retains its original coordinates.
+// Both roles of the same datum use the same unwrapped source angle beta.
+globalThis.SSPZConstruction=Object.freeze({
+  window(scene,xLimit){
+    let lo=Infinity,hi=-Infinity;
+    for(const t of scene.traceFamilies)for(const turn of scene.traceGeometry.turns){
+      for(const offset of scene.traceGeometry.rowOffsets){
+        for(let i=1;i<t.angles.length;i++){
+          const a=t.axial[i-1]+turn*scene.traceGeometry.feed+t.scales[i-1]*offset-scene.z0;
+          const b=t.axial[i]+turn*scene.traceGeometry.feed+t.scales[i]*offset-scene.z0;
+          let u=0,v=1;
+          if(a===b){if(Math.abs(a)>xLimit)continue;}
+          else {const q=(-xLimit-a)/(b-a),r=(xLimit-a)/(b-a);u=Math.max(0,Math.min(q,r));v=Math.min(1,Math.max(q,r));if(u>v)continue;}
+          const beta=t.sourceAngles[i-1]+turn*2*Math.PI,db=t.sourceAngles[i]-t.sourceAngles[i-1];
+          lo=Math.min(lo,beta+u*db);hi=Math.max(hi,beta+v*db);
+        }
+      }
+    }
+    // Zero refers to the direct/output direction of the diagram, not a new source
+    // phase. Its beta includes the fan-angle offset and repeats each turn.
+    const phase=scene.traceFamilies.find(t=>t.family==='direct')?.sourceAngles[0]??scene.sourcePhase??0,tau=2*Math.PI;
+    if(!Number.isFinite(lo))return {start:phase,end:phase+tau,turns:1};
+    // Begin at diagram angle zero, outside the left plot edge.
+    const start=phase+Math.floor((lo-phase)/tau-1e-10)*tau;
+    const end=phase+Math.ceil((hi-phase)/tau+1e-10)*tau;
+    return {start,end,turns:(end-start)/tau};
+  },
+  prefix(trace,turn,cutoff){
+    const t=cutoff-turn*2*Math.PI,beta=trace.sourceAngles,n=beta.length;
+    if(t>=beta[n-1])return trace;
+    if(t<beta[0])return {...trace,angles:[],axial:[],scales:[],sourceAngles:[]};
+    let lo=0,hi=n-1;
+    while(lo+1<hi){const m=(lo+hi)>>1;if(beta[m]<=t)lo=m;else hi=m;}
+    const f=(t-beta[lo])/(beta[hi]-beta[lo]),out={...trace,frontier:true};
+    for(const k of ['angles','axial','scales','sourceAngles']){
+      out[k]=Array.from(trace[k].slice(0,lo+1));
+      if(f>0)out[k].push(trace[k][lo]+f*(trace[k][hi]-trace[k][lo]));
+    }
+    return out;
+  },
+  role(scene,role,cutoff=null){
+    return {...scene,visibleRole:role,
+      traceFamilies:scene.traceFamilies.filter(t=>role==='all'||t.family===role),
+      construction:cutoff===null?null:{cutoff}};
+  }
+});
+
+// Construct one fixed-phase diagram by advancing acquisition angle across turns.
+// This never changes the selected start phase, sample weights, or SSPz.
+const geometryPlayback={playing:false,pending:false,timer:null,cache:new Map(),scene:null,window:null,fraction:1,lastTime:0};
 function initializeGeometryPlayback(geometry,weights){
-  geometry.querySelector('.state-inspector').insertAdjacentHTML('beforeend',`<div class="geometry-playback-controls">
-    <button type="button" id="geometry-play" disabled>${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button>
-    <label>${fdkText('角度の刻み','Angle step')}<select id="geometry-stride"><option value="1">1°</option><option value="5" selected>5°</option><option value="10">10°</option></select></label>
-    <label>${fdkText('再生速度','Playback speed')}<select id="geometry-speed"><option value="1000">${fdkText('ゆっくり','Slow')}</option><option value="350" selected>${fdkText('標準','Normal')}</option><option value="100">${fdkText('速い','Fast')}</option></select></label>
-    <span id="geometry-play-status" role="status"></span></div>
-    <p class="geometry-play-note">${fdkText('同じ開始角度の「実データ側 → 対向データ側 → 重ね合わせ」を並べます。再生は360°で先頭に戻り、繰り返します。これは開始角度の異なる撮影条件の比較です。1回の撮影中の管球回転・寝台移動の動画ではありません。','Direct → complementary → overlay use the same start angle. Playback loops at 360°. It compares scans with different start angles, rather than tube and table motion within one scan.')}</p>`);
+  const controls=document.createElement('div');controls.className='geometry-construction-controls';
+  controls.innerHTML=`<h3>${fdkText('展開図ができるまで','How the unwrapped diagram is drawn')}</h3><div class="geometry-playback-controls">
+    <button type="button" id="geometry-play" disabled>${fdkText('▶ 描く過程を再生','▶ Play drawing process')}</button>
+    <button type="button" id="geometry-restart" disabled>${fdkText('最初から','Restart')}</button>
+    <button type="button" id="geometry-complete" disabled>${fdkText('完成図を表示','Show complete diagram')}</button>
+    <label>${fdkText('再生速度','Playback speed')}<select id="geometry-speed"><option value="45">${fdkText('ゆっくり','Slow')}</option><option value="90" selected>${fdkText('標準','Normal')}</option><option value="180">${fdkText('速い','Fast')}</option></select></label></div>
+    <label class="geometry-drawing-progress">${fdkText('描画の進み具合','Drawing progress')}<input id="geometry-progress" type="range" min="0" max="1000" step="1" value="1000" disabled></label>
+    <p id="geometry-play-status" role="status"></p>
+    <p class="geometry-play-note">${fdkText('開始角度を固定し、左から右へ進む列軌跡を描き足します。1回転ごとに縦軸の0°へ戻り、次の体軸位置へ続きます。実データと、その同じデータを対向側へ写した破線を並べて確認できます。小さな四角は描画中の先端です。右端まで描き終えると、先頭から繰り返します。','The start phase stays fixed while row trajectories grow from left to right. Each turn wraps to 0° and continues at the next axial position. Direct data and the same data mapped to the complementary side are drawn together. Small squares mark the advancing tips. After completing the right edge, playback repeats.')}</p>
+    <p class="geometry-play-note">${fdkText('軌跡を描く順序の表示です。下の補間重みとSSPzは完成した計算結果を保持します。','This illustrates trajectory construction. The interpolation weights and SSPz below retain the completed calculation.')}</p>`;
   const addRoles=(parent,id)=>{
     const all=document.getElementById(id).closest('article'),grid=document.createElement('div');grid.className='geometry-role-grid';
     all.before(grid);
@@ -3013,44 +3065,71 @@ function initializeGeometryPlayback(geometry,weights){
   };
   addRoles(geometry,'fdk-geometry');addRoles(weights,'fdk-weights-primary');
   geometry.querySelector('.geometry-role-grid').insertAdjacentHTML('beforebegin',`<h3>${fdkText('2A　補間候補の配置：0～360°展開図','2A  Candidate arrangement: 0–360° unwrapped diagram')}</h3>`);
+  geometry.querySelector('.geometry-role-grid').before(controls);
   document.getElementById('geometry-play').onclick=()=>{
     if(geometryPlayback.playing)stopGeometryPlayback();else{
-      stopAxialMovie();geometryPlayback.playing=true;updateGeometryPlayControl();scheduleGeometryPlayback();
+      stopAxialMovie();if(geometryPlayback.fraction>=1)geometryPlayback.fraction=0;
+      geometryPlayback.playing=true;geometryPlayback.lastTime=performance.now();paintGeometryConstruction();scheduleGeometryPlayback();
     }
   };
-  for(const id of ['geometry-stride','geometry-speed'])document.getElementById(id).onchange=()=>scheduleGeometryPlayback();
+  document.getElementById('geometry-restart').onclick=()=>{stopGeometryPlayback();geometryPlayback.fraction=0;paintGeometryConstruction();};
+  document.getElementById('geometry-complete').onclick=()=>{stopGeometryPlayback();geometryPlayback.fraction=1;paintGeometryConstruction();};
+  document.getElementById('geometry-progress').oninput=e=>{const fraction=Number(e.target.value)/1000;stopGeometryPlayback();geometryPlayback.fraction=fraction;paintGeometryConstruction();};
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopGeometryPlayback();});
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-  if(reduced.matches)document.getElementById('geometry-speed').value='1000';
-  reduced.addEventListener('change',()=>{stopGeometryPlayback();if(reduced.matches)document.getElementById('geometry-speed').value='1000';});
+  if(reduced.matches)document.getElementById('geometry-speed').value='45';
+  reduced.addEventListener('change',()=>{stopGeometryPlayback();if(reduced.matches)document.getElementById('geometry-speed').value='45';});
 }
 function updateGeometryPlayControl(){
   const button=document.getElementById('geometry-play');if(!button)return;
-  button.textContent=geometryPlayback.playing?fdkText('Ⅱ 一時停止','Ⅱ Pause'):fdkText('▶ 開始角度を再生','▶ Play start angles');
+  button.textContent=geometryPlayback.playing?fdkText('Ⅱ 一時停止','Ⅱ Pause'):fdkText('▶ 描く過程を再生','▶ Play drawing process');
   button.setAttribute('aria-pressed',String(geometryPlayback.playing));
-  document.getElementById('geometry-play-status').textContent=geometryPlayback.playing?(geometryPlayback.pending?fdkText('次の角度を準備中…','Preparing the next angle…'):fdkText('再生中・繰り返し','Playing · loop')):'';
+  const w=geometryPlayback.window;
+  const deg=w?geometryPlayback.fraction*(w.end-w.start)*180/Math.PI:0;
+  document.getElementById('geometry-progress').value=Math.round(geometryPlayback.fraction*1000);
+  document.getElementById('geometry-play-status').textContent=w?
+    fdkText('描画開始から ','From drawing start: ')+`${Math.floor(deg/360)} `+fdkText('回転 ＋ ','turns + ')+`${Math.floor(deg%360)}° / ${Math.round(100*geometryPlayback.fraction)}%`+
+    (geometryPlayback.fraction===1?fdkText('：完成図',' · complete'):geometryPlayback.playing?fdkText('：描画中',' · drawing'):fdkText('：停止中',' · paused')):'';
 }
 function stopGeometryPlayback(){
-  const wasPlaying=geometryPlayback.playing;
   geometryPlayback.playing=false;clearTimeout(geometryPlayback.timer);geometryPlayback.timer=null;updateGeometryPlayControl();
-  if(wasPlaying&&!geometryPlayback.pending&&fdkSelectedResult)syncAxialMovie();
 }
 function resetGeometryPlayback(){
-  geometryPlayback.playing=false;clearTimeout(geometryPlayback.timer);geometryPlayback.timer=null;geometryPlayback.pending=false;geometryPlayback.cache.clear();updateGeometryPlayControl();
+  geometryPlayback.playing=false;clearTimeout(geometryPlayback.timer);geometryPlayback.timer=null;geometryPlayback.pending=false;geometryPlayback.cache.clear();geometryPlayback.scene=null;geometryPlayback.window=null;geometryPlayback.fraction=1;updateGeometryPlayControl();
 }
 function scheduleGeometryPlayback(){
   clearTimeout(geometryPlayback.timer);
-  if(!geometryPlayback.playing||geometryPlayback.pending||document.hidden||!fdkSelectedResult)return;
+  if(!geometryPlayback.playing||geometryPlayback.pending||document.hidden||!geometryPlayback.scene)return;
   geometryPlayback.timer=setTimeout(()=>{
-    const step=Number(document.getElementById('geometry-stride').value);
-    selectFdkState(selectedStateIndex+step,true,true);
-  },Number(document.getElementById('geometry-speed').value));
+    const now=performance.now(),w=geometryPlayback.window;
+    if(geometryPlayback.fraction>=1)geometryPlayback.fraction=0;
+    else geometryPlayback.fraction=Math.min(1,geometryPlayback.fraction+Math.min(100,now-geometryPlayback.lastTime)/1000*Number(document.getElementById('geometry-speed').value)*Math.PI/180/(w.end-w.start));
+    geometryPlayback.lastTime=now;paintGeometryConstruction();scheduleGeometryPlayback();
+  },geometryPlayback.fraction>=1?1600:50);
 }
 function receiveGeometryInspection(result){
   fdkSelectedResult=result;geometryPlayback.pending=false;
   geometryPlayback.cache.set(selectedStateIndex,result);
   while(geometryPlayback.cache.size>8)geometryPlayback.cache.delete(geometryPlayback.cache.keys().next().value);
-  renderFdkSelected();updateGeometryPlayControl();scheduleGeometryPlayback();
+  renderFdkSelected();prepareGeometryConstruction();
+}
+function prepareGeometryConstruction(){
+  stopGeometryPlayback();geometryPlayback.fraction=1;
+  const r=fdkSelectedResult;if(!r)return;
+  geometryPlayback.scene=drawFdkCandidateDiagram({width:900,dataset:{}},r,false,false,'all',true);
+  geometryPlayback.window=SSPZConstruction.window(geometryPlayback.scene,symmetricNiceAxis(geometryPlayback.scene.overviewXLimit,3).xMax);
+  for(const id of ['geometry-play','geometry-restart','geometry-complete','geometry-progress'])document.getElementById(id).disabled=false;
+  updateGeometryPlayControl();
+}
+function paintGeometryConstruction(){
+  const p=geometryPlayback;if(!p.scene||!p.window)return;
+  const cutoff=p.fraction>=1?null:p.window.start+p.fraction*(p.window.end-p.window.start);
+  for(const role of ['direct','complementary','all']){
+    const canvas=document.getElementById('fdk-geometry'+(role==='all'?'':'-'+role));
+    drawDiagram(canvas,SSPZConstruction.role(p.scene,role,cutoff),'overview');
+    canvas.dataset.constructionProgress=String(p.fraction);canvas.dataset.sourceCursor=String(cutoff??p.window.end);canvas.dataset.startIndex=selectedStateIndex;
+  }
+  updateGeometryPlayControl();
 }
 function drawFdkRoleDiagrams(r){
   for(const id of ['fdk-geometry','fdk-weights-primary'])for(const role of ['direct','complementary','all']){
@@ -3489,13 +3568,13 @@ function initializeFdkWorkflow(panel){
 }
 function fdkWorkflowAvailability(on){
   if(!on){resetGeometryPlayback();disableAxialMovie();}
-  document.getElementById('geometry-play').disabled=!on;
+  for(const id of ['geometry-play','geometry-restart','geometry-complete','geometry-progress'])document.getElementById(id).disabled=!on||!fdkSelectedResult;
   for(const id of ['fdk-inspect','fdk-prev','fdk-next'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
-function selectFdkState(index,immediate=false,playback=false){
+function selectFdkState(index,immediate=false){
   if(!fdkResult)return;
-  if(!playback)stopGeometryPlayback();
+  stopGeometryPlayback();
   stopAxialMovie();
   geometryPlayback.pending=true;updateGeometryPlayControl();
   selectedStateIndex=((Math.round(index)%360)+360)%360;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkSelectedResult=null;
@@ -3503,7 +3582,7 @@ function selectFdkState(index,immediate=false,playback=false){
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
   document.getElementById('fdk-inspect-label').textContent=`+${selectedStateIndex}° / ${fdkText('開始角度','start angle')} ${angle.toFixed(1)}°`;
   document.getElementById('fdk-inspection-status').textContent=fdkText('選択角度の展開図・重み・応答を更新中…','Updating geometry, weights and response for the selected angle…');
-  if(!playback)for(const id of ['fdk-geometry','fdk-geometry-direct','fdk-geometry-complementary','fdk-weights-primary','fdk-weights-primary-direct','fdk-weights-primary-complementary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
+  for(const id of ['fdk-geometry','fdk-geometry-direct','fdk-geometry-complementary','fdk-weights-primary','fdk-weights-primary-direct','fdk-weights-primary-complementary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
   syncZffsUi();for(const cv of document.querySelectorAll('#zffs-diagrams canvas'))drawCanvasStatus(cv,'z-FFS',fdkText('選択角度を計算中','Computing selected angle'));
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
@@ -3537,7 +3616,7 @@ function renderFdkSelected(){
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
 // Only the scene data differ; palette, opacity, marker size and layout are shared.
-function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
+function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',capture=false){
   if(r.config.zFfsEnabled&&!r.weightAudit?.pairedSamples)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
@@ -3609,8 +3688,12 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
       }
     }
   }
+  for(const t of traceFamilies)t.sourceAngles=angles.map((deg,i)=>{
+    const theta=c.phase+(base+i+(t.family==='complementary'?c.viewSamples/2:0))*step;
+    return rebinned&&c.axialRule!=='parallel'?theta+Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius):theta;
+  });
   const referenceView=q=>paired?q.referenceView:q.view;
-  const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
+  const diagram={totalRows:rows,z0:r.zObject,sourcePhase:c.phase,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
     weightedPoints:zoom?samples.filter(q=>((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
@@ -3645,8 +3728,10 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
     diagram.traceFamilies=diagram.traceFamilies.filter(t=>t.family===role);
     diagram.weightedPoints=diagram.weightedPoints.filter(p=>p.traceFamilyId.startsWith('complementary-')===(role==='complementary'));
   }
+  if(capture)return diagram;
   drawDiagram(canvas,diagram,zoom?'zoom':'overview');
   canvas.dataset.visibleRole=role;
+  canvas.dataset.constructionProgress='1';
   for(const key of Object.keys(canvas.dataset))if(canvas.dataset[key]==='undefined')delete canvas.dataset[key];
   canvas.dataset.renderState='ready';
   canvas.dataset.complementaryMarkerShape=paired?'triangle':'not-applicable-in-own-angle-coordinate';
@@ -3685,11 +3770,17 @@ function addFdkWorkflowSheets(sheets){
 async function exportFdkWorkflowCanvas(id){
   if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id.startsWith('fdk-geometry')||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
   const role=id.endsWith('-complementary')?'complementary':id.endsWith('-direct')?'direct':'all';
-  if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
+  if(id.startsWith('fdk-geometry')&&geometryPlayback.scene){
+    stopGeometryPlayback();c.dataset.renderScale=String(c.width/900);
+    const p=geometryPlayback,cutoff=p.fraction>=1?null:p.window.start+p.fraction*(p.window.end-p.window.start);
+    drawDiagram(c,SSPZConstruction.role(p.scene,role,cutoff),'overview');
+  }
+  else if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
   else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else drawFdkDifference(c,fdkResult);
-  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
+  const frame=id.startsWith('fdk-geometry')&&geometryPlayback.scene&&geometryPlayback.fraction<1?`_draw-${Math.round(geometryPlayback.fraction*1000)}`:'';
+  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }
 
 // Integrated UI for the browser worker, using the existing shared form,
@@ -3860,6 +3951,7 @@ function runFdkSimulation(){
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkRoleDiagrams(m.result);
+        prepareGeometryConstruction();
         document.querySelectorAll('[data-fdk-canvas^="fdk-geometry"],[data-fdk-canvas^="fdk-weights-primary"]').forEach(b=>b.disabled=false);
         status.textContent=fdkText('取得応答がないため、展開図のみ表示します。','No acquired point response; geometry only.');
         document.getElementById('fdk-summary').textContent=fdkText('点対象の信号を取得できません。検出器開口・隙間・標本間隔を確認してください。候補配置と重みは表示できますが、SSPz・幅指標は算出できません。','The point signal is not acquired. Check detector aperture, gaps and sampling. Candidate geometry and weights remain available; SSPz and widths are undefined.');
@@ -4060,7 +4152,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.8 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.9 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4902,6 +4994,11 @@ function drawCandidateTrace(ctx, diagram, trace, row, turn, x, yDown, xLimit) {
     previousDelta = delta;
   }
   ctx.stroke();
+  if(trace.frontier&&angles.length){
+    const i=angles.length-1,delta=axial[i]+turn*feed+scales[i]*rowOffset-diagram.z0;
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=.95;ctx.fillStyle=rowColor(row,totalRows);
+    ctx.fillRect(x(delta)-3,yDown(angles[i])-3,6,6);
+  }
   ctx.restore();
 }
 
@@ -4955,6 +5052,14 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   // In particular, complementary markers are not drawn on direct-only traces.
   const traceFamilies = diagram.traceFamilies ?? [diagram.traceGeometry];
   for (const trace of traceFamilies) {
+    if(diagram.construction){
+      for(const turn of diagram.traceGeometry.turns){
+        const partial=SSPZConstruction.prefix(trace,turn,diagram.construction.cutoff);
+        if(!partial.angles.length)continue;
+        for(let row=0;row<diagram.totalRows;row++)drawCandidateTrace(ctx,diagram,partial,row,turn,x,yDown,xLimit);
+      }
+      continue;
+    }
     // Exact angular matches have only one distinct complementary family.
     if (trace.id === "complementary-upper") {
       const lower = traceFamilies.find(item => item.id === "complementary-lower");

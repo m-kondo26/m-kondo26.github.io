@@ -187,7 +187,7 @@ question of nearby data excluded by that window was resolved separately in Web 2
 
 `tests/source-support.mjs` independently enumerates all detector rows and eligible turns using Cartesian ray lengths and an acquired-source grid. It covers 1, 4, 80, 160 and 320 rows, three pitches, both interpolation rules, the parallel reference and optional focal switching. Unsupported cases must report missing support. It checks the user's recovered near datum, a direct acquired-data response oracle, one-row responses, and saved before/after profiles. Animation tests separately verify the exact T-integrated weights, physical identities and full-turn directional normalization. These are implementation and declared-model checks, not scanner validation or final manuscript convergence.
 
-## Synchronized role views and start-angle playback (Web 2026-09-18.8)
+## Role views and progressive diagram construction (Web 2026-09-18.9)
 
 Section 2 displays direct data, complementary data, and their overlay on identical
 axes, for both trajectories and T-integrated weights. A role view filters the
@@ -195,11 +195,34 @@ original scene; it does not renormalize weights or alter candidate selection.
 Optional focal switching retains focus identity within each directional role.
 Each panel's PNG export uses the same role filter and the existing 600-dpi scale.
 
-Playback advances the existing start-angle selector, waits for that angle's
-actual response audit, updates all six diagrams and the selected SSPz together,
-and loops at 360 degrees. It compares different acquisition start phases at a
-fixed target, not tube/table motion during one scan. Playback is opt-in, pauses
-when the page is hidden, and uses a slower initial speed for reduced motion.
+Playback constructs one fixed-phase trajectory diagram. Its acquired-source-angle
+cursor advances across successive helical turns, retaining the completed portions
+of each detector-row trajectory as further segments appear to the right. The
+cursor begins at the direct diagram's zero-angle boundary on a preceding turn,
+before the first trajectory enters the visible axial range. That boundary includes
+the fan-angle offset; it is not a redefinition of the physical source phase.
+The existing coordinates and role mapping are retained. The same datum in its
+direct and complementary representations is revealed at the same physical source
+angle. A small square marks each advancing trajectory tip; it is not a weight
+marker. All three views share the cursor and axes.
+
+The drawing frame consists of prefixes of the original trace polylines, with
+linear interpolation of the final segment. On completion, the original full-scene
+renderer is used, without tips. The selected start phase, candidate selection,
+integrated weights, and SSPz are unchanged throughout playback. Weight and SSPz
+panels retain their complete results; the animation does not calculate a response
+from a partially drawn dataset. The separate start-angle slider still selects a
+different computed condition manually. This replaces the start-phase sweep
+introduced in Web 2026-09-18.8, which did not illustrate how a diagram is drawn.
+
+Playback is opt-in and loops after a short hold at completion. It can be paused,
+scrubbed, restarted, or returned to the complete diagram. It pauses when the page
+is hidden and uses a slower initial speed for reduced motion. Geometry PNG export
+preserves the current drawing frame and records partial progress in its filename.
 `tests/geometry-playback.mjs` checks the exact union of role views, shared axes,
 unchanged weights, marker trajectories including focal identity, and immutable
-response data. The numerical model and worker are unchanged from 2026-09-18.7.
+response data. `tests/geometry-construction.mjs` checks monotonic construction,
+matched source-angle timing in both roles, complete visible support, and unchanged
+response data. Browser verification additionally checks completed pixel identity,
+fixed weight/SSPz canvases, pause, scrub, repeat, and PNG output. These are display
+checks; the numerical model and worker are unchanged from 2026-09-18.7.

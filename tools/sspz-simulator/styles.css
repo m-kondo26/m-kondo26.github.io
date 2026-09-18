@@ -426,6 +426,9 @@ footer p { margin: 0.2rem 0; }
 .geometry-playback-controls button:disabled { opacity: .5; cursor: default; }
 .geometry-playback-controls button:focus-visible { outline: 3px solid #e8a500; outline-offset: 3px; }
 .geometry-play-note { font-size: .9rem; line-height: 1.7; grid-column: 1 / -1; }
+.geometry-construction-controls { margin: 1rem 0; padding: 1rem; border: 1px solid #cbdbe7; border-radius: 8px; background: #f7fafc; }
+.geometry-drawing-progress { display: block; margin-top: .8rem; }
+.geometry-drawing-progress input { display: block; width: 100%; margin-top: .5rem; }
 #fdk-inspection-status { grid-column: 1 / -1; }
 #geometry-play-status { align-self: center; font-size: .9rem; }
 @media(max-width: 1150px) { .geometry-role-grid { grid-template-columns: 1fr; } }
