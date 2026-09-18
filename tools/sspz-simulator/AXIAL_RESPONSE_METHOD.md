@@ -81,8 +81,10 @@ full-view, full-T profile, not a partially accumulated or display-sampled SSP.
 The start-angle mode compares the already calculated acquisition conditions,
 one degree per frame. It is not tube rotation within one scan. The animation
 has its own labelled start angle; a button applies it to the other figures.
-Playback is off until requested and stops on pause, the last frame, hidden
-page, changed settings, new calculation, or error. The display-angle lattice
+Playback is off until requested. Since Web 2026-09-18.6, both modes loop from
+the last frame to the first until paused. A hidden page, changed settings,
+new calculation, or error also stops playback. Manual frame stepping remains
+bounded at the first and last frames. The display-angle lattice
 is closed under a half-turn, so both roles of the same rebinned view/row are
 retained. The side filter shows direct or complementary uses at every output
 direction. Role weights are accumulated over full T, before angular averaging.

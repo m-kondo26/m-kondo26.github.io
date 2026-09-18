@@ -3161,6 +3161,7 @@ function initializeAxialMovie(after){
   const section=document.createElement('section');section.id='axial-movie';section.className='workflow-block';
   section.innerHTML=`<h2>${fdkText('','2C  From candidates to SSPz: interactive playback')}</h2>
   <p>${fdkText('','1. Move through width T and accumulate weights.  2. Change the start angle and compare SSPz.')}</p>
+  <p>${fdkText('','Playback loops back to the beginning. Select Pause to stop.')}</p>
   <div class="axial-movie-controls">
     <label>${fdkText('','Playback mode')}<select id="axial-movie-mode"><option value="thickness">${fdkText('','1. Plane sweep within T')}</option><option value="phase">${fdkText('','2. Tube start angle')}</option></select></label>
     <label>${fdkText('','Playback speed')}<select id="axial-movie-speed"><option value="500">${fdkText('','Slow')}</option><option value="200" selected>${fdkText('','Normal')}</option><option value="100">${fdkText('','Fast')}</option></select></label>
@@ -3192,7 +3193,7 @@ function initializeAxialMovie(after){
   after.after(section);
   const el=id=>document.getElementById('axial-movie-'+id);
   el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
-  el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{axialMovie.playing=true;el('play').textContent=fdkText('','Ⅱ Pause');if(axialMovie.mode==='thickness'&&axialMovie.frame===40)axialMovie.frame=-1;scheduleAxialMovie();}};
+  el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{axialMovie.playing=true;el('play').textContent=fdkText('','Ⅱ Pause');scheduleAxialMovie();}};
   el('prev').onclick=()=>{stopAxialMovie();advanceAxialMovie(-1);};el('next').onclick=()=>{stopAxialMovie();advanceAxialMovie(1);};
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
   el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
@@ -3245,13 +3246,16 @@ function scheduleAxialMovie(){
 }
 function advanceAxialMovie(delta){
   if(!axialMovie.audit)return;
-  if(axialMovie.mode==='phase'){
-    const next=axialMovie.index+delta;
-    if(next>=fdkResult.profiles.length||next<0){stopAxialMovie();return;}
+  const phase=axialMovie.mode==='phase',count=phase?fdkResult.profiles.length:axialMovie.audit.frames.length;
+  if(!count){stopAxialMovie();return;}
+  let next=(phase?axialMovie.index:axialMovie.frame)+delta;
+  if(next>=count||next<0){
+    if(!axialMovie.playing){stopAxialMovie();return;}
+    next=((next%count)+count)%count;
+  }
+  if(phase){
     requestAxialMovie(next);
   }else{
-    const next=axialMovie.frame+delta;
-    if(next>=axialMovie.audit.frames.length||next<0){stopAxialMovie();return;}
     axialMovie.frame=next;renderAxialMovie();scheduleAxialMovie();
   }
 }
@@ -3941,7 +3945,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.5 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.6 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
