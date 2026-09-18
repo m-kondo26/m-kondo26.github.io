@@ -94,7 +94,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.15 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.16 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -999,7 +999,8 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   const requiredXLimit = sharedXLimit ?? ownLimit;
   const xAxis = symmetricNiceAxis(requiredXLimit, 3);
   const xLimit = xAxis.xMax;
-  const plot = axisContext(canvas, { xMin: xAxis.xMin, xMax: xAxis.xMax, yMin: 0, yMax: 360 }, {
+  const angleMin=diagram.angleMin??0,angleMax=diagram.angleMax??360;
+  const plot = axisContext(canvas, { xMin: xAxis.xMin, xMax: xAxis.xMax, yMin: angleMin, yMax: angleMax }, {
     x: diagram.xAxisLabel ?? "候補列中心  zᵢ − z₀  (mm)",
     y: diagram.yAxisLabel ?? localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
@@ -1015,7 +1016,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   ctx.fillRect(x(-bandLimit), margin.top, x(bandLimit) - x(-bandLimit), innerHeight);
   // Paint supporting guides behind all trajectories, weight glyphs and the
   // target plane. Keep the black frame, ticks and labels in the foreground.
-  const angleTicks = [0, 60, 120, 180, 240, 300, 360];
+  const angleTicks = angleMax-angleMin===360?[0,60,120,180,240,300,360]:Array.from({length:7},(_,i)=>angleMin+(angleMax-angleMin)*i/6);
   drawAxisGrid(plot, xAxis.ticks, angleTicks, true);
   ctx.save();
   ctx.beginPath();
@@ -1089,6 +1090,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   }
   canvas.dataset.xMin = String(xAxis.xMin);
   canvas.dataset.xMax = String(xAxis.xMax);
+  canvas.dataset.angleMin=String(angleMin);canvas.dataset.angleMax=String(angleMax);
   canvas.dataset.xStep = String(xAxis.step);
   canvas.dataset.xRequiredHalfSpan = String(requiredXLimit);
   canvas.dataset.axisRule = "symmetric-natural-1-2-5-containing-all-rendered-data";

@@ -2,6 +2,19 @@
 // shape variation. Rendering never substitutes axial-model coefficients.
 let fdkSelectedResult=null,fdkRunParams=null,fdkInspectionRequest=0,fdkInspectionTimer=null;
 const fdkAngleTicks=[0,60,120,180,240,300,360];
+function candidateDisplayRange(){
+  if(document.getElementById('candidate-display-mode')?.value!=='detail')return null;
+  const min=Number(document.getElementById('candidate-display-start').value);
+  return {min,max:min+30};
+}
+function updateCandidateDisplay(){
+  const range=candidateDisplayRange();
+  document.getElementById('candidate-display-window').hidden=!range;
+  stopAxialMovie();
+  if(fdkSelectedResult)for(const role of ['direct','complementary','all'])drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'+(role==='all'?'':'-'+role)),fdkSelectedResult,true,false,role);
+  if(fdkSelectedResult?.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),fdkSelectedResult,true,true);
+  if(axialMovie.audit||fdkResult?.profiles?.length)refreshAxialMovieDisplay();
+}
 function initializeFdkWorkflow(panel){
   const block=(id,title)=>{const e=document.createElement('div');e.id=id;e.className='workflow-block';e.innerHTML=`<h2>${title}</h2>`;return e;};
   const geometry=block('fdk-geometry-step',fdkText('2　展開図と補間の重み','2  Unwrapped geometry and interpolation weights'));
@@ -12,6 +25,9 @@ function initializeFdkWorkflow(panel){
   firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('2B　選択されたデータと重み','2B  Selected data and weights'));
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('同じ開始角度・同じ対象位置の重みです。応答の体軸方向平均化を指定した場合は、その幅全体の重みを合計します。','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
+  weights.querySelector('.chart-grid').insertAdjacentHTML('beforebegin',`<div class="candidate-display-controls"><label>${fdkText('2B・2Cの候補点の表示','Candidate display in 2B and 2C')}<select id="candidate-display-mode"><option value="overview">${fdkText('全周：代表角度を表示','Full turn: sampled directions')}</option><option value="detail">${fdkText('30°拡大：間引きなし','30° detail: every direction')}</option></select></label><label id="candidate-display-window" hidden>${fdkText('拡大する角度範囲','Angular range')}<select id="candidate-display-start">${Array.from({length:12},(_,i)=>`<option value="${i*30}">${i*30}°–${i*30+30}°</option>`).join('')}</select></label></div><p id="candidate-display-status" class="candidate-display-status" aria-live="polite"></p><p class="candidate-display-note">${fdkText('記号は選択された点の重みです。全周表示では角度を抜粋します。多列での細かな切り替わりは「30°拡大」で確認できます。背景の線は全列を描き、多列では重なりを見やすくするため薄くしています。','Markers encode weights on selected points. The full-turn view samples directions; use 30° detail to inspect rapid row changes. Background trajectories include all rows and become lighter with more rows to keep overlaps visible.')}</p>`);
+  weights.querySelector('#candidate-display-mode').onchange=updateCandidateDisplay;
+  weights.querySelector('#candidate-display-start').onchange=updateCandidateDisplay;
   const profile=block('fdk-profile-step',fdkText('3　全360条件のSSPz','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('全360条件の重ね合わせ','Overlay of all 360 conditions');
   const shape=block('fdk-shape-step',fdkText('4　SSPzの形状変動','4  SSPz shape variation'));
@@ -34,6 +50,8 @@ function initializeFdkWorkflow(panel){
 }
 function fdkWorkflowAvailability(on){
   if(!on){resetGeometryPlayback();disableAxialMovie();}
+  for(const id of ['candidate-display-mode','candidate-display-start'])document.getElementById(id).disabled=!on||!fdkSelectedResult;
+  if(!on)document.getElementById('candidate-display-status').textContent='';
   for(const id of ['geometry-play','geometry-restart','geometry-complete','geometry-progress'])document.getElementById(id).disabled=!on||!fdkSelectedResult;
   for(const id of ['fdk-inspect','fdk-prev','fdk-next'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
@@ -139,7 +157,8 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
-  let stride=Math.max(1,Math.ceil(c.viewSamples/72));
+  const angleRange=zoom&&typeof candidateDisplayRange==='function'?candidateDisplayRange():null;
+  let stride=angleRange?1:Math.max(1,Math.ceil(c.viewSamples/72));
   if(paired)while((c.viewSamples/2)%stride!==0)stride++;
   const trace={id:'acquired',family:'direct',angles,axial,scales};
   const traceFamilies=[trace];
@@ -163,7 +182,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   const diagram={totalRows:rows,z0:r.zObject,sourcePhase:c.phase,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
-    weightedPoints:zoom?samples.filter(q=>((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
+    weightedPoints:zoom?samples.filter(q=>angleRange?fold(referenceView(q))>=angleRange.min-1e-9&&fold(referenceView(q))<angleRange.max-1e-9:((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
       x:q.z,y:fold(referenceView(q)),row:q.row-rowMin,focus:q.focus??0,weight:reference?q.referenceWeight:q.weight,
       referenceViewIndex:referenceView(q),absoluteViewIndex:q.view,traceFamilyId:(paired&&q.direction?'complementary-rebinned':'acquired')+(c.zFfsEnabled&&q.focus?'-focus-b':''),dataKind:'unfiltered-data'
     })):[],
@@ -175,6 +194,14 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
     weightLegendLabel:fdkText('合計重み w','Total weight w'),
     angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
+  if(angleRange){diagram.angleMin=angleRange.min;diagram.angleMax=angleRange.max;}
+  const displayedDirections=new Set(diagram.weightedPoints.map(p=>p.y)).size;
+  if(zoom&&role==='all'&&!reference&&!capture&&typeof document!=='undefined'){
+    const status=document.getElementById('candidate-display-status');
+    if(status)status.textContent=angleRange
+      ?`${angleRange.min}°–${angleRange.max}°: ${displayedDirections} `+fdkText('方向を間引かず表示','directions, without subsampling')+` / ${diagram.weightedPoints.length} `+fdkText('点','points')
+      :fdkText('計算した全','Displaying ')+`${c.viewSamples}`+fdkText('方向のうち',' calculated directions: ')+`${displayedDirections}`+fdkText('方向を表示。重みの付いた点：',' sampled. Weighted points: ')+`${diagram.weightedPoints.length} / ${samples.length}`+fdkText('点。',' points.');
+  }
   if(paired){
     diagram.yAxisLabel=fdkText('補間対象方向の角度差 (°)','Output interpolation direction (°)');
     diagram.directLegendLabel=fdkText('実データ側 ○','Direct ○');
@@ -204,9 +231,10 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   canvas.dataset.complementaryMarkerShape=paired?'triangle':'not-applicable-in-own-angle-coordinate';
   canvas.dataset.complementaryLineStyle=paired?'dashed':'not-applicable-in-own-angle-coordinate';
   canvas.dataset.startIndex=selectedStateIndex;canvas.dataset.auditSamples=samples.length;
+  canvas.dataset.displayedDirections=String(displayedDirections);canvas.dataset.displayStride=String(stride);
   canvas.dataset.markerEncoding='fixed-radius;row-colour;weight-fill';
   canvas.dataset.familyEncoding=paired?'direct solid/circle; complementary dashed/triangle; common direct-side rebinned angle':'each sample at its own acquired angle; no direct-reference folding';
-  if(paired)canvas.dataset.diagramDisplayVersion='2026-09-18.5';
+  if(paired)canvas.dataset.diagramDisplayVersion='2026-09-18.16';
   canvas.dataset.backgroundTraceScope='geometric-context-independent-of-selected-weight-support';
   canvas.dataset.backgroundTurns=turns.join(',');
 }
@@ -241,5 +269,6 @@ async function exportFdkWorkflowCanvas(id){
   else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
   else drawFdkDifference(c,fdkResult);
   const frame=id.startsWith('fdk-geometry')&&geometryPlayback.scene&&geometryPlayback.fraction<1?`_draw-${Math.round(geometryPlayback.fraction*1000)}`:'';
-  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
+  const range=id.startsWith('fdk-weights')?candidateDisplayRange():null,detail=range?`_directions-${range.min}-${range.max}`:'';
+  const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}${frame}${detail}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }

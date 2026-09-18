@@ -482,3 +482,9 @@ footer p { margin: 0.2rem 0; }
 .axial-angle-table-scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .axial-angle-table-scroll th, .axial-angle-table-scroll td { padding: .5rem; border-bottom: 1px solid #cdd7df; text-align: right; white-space: nowrap; }
 .axial-angle-table-scroll caption { text-align: left; padding: .4rem 0; }
+.candidate-display-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; margin: .8rem 0; }
+.candidate-display-controls label { max-width: 100%; }
+.candidate-display-controls select { display: block; font: inherit; max-width: 100%; min-height: 44px; padding: .5rem; border: 1px solid #b9c9d6; border-radius: 5px; background: white; }
+.candidate-display-controls [hidden] { display: none; }
+.candidate-display-status { font-variant-numeric: tabular-nums; font-weight: 600; }
+.candidate-display-note { font-size: .9rem; line-height: 1.6; }

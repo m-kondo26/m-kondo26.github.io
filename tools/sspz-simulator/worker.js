@@ -130,7 +130,7 @@ self.onmessage = async event => {
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
       const config={...context.first.config,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount};
-      const audit=await createAxialAnimationAudit(config,{frameCount:message.mode==='thickness'?41:1,cancelled:()=>cancelled||token!==axialAnimationToken});
+      const audit=await createAxialAnimationAudit(config,{frameCount:message.mode==='thickness'?41:1,angleRange:message.angleRange??null,cancelled:()=>cancelled||token!==axialAnimationToken});
       if(token===axialAnimationToken)self.postMessage({type:'axial-animation',index,requestId:message.requestId,audit});
     }catch(error){if(token===axialAnimationToken)self.postMessage({type:'axial-animation-error',requestId:message.requestId,message:error.message});}
     return;

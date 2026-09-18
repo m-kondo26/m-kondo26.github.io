@@ -1,3 +1,9 @@
+## Dense-row candidate display (2026-09-18.16)
+
+The 2B and 2C diagrams now share a display selector: the existing full-turn view samples at most 72 directions, while a 30-degree detail window retains every calculated direction in that interval. The twelve windows cover the full turn without dropping or duplicating selected points. The display reports its direction and weighted-point counts; detail PNG filenames include the angular interval. Numerical SSPz, coefficients, row/turn/focus identities and full numerical exports are unchanged. Background trajectories still include every detector row, with density-dependent fading.
+
+Increasing row count at fixed row width and beam pitch increases detector coverage and feed per rotation, not local row spacing. Selected points near the target therefore need not multiply with the row count. Nevertheless, row changes become faster in angle, and full-turn display sampling can miss intermediate selected rows. Use the detail view to inspect those changes; a similar number of plotted markers does not establish an unchanged candidate population. See the display-audit section in `AXIAL_RESPONSE_METHOD.md`.
+
 ## Static-table response linked to current settings (2026-09-18.15)
 
 The reference link is now named by its subject: reconstruction positions and SSPz with a stationary table. It transfers the current row count (1–320), row width, source distances, effective axial focus, radius, view count and z step. Row selection, all-plane curves, CSV and SVG use that configuration; returning to the main page preserves the main conditions. This independent axial model uses row interpolation, distance weighting and full-turn accumulation, not complete Feldkamp image reconstruction. It does not inherit helical motion, the main interpolation rule, T averaging, transverse aperture/rebinning or z-FFS. A direct legacy link without settings retains the original 16 × 2 mm reference conditions.

@@ -85,6 +85,14 @@ The chapter separates FDK projection preweighting, transverse ramp filtering, an
 
 ## Verification and version boundary
 
+### Dense-row display audit (Web 2026-09-18.16)
+
+Neither candidate generation nor background trajectory rendering caps the detector at 64 rows. The default marker lattice samples at most 72 output directions and is closed under a half-turn (for 2400 views it uses 60 directions). This sampling is for display only. Increasing N at fixed d and pitch increases feed N*d*p, while local projected row spacing d*L/R is unchanged. More rows do not imply proportionally more selected bracketing points near a fixed plane or within a fixed averaging width.
+
+The 2B/2C display selector offers twelve 30-degree windows. Each interval is lower-inclusive and upper-exclusive and retains every native output direction, its role, row, turn, focal state and coefficient. 2C retains the corresponding half-pairs internally before expanding both roles; it filters only the displayed direction. The final SSPz remains the previously computed full-view result. 2A remains a full-turn geometry view. PNG exports of the 2B weights use the selected interval; numerical exports remain complete.
+
+An implementation audit with merged two-point interpolation, d=0.5 mm, pitch=0.5, R=600 mm, r=100 mm, T=1 mm, 360 views, dz=0.05 mm, phase/state zero and point focus found 2508 versus 2536 full-direction T-summed points for 64 versus 320 rows. The 72-direction display showed 516 versus 504. Mean admissible row-centre counts inside +/-0.5 mm were 4.900 versus 5.033. These are condition-specific geometric counts, not scanner measurements. A 2400-view audit at r=102 mm found that 184 distinct rows appeared among central-plane selections for 320 rows, but the 60-direction display showed only 60 of those rows. Detail-window tests compare every retained point against the full native audit and partition the full turn without changing the coefficients. This verifies display completeness, not scanner reconstruction performance.
+
 ### Interactive playback (Web 2026-09-18.1)
 
 Playback is a display audit and does not alter the SSP calculation. The plane

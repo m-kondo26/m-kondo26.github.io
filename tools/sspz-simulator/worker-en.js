@@ -3784,12 +3784,18 @@ function axialAnimationIntegralCoefficients(c,upper){
   return out;
 }
 
-async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,cancelled=()=>false}={}){
+async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,angleRange=null,cancelled=()=>false}={}){
   const V=c.viewSamples,half=V/2,db=2*Math.PI/V,z0=c.state*c.feed,T=c.axialAverageMm;
   const base=Math.ceil((2*Math.PI*z0/c.feed-Math.PI)/db-1e-12);
+  // A detail window uses every native output direction in its interval. Keep
+  // its opposing half-pair as well so role expansion/physical identities are
+  // unchanged; the renderer clips the mirrored direction outside the window.
+  const range=angleRange==null?null:Array.from(angleRange,Number);
+  if(range&&(range.length!==2||!range.every(Number.isFinite)||range[0]<0||range[1]>360||range[1]<=range[0]))throw Error('ANIMATION_ANGLE_RANGE');
+  const inRange=v=>{const angle=((v-base)%V+V)%V*360/V;return !range||(angle>=range[0]-1e-10&&angle<range[1]-1e-10);};
   // A half-turn must preserve the display lattice, otherwise one role of the
   // same datum could be dropped and a "both" datum misclassified as one-sided.
-  let stride=Math.max(1,Math.ceil(V/maxAngles));while(half%stride!==0)stride++;
+  let stride=range?1:Math.max(1,Math.ceil(V/maxAngles));while(half%stride!==0)stride++;
   const totalCoefficients=axialAnimationIntegralCoefficients(c,T/2),mid=(totalCoefficients.length-1)/2;
   const groupCache=new Map(),nodePoints=new Map();
   const key=p=>`${p.referenceView}:${p.direction}:${p.view}:${p.focus}:${p.row}`;
@@ -3800,6 +3806,7 @@ async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,cancelled
     const start=finiteSupport?base:Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12),points=[];
     const first=base+Math.ceil((start-base)/stride)*stride;
     for(let v=first;v<start+half;v+=stride){
+      if(range&&!inRange(v)&&!inRange(v+half))continue;
       const groups=groupsAt(v),ws=finiteSupport?sourceSupportedAxialWeights(c,groups,z):c.zFfsEnabled?zffsCandidateWeights(c,groups,z):axialPairWeights(c,groups[0],groups[1],z);
       for(const s of ws)points.push({referenceView:v,view:finiteSupport?s.view:v+s.direction*half,direction:s.direction,focus:s.focus??0,row:s.row,z:s.z-z0,weight:s.weight});
     }
@@ -3835,10 +3842,10 @@ async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,cancelled
     frames.push({u,fraction,instant:classify(pointsAt(u)),accumulated:classify(frameCount===1?total:integrate(axialAnimationIntegralCoefficients(c,u)))});
     if(performance.now()-yielded>20){await new Promise(resolve=>setTimeout(resolve,0));yielded=performance.now();}
   }
-  return {config:c,zObject:z0,base,stride,frames,total:classify(total),angleSamplesPerTurn:Math.ceil(V/stride),
+  return {config:c,zObject:z0,base,stride,frames,total:classify(total),angleSamplesPerTurn:Math.ceil(V/stride),angleRange:range,
     xHalfSpan:Math.max(T/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+(c.zFfsEnabled?2*c.zFfsSourceOffsetMm:0),1,...frames.flatMap(f=>f.instant.map(p=>Math.abs(p.z)*1.05))),
     coordinate:'common direct-side rebinned angle; opposing data at theta+pi',
-    definition:'Display-angle subset only; exact native-grid integral coefficients; partial integral divided by full T; SSP from original full-view calculation.'};
+    definition:(range?'Every native output direction in the selected angle window; mirrored pair retained. ':'Display-angle subset only; ')+ 'Exact native-grid integral coefficients; partial integral divided by full T; SSP from original full-view calculation.'};
 }
 
 let cancelled = false;
@@ -3958,7 +3965,7 @@ self.onmessage = async event => {
     try{
       const index=((Math.round(message.index)%context.params.phaseCount)+context.params.phaseCount)%context.params.phaseCount;
       const config={...context.first.config,phase:context.params.phase+2*Math.PI*index/context.params.phaseCount};
-      const audit=await createAxialAnimationAudit(config,{frameCount:message.mode==='thickness'?41:1,cancelled:()=>cancelled||token!==axialAnimationToken});
+      const audit=await createAxialAnimationAudit(config,{frameCount:message.mode==='thickness'?41:1,angleRange:message.angleRange??null,cancelled:()=>cancelled||token!==axialAnimationToken});
       if(token===axialAnimationToken)self.postMessage({type:'axial-animation',index,requestId:message.requestId,audit});
     }catch(error){if(token===axialAnimationToken)self.postMessage({type:'axial-animation-error',requestId:message.requestId,message:error.message});}
     return;
