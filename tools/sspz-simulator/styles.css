@@ -460,6 +460,9 @@ footer p { margin: 0.2rem 0; }
 .axial-movie-role-control { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .axial-movie-position { display: block; margin: 1rem 0 .3rem; font-variant-numeric: tabular-nums; }
 .axial-movie-position input { display: block; width: 100%; margin-top: .8rem; }
+.axial-movie-position[hidden] { display: none; }
+.axial-movie-start { padding: .9rem; background: #edf5fb; border: 1px solid #c4d9e8; border-radius: 8px; }
+.axial-movie-start small { display: block; margin-top: .4rem; }
 .axial-movie-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; align-items: start; }
 #fdk-panel #axial-movie .chart-card { margin-top: .7rem; padding: .8rem; min-width: 0; max-width: 620px; }
 #fdk-panel #axial-movie .axial-movie-ssp { max-width: 1000px; }

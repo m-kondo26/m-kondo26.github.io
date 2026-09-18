@@ -158,7 +158,7 @@
     "thicknessMapping": "Browser v9: FW=T, configured thickness is the rectangular averaging width; FWHM is an output, not fitted. No scanner calibration.",
     "legacyInitialization": "Old browser independent widths are replaced by configured T with a visible migration notice; low-level numerical API retains explicit independent-width reproduction."
   },
-  "webBuildVersion": "2026-09-18.13",
+  "webBuildVersion": "2026-09-18.14",
   "finiteFocalAcquisition": {
     "version": "2026-09-18.1",
     "responseVersion": "2026-09-18.8",

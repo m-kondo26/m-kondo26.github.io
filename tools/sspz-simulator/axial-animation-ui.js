@@ -6,6 +6,7 @@ function initializeAxialMovie(after){
   section.innerHTML=`<h2>${fdkText('2C　候補点からSSPzへ：動画で確認','2C  From candidates to SSPz: interactive playback')}</h2>
   <p>${fdkText('① 幅T内の断面を動かして重みを積み重ねる　② 開始角度を変えてSSPzの変化を見る','1. Move through width T and accumulate weights.  2. Change the start angle and compare SSPz.')}</p>
   <p>${fdkText('再生は先頭に戻って繰り返します。「一時停止」で止められます。','Playback loops back to the beginning. Select Pause to stop.')}</p>
+  <label class="axial-movie-position axial-movie-start" for="axial-movie-start"><strong>${fdkText('（a）～（c）共通の撮影開始角度','Acquisition start angle shared by (a)–(c)')} <span id="axial-movie-start-label">—</span></strong><input id="axial-movie-start" type="range" min="0" max="359" step="1" value="0" disabled><small>${fdkText('この角度を変えると、候補点・重み・SSPzが一緒に更新されます。','Changing this angle updates candidates, weights and SSPz together.')}</small></label>
   <div class="axial-movie-controls">
     <label>${fdkText('再生する動き','Playback mode')}<select id="axial-movie-mode"><option value="thickness">${fdkText('① 幅T内の断面移動','1. Plane sweep within T')}</option><option value="phase">${fdkText('② X線管の開始角度','2. Tube start angle')}</option></select></label>
     <label>${fdkText('再生速度','Playback speed')}<select id="axial-movie-speed"><option value="500">${fdkText('ゆっくり','Slow')}</option><option value="200" selected>${fdkText('標準','Normal')}</option><option value="100">${fdkText('速い','Fast')}</option></select></label>
@@ -14,13 +15,14 @@ function initializeAxialMovie(after){
     <button type="button" id="axial-movie-next" disabled>${fdkText('1コマ進む','Next frame')}</button>
     <button type="button" id="axial-movie-reset" disabled>${fdkText('先頭へ','Rewind')}</button>
   </div>
-  <label class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('計算後に再生できます','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
+  <label id="axial-movie-plane-control" class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('計算後に再生できます','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
   <p id="axial-movie-status" role="status"></p>
-  <div class="axial-angle-controls">
-    <label>${fdkText('（a）で確認する補間対象方向（0～360°）','Output direction in (a) (0–360°)')}<select id="axial-movie-pair" disabled></select></label>
-  </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
-  <details class="reading-details axial-angle-detail"><summary>${fdkText('X線管角度・ファン角との対応','Tube angle and fan-angle correspondence')}</summary>
+  <details class="reading-details axial-angle-detail"><summary>${fdkText('詳細：図中の投影方向とX線管角度を確認','Details: inspect output direction and tube angles')}</summary>
+  <div class="axial-angle-controls">
+    <label>${fdkText('（a）で強調する補間対象方向（開始角度とは別）','Output direction to highlight in (a), not the start angle')}<select id="axial-movie-pair" disabled></select></label>
+  </div>
+    <p>${fdkText('同じ撮影条件の中で、候補点の枠と下表に示す方向を選びます。この選択では、全方向から求めた（c）のSSPzは変わりません。撮影開始角度は上の共通スライダーで変更します。','This selects the highlighted candidates and table direction within the same acquisition. It does not change the all-direction SSPz in (c). Use the shared start-angle slider above to change the acquisition.')}</p>
     <p id="axial-movie-source-window"></p>
     <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('（a）で強調した対：θ ＋ γ = β','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('使用する側','Role')}</th><th>${fdkText('図での角度差 (°)','Plotted offset (°)')}</th><th>${fdkText('再配列角 θ (°)','Rebinned θ (°)')}</th><th>${fdkText('ファン角 γ (°)','Fan angle γ (°)')}</th><th>${fdkText('X線管角 β (°)','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
     <p>${fdkText('実・対向方向の再配列角θは、360°で折り返すと180°異なります。表には実際に選んだ列・回転のθと、ファン角γを加えたX線管角βを示します。同じ側の異なる列が選ばれる場合もあります。βの前後で用いる取得ビューも、下記の有限取得範囲内に限ります。表の角度は折り返しません。図の0°は表示基準であり、X線管角0°ではありません。','Direct and opposing θ differ by 180° modulo a full turn. The table lists actual selected rows and turns, with β = θ + γ. Both selected rows may belong to the same side. Neighboring acquired views used for rebinning must also fit the stated finite source interval. Table angles are unwrapped. Plot zero is a display reference, not tube angle zero.')}</p>
@@ -38,11 +40,12 @@ function initializeAxialMovie(after){
   <details class="reading-details"><summary>${fdkText('図の読み方','How to read the animation')}</summary><p>${fdkText('赤線は平均化の中心、青線は幅T内を動く断面です。（b）は下端から青線までの重みを、全幅Tを分母として積算します。終端で既存の合計重みと一致します。（c）は途中の積算値ではなく、全幅で平均化した最終SSPzです。全周の各補間対象方向を表示し、同じデータが実データ側・対向側として再利用される場合も示します。応答は全方向で平均するため、表示を全周に展開してもSSPzは変わりません。','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Every output direction is shown, including reuse of the same datum in direct and complementary roles. Averaging over all directions preserves the SSPz.')}</p><p>${fdkText('図の候補点は表示用に角度を抜粋しています。SSPzは設定した全取得ビューで計算した結果です。幅Tの矩形平均化は本モデルの仮定であり、実機固有の重みを示すものではありません。開始角度の再生は異なる撮影条件の比較であり、1回の撮影中の管球回転を再現した動画ではありません。','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
   after.after(section);
   const el=id=>document.getElementById('axial-movie-'+id);
-  el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
+  el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;el('plane-control').hidden=axialMovie.mode==='phase';axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
   el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{stopGeometryPlayback();axialMovie.playing=true;el('play').textContent=fdkText('Ⅱ 一時停止','Ⅱ Pause');scheduleAxialMovie();}};
   el('prev').onclick=()=>{stopAxialMovie();advanceAxialMovie(-1);};el('next').onclick=()=>{stopAxialMovie();advanceAxialMovie(1);};
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
-  el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
+  el('start').oninput=e=>{stopAxialMovie();requestAxialMovie(Number(e.target.value));};
+  el('position').oninput=e=>{stopAxialMovie();axialMovie.frame=Number(e.target.value);renderAxialMovie();};
   el('role').onchange=()=>renderAxialMovie();el('apply').onclick=()=>{stopAxialMovie();selectFdkState(axialMovie.index,true);};
   el('pair').onchange=()=>{stopAxialMovie();axialMovie.selectedPair=Number(el('pair').value);renderAxialMovie();};
   el('instant').onclick=event=>inspectAxialMoviePair(event);
@@ -70,14 +73,22 @@ function requestAxialMovie(index){
   if(!fdkResult?.profiles?.length||!worker)return;
   clearTimeout(axialMovie.timer);axialMovie.index=((index%fdkResult.profiles.length)+fdkResult.profiles.length)%fdkResult.profiles.length;
   axialMovie.request++;axialMovie.pending=true;
+  const angle=fdkResult.profiles[axialMovie.index].phase*180/Math.PI;
+  document.getElementById('axial-movie-start').value=axialMovie.index;
+  document.getElementById('axial-movie-start-label').textContent=`${angle.toFixed(1)}°`;
   document.getElementById('axial-movie-profile-png').disabled=true;
-  document.getElementById('axial-movie-status').textContent=fdkText('候補点の動画を準備中…（一時停止できます）','Preparing candidate frames… (Pause remains available)');
+  document.getElementById('axial-movie-status').textContent=fdkText('候補点・重み・SSPzを更新中：','Updating candidates, weights and SSPz: ')+`${angle.toFixed(1)}°`;
   const key=axialMovie.mode+':'+axialMovie.index;
   if(axialMovie.cache.has(key)){receiveAxialMovie({requestId:axialMovie.request,index:axialMovie.index,audit:axialMovie.cache.get(key)});return;}
+  for(const id of ['instant','total','profile']){
+    const canvas=document.getElementById('axial-movie-'+id);
+    delete canvas.dataset.startIndex;
+    drawCanvasStatus(canvas,`${fdkText('開始角度','Start angle')} ${angle.toFixed(1)}°`,fdkText('同じ条件の3図を更新中','Updating all three panels for the same condition'));
+  }
   worker.postMessage({type:'axial-animation',index:axialMovie.index,mode:axialMovie.mode,requestId:axialMovie.request});
 }
 function receiveAxialMovie(message){
-  if(message.requestId!==axialMovie.request)return;
+  if(message.requestId!==axialMovie.request||message.index!==axialMovie.index)return;
   axialMovie.audit=SSPZAngles.animation(message.audit);axialMovie.pending=false;axialMovie.background=null;
   const key=axialMovie.mode+':'+message.index;axialMovie.cache.set(key,axialMovie.audit);
   while(axialMovie.cache.size>4)axialMovie.cache.delete(axialMovie.cache.keys().next().value);
@@ -86,7 +97,8 @@ function receiveAxialMovie(message){
 }
 function failAxialMovie(message){
   if(message.requestId!==axialMovie.request)return;
-  stopAxialMovie();axialMovie.pending=false;document.getElementById('axial-movie-status').textContent=message.message;
+  stopAxialMovie();axialMovie.pending=false;axialMovie.audit=null;document.getElementById('axial-movie-status').textContent=message.message;
+  for(const id of ['instant','total','profile'])drawCanvasStatus(document.getElementById('axial-movie-'+id),fdkText('更新できませんでした','Update failed'),message.message,'error');
 }
 function scheduleAxialMovie(){
   clearTimeout(axialMovie.timer);if(!axialMovie.playing||axialMovie.pending||document.hidden)return;
@@ -190,7 +202,7 @@ function renderAxialAngleReading(frame){
   el('angle-values').replaceChildren(...rows);
 }
 function inspectAxialMoviePair(event){
-  if(!axialMovie.instantHitPoints)return;
+  if(!axialMovie.audit||axialMovie.pending||!axialMovie.instantHitPoints)return;
   const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
   let hit=null,distance=20;
   for(const q of axialMovie.instantHitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
@@ -200,13 +212,16 @@ function renderAxialMovie(){
   const audit=axialMovie.audit;if(!audit||!fdkResult||axialMovie.pending)return;
   const c=audit.config,frame=audit.frames[axialMovie.mode==='phase'?0:axialMovie.frame];if(!frame)return;
   const phase=c.phase*180/Math.PI,progress=Math.round(frame.fraction*100),el=id=>document.getElementById('axial-movie-'+id);
-  el('position').max=axialMovie.mode==='phase'?fdkResult.profiles.length-1:audit.frames.length-1;
-  el('position').value=axialMovie.mode==='phase'?axialMovie.index:axialMovie.frame;
-  el('position-label').textContent=fdkText('動画内の開始角度','Start angle in this animation')+` ${phase.toFixed(1)}° / T = ${c.axialAverageMm.toFixed(2)} mm`+(axialMovie.mode==='thickness'?` / u = ${frame.u.toFixed(2)} mm`:``);
+  el('start').max=fdkResult.profiles.length-1;el('start').value=axialMovie.index;
+  el('start-label').textContent=`${phase.toFixed(1)}°`;
+  el('plane-control').hidden=axialMovie.mode==='phase';
+  el('position').max=audit.frames.length-1;el('position').value=axialMovie.frame;
+  el('position-label').textContent=fdkText('幅T内を動かす断面位置','Plane position within T')+` u = ${frame.u.toFixed(2)} mm / T = ${c.axialAverageMm.toFixed(2)} mm`;
   el('status').textContent=axialMovie.mode==='thickness'?fdkText('開始角度を固定：幅Tの','Fixed start angle: ')+` ${progress}% `+fdkText('まで積算','of T accumulated'):fdkText('開始角度ごとの別撮影を比較：幅T全体の重みを表示','Comparing separate start-angle conditions: full-T weights shown');
   el('total-title').textContent=axialMovie.mode==='thickness'?fdkText('（b）幅T内で積み重ねた重み','(b) Weights accumulated within T')+` — ${progress}%`:fdkText('（b）幅T全体の合計重み','(b) Total weights over T');
   el('note').textContent=fdkText('赤線：平均化の中心。青線：幅T内を動く断面。（a）（b）は中央の応答を作る重み、（c）は全評価位置で計算済みのSSPzです。候補点は','Red: averaging centre. Blue: plane moving within T. (a) and (b) explain the central response; (c) is the SSPz at all evaluation positions. Markers are sampled every ')+`${(360*audit.stride/c.viewSamples).toFixed(1)}°`+fdkText('間隔で抜粋。背景の軌跡には、選択区間外の隣接回転も含みます。','; background trajectories also include neighboring turns outside the selected interval.');
   renderAxialAngleReading(frame);
+  for(const id of ['instant','total','profile']){loadingCanvasStatuses.delete(el(id));el(id).removeAttribute('aria-busy');}
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
   drawAxialMovieProfile(el('profile'));
   const focus=c.focalSizeMm??0;
@@ -233,7 +248,7 @@ async function exportAxialMovieProfile(){
   downloadBlob(`${fdkFileStem(fdkResult)}_selected-profile_angle-${index}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }
 function inspectAxialMovieMarker(event){
-  if(!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
+  if(!axialMovie.audit||axialMovie.pending||!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
   let hit=null,distance=16;for(const q of axialMovie.hitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
   if(!hit)return;const p=hit.p,c=axialMovie.audit.config;
   const weight=v=>v===0?'0':v<.001?'<0.001':v.toFixed(3);

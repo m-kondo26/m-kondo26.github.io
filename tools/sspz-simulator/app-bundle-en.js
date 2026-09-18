@@ -3398,6 +3398,7 @@ function initializeAxialMovie(after){
   section.innerHTML=`<h2>${fdkText('','2C  From candidates to SSPz: interactive playback')}</h2>
   <p>${fdkText('','1. Move through width T and accumulate weights.  2. Change the start angle and compare SSPz.')}</p>
   <p>${fdkText('','Playback loops back to the beginning. Select Pause to stop.')}</p>
+  <label class="axial-movie-position axial-movie-start" for="axial-movie-start"><strong>${fdkText('','Acquisition start angle shared by (a)–(c)')} <span id="axial-movie-start-label">—</span></strong><input id="axial-movie-start" type="range" min="0" max="359" step="1" value="0" disabled><small>${fdkText('','Changing this angle updates candidates, weights and SSPz together.')}</small></label>
   <div class="axial-movie-controls">
     <label>${fdkText('','Playback mode')}<select id="axial-movie-mode"><option value="thickness">${fdkText('','1. Plane sweep within T')}</option><option value="phase">${fdkText('','2. Tube start angle')}</option></select></label>
     <label>${fdkText('','Playback speed')}<select id="axial-movie-speed"><option value="500">${fdkText('','Slow')}</option><option value="200" selected>${fdkText('','Normal')}</option><option value="100">${fdkText('','Fast')}</option></select></label>
@@ -3406,13 +3407,14 @@ function initializeAxialMovie(after){
     <button type="button" id="axial-movie-next" disabled>${fdkText('','Next frame')}</button>
     <button type="button" id="axial-movie-reset" disabled>${fdkText('','Rewind')}</button>
   </div>
-  <label class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
+  <label id="axial-movie-plane-control" class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
   <p id="axial-movie-status" role="status"></p>
-  <div class="axial-angle-controls">
-    <label>${fdkText('','Output direction in (a) (0–360°)')}<select id="axial-movie-pair" disabled></select></label>
-  </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
-  <details class="reading-details axial-angle-detail"><summary>${fdkText('','Tube angle and fan-angle correspondence')}</summary>
+  <details class="reading-details axial-angle-detail"><summary>${fdkText('','Details: inspect output direction and tube angles')}</summary>
+  <div class="axial-angle-controls">
+    <label>${fdkText('','Output direction to highlight in (a), not the start angle')}<select id="axial-movie-pair" disabled></select></label>
+  </div>
+    <p>${fdkText('','This selects the highlighted candidates and table direction within the same acquisition. It does not change the all-direction SSPz in (c). Use the shared start-angle slider above to change the acquisition.')}</p>
     <p id="axial-movie-source-window"></p>
     <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('','Role')}</th><th>${fdkText('','Plotted offset (°)')}</th><th>${fdkText('','Rebinned θ (°)')}</th><th>${fdkText('','Fan angle γ (°)')}</th><th>${fdkText('','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
     <p>${fdkText('','Direct and opposing θ differ by 180° modulo a full turn. The table lists actual selected rows and turns, with β = θ + γ. Both selected rows may belong to the same side. Neighboring acquired views used for rebinning must also fit the stated finite source interval. Table angles are unwrapped. Plot zero is a display reference, not tube angle zero.')}</p>
@@ -3430,11 +3432,12 @@ function initializeAxialMovie(after){
   <details class="reading-details"><summary>${fdkText('','How to read the animation')}</summary><p>${fdkText('','The red line marks the averaging centre; the blue line moves within T. Panel (b) integrates from the lower boundary to the blue line, always dividing by the full T. At the end it equals the existing total weights. Panel (c) shows the final full-width SSPz, not a partially accumulated profile. Every output direction is shown, including reuse of the same datum in direct and complementary roles. Averaging over all directions preserves the SSPz.')}</p><p>${fdkText('','Markers use a subset of display angles; SSPz retains all configured acquired views. The rectangular T average is a model assumption, not a scanner-specific kernel. Start-angle playback compares separate acquisition conditions; it is not tube motion during one scan.')}</p></details>`;
   after.after(section);
   const el=id=>document.getElementById('axial-movie-'+id);
-  el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
+  el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;el('plane-control').hidden=axialMovie.mode==='phase';axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
   el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{stopGeometryPlayback();axialMovie.playing=true;el('play').textContent=fdkText('','Ⅱ Pause');scheduleAxialMovie();}};
   el('prev').onclick=()=>{stopAxialMovie();advanceAxialMovie(-1);};el('next').onclick=()=>{stopAxialMovie();advanceAxialMovie(1);};
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
-  el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
+  el('start').oninput=e=>{stopAxialMovie();requestAxialMovie(Number(e.target.value));};
+  el('position').oninput=e=>{stopAxialMovie();axialMovie.frame=Number(e.target.value);renderAxialMovie();};
   el('role').onchange=()=>renderAxialMovie();el('apply').onclick=()=>{stopAxialMovie();selectFdkState(axialMovie.index,true);};
   el('pair').onchange=()=>{stopAxialMovie();axialMovie.selectedPair=Number(el('pair').value);renderAxialMovie();};
   el('instant').onclick=event=>inspectAxialMoviePair(event);
@@ -3462,14 +3465,22 @@ function requestAxialMovie(index){
   if(!fdkResult?.profiles?.length||!worker)return;
   clearTimeout(axialMovie.timer);axialMovie.index=((index%fdkResult.profiles.length)+fdkResult.profiles.length)%fdkResult.profiles.length;
   axialMovie.request++;axialMovie.pending=true;
+  const angle=fdkResult.profiles[axialMovie.index].phase*180/Math.PI;
+  document.getElementById('axial-movie-start').value=axialMovie.index;
+  document.getElementById('axial-movie-start-label').textContent=`${angle.toFixed(1)}°`;
   document.getElementById('axial-movie-profile-png').disabled=true;
-  document.getElementById('axial-movie-status').textContent=fdkText('','Preparing candidate frames… (Pause remains available)');
+  document.getElementById('axial-movie-status').textContent=fdkText('','Updating candidates, weights and SSPz: ')+`${angle.toFixed(1)}°`;
   const key=axialMovie.mode+':'+axialMovie.index;
   if(axialMovie.cache.has(key)){receiveAxialMovie({requestId:axialMovie.request,index:axialMovie.index,audit:axialMovie.cache.get(key)});return;}
+  for(const id of ['instant','total','profile']){
+    const canvas=document.getElementById('axial-movie-'+id);
+    delete canvas.dataset.startIndex;
+    drawCanvasStatus(canvas,`${fdkText('','Start angle')} ${angle.toFixed(1)}°`,fdkText('','Updating all three panels for the same condition'));
+  }
   worker.postMessage({type:'axial-animation',index:axialMovie.index,mode:axialMovie.mode,requestId:axialMovie.request});
 }
 function receiveAxialMovie(message){
-  if(message.requestId!==axialMovie.request)return;
+  if(message.requestId!==axialMovie.request||message.index!==axialMovie.index)return;
   axialMovie.audit=SSPZAngles.animation(message.audit);axialMovie.pending=false;axialMovie.background=null;
   const key=axialMovie.mode+':'+message.index;axialMovie.cache.set(key,axialMovie.audit);
   while(axialMovie.cache.size>4)axialMovie.cache.delete(axialMovie.cache.keys().next().value);
@@ -3478,7 +3489,8 @@ function receiveAxialMovie(message){
 }
 function failAxialMovie(message){
   if(message.requestId!==axialMovie.request)return;
-  stopAxialMovie();axialMovie.pending=false;document.getElementById('axial-movie-status').textContent=message.message;
+  stopAxialMovie();axialMovie.pending=false;axialMovie.audit=null;document.getElementById('axial-movie-status').textContent=message.message;
+  for(const id of ['instant','total','profile'])drawCanvasStatus(document.getElementById('axial-movie-'+id),fdkText('','Update failed'),message.message,'error');
 }
 function scheduleAxialMovie(){
   clearTimeout(axialMovie.timer);if(!axialMovie.playing||axialMovie.pending||document.hidden)return;
@@ -3582,7 +3594,7 @@ function renderAxialAngleReading(frame){
   el('angle-values').replaceChildren(...rows);
 }
 function inspectAxialMoviePair(event){
-  if(!axialMovie.instantHitPoints)return;
+  if(!axialMovie.audit||axialMovie.pending||!axialMovie.instantHitPoints)return;
   const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
   let hit=null,distance=20;
   for(const q of axialMovie.instantHitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
@@ -3592,13 +3604,16 @@ function renderAxialMovie(){
   const audit=axialMovie.audit;if(!audit||!fdkResult||axialMovie.pending)return;
   const c=audit.config,frame=audit.frames[axialMovie.mode==='phase'?0:axialMovie.frame];if(!frame)return;
   const phase=c.phase*180/Math.PI,progress=Math.round(frame.fraction*100),el=id=>document.getElementById('axial-movie-'+id);
-  el('position').max=axialMovie.mode==='phase'?fdkResult.profiles.length-1:audit.frames.length-1;
-  el('position').value=axialMovie.mode==='phase'?axialMovie.index:axialMovie.frame;
-  el('position-label').textContent=fdkText('','Start angle in this animation')+` ${phase.toFixed(1)}° / T = ${c.axialAverageMm.toFixed(2)} mm`+(axialMovie.mode==='thickness'?` / u = ${frame.u.toFixed(2)} mm`:``);
+  el('start').max=fdkResult.profiles.length-1;el('start').value=axialMovie.index;
+  el('start-label').textContent=`${phase.toFixed(1)}°`;
+  el('plane-control').hidden=axialMovie.mode==='phase';
+  el('position').max=audit.frames.length-1;el('position').value=axialMovie.frame;
+  el('position-label').textContent=fdkText('','Plane position within T')+` u = ${frame.u.toFixed(2)} mm / T = ${c.axialAverageMm.toFixed(2)} mm`;
   el('status').textContent=axialMovie.mode==='thickness'?fdkText('','Fixed start angle: ')+` ${progress}% `+fdkText('','of T accumulated'):fdkText('','Comparing separate start-angle conditions: full-T weights shown');
   el('total-title').textContent=axialMovie.mode==='thickness'?fdkText('','(b) Weights accumulated within T')+` — ${progress}%`:fdkText('','(b) Total weights over T');
   el('note').textContent=fdkText('','Red: averaging centre. Blue: plane moving within T. (a) and (b) explain the central response; (c) is the SSPz at all evaluation positions. Markers are sampled every ')+`${(360*audit.stride/c.viewSamples).toFixed(1)}°`+fdkText('','; background trajectories also include neighboring turns outside the selected interval.');
   renderAxialAngleReading(frame);
+  for(const id of ['instant','total','profile']){loadingCanvasStatuses.delete(el(id));el(id).removeAttribute('aria-busy');}
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
   drawAxialMovieProfile(el('profile'));
   const focus=c.focalSizeMm??0;
@@ -3625,7 +3640,7 @@ async function exportAxialMovieProfile(){
   downloadBlob(`${fdkFileStem(fdkResult)}_selected-profile_angle-${index}_600dpi.png`,await pngWithResolution(blob,600),'image/png');
 }
 function inspectAxialMovieMarker(event){
-  if(!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
+  if(!axialMovie.audit||axialMovie.pending||!axialMovie.hitPoints)return;const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
   let hit=null,distance=16;for(const q of axialMovie.hitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
   if(!hit)return;const p=hit.p,c=axialMovie.audit.config;
   const weight=v=>v===0?'0':v<.001?'<0.001':v.toFixed(3);
@@ -4285,7 +4300,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.13 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.14 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

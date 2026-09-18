@@ -1,3 +1,7 @@
+## Playback angle controls (2026-09-18.14)
+
+Panel 2C now has a permanent acquisition-start-angle slider shared by (a), (b), and (c). The plane-position slider is separate; the output-direction selector lives in the angle details and only highlights a direction within the same acquisition. A pending start-angle change clears all three old panels, disables profile export, and rejects superseded replies. Playback, manual selection, and PNG export use the same selected profile. Numerical acquisition and response calculations are unchanged.
+
 ## Finite axial focal blur in the main simulator (2026-09-18.13)
 
 Both cone interpolation models now average the signal within each acquired detector cell over a uniform effective axial focal width, before rebinning and axial interpolation. New/reset conditions use 1.2 mm and a common source–detector distance of 1070 mm, following the adopted book example. Focal width 0 reproduces the previous point-source result. Old URLs/saved conditions without focal fields remain at 0; new URLs record `ff` and `fd`. z-FFS uses the same detector distance and preserves each physical exposure's identity. The nondivergent comparator uses a constant, isocentre-matched axial blur as an explicit reference assumption. See `FOCAL_BLUR_METHOD.md` for equations and limits. This is an axial acquisition model; it does not add transverse focal blur, target-angle-dependent apparent focus, or full image reconstruction.
