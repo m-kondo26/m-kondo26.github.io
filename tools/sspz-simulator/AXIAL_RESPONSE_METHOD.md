@@ -92,13 +92,13 @@ normalization, direct/complementary role sums, exact agreement with existing
 weight audits, focal switching, multirow cases, cancellation and non-mutation.
 These are display/implementation checks, not scanner validation.
 
-Web 2026-09-18.3 adds a coordinate switch to the animation. The default aligns
-both members of an interpolation pair at the reference member's rebinned
-angle. The alternative puts each member at its own rebinned angle, moving
-complementary markers by 180 degrees while preserving z, row/focus/view
-identity and coefficients. The background changes to own-angle trajectories;
-circles and triangles still identify roles, not distinct acquisition types.
-The selected pair is boxed and its angles can be inspected in a table.
+Web 2026-09-18.4 consistently aligns both members of an interpolation pair
+at the reference member's rebinned angle. Direct trajectories/circles are
+solid; complementary trajectories/triangles are dashed. The own-angle
+switch introduced in Web 2026-09-18.3 was removed because its all-solid
+background obscured the complementary relationship. Data identities,
+coefficients and numerical profiles are unchanged. The selected pair is
+boxed and each member's own angles remain available in the numeric table.
 Under this code's sign convention beta = theta + gamma. Beta is a rebinning
 query angle, generally evaluated using neighboring acquired source views.
 The plot folds angle offsets relative to a fixed centre-turn reference; its

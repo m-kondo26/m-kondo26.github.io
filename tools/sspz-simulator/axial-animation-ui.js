@@ -1,6 +1,6 @@
 // Optional, user-started flipbook. Its phase is explicitly local to this block;
 // the original complete-view profiles provide every SSP frame.
-const axialMovie={audit:null,index:0,frame:0,mode:'thickness',coordinate:'paired',selectedPair:null,playing:false,timer:null,request:0,pending:false,background:null,cache:new Map()};
+const axialMovie={audit:null,index:0,frame:0,mode:'thickness',selectedPair:null,playing:false,timer:null,request:0,pending:false,background:null,cache:new Map()};
 function initializeAxialMovie(after){
   const section=document.createElement('section');section.id='axial-movie';section.className='workflow-block';
   section.innerHTML=`<h2>${fdkText('2C　候補点からSSPzへ：動画で確認','2C  From candidates to SSPz: interactive playback')}</h2>
@@ -16,7 +16,6 @@ function initializeAxialMovie(after){
   <label class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('計算後に再生できます','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
   <p id="axial-movie-status" role="status"></p>
   <div class="axial-angle-controls">
-    <label>${fdkText('（a）（b）の縦軸','Vertical coordinate in (a) and (b)')}<select id="axial-movie-coordinate"><option value="paired">${fdkText('補間対を同じ基準角にそろえる','Align each interpolation pair')}</option><option value="own">${fdkText('各データ自身の再配列角に戻す','Use each datum’s own rebinned angle')}</option></select></label>
     <label>${fdkText('（a）で強調する補間対','Pair highlighted in (a)')}<select id="axial-movie-pair" disabled></select></label>
   </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
@@ -42,7 +41,6 @@ function initializeAxialMovie(after){
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
   el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
   el('role').onchange=()=>renderAxialMovie();el('apply').onclick=()=>{stopAxialMovie();selectFdkState(axialMovie.index,true);};
-  el('coordinate').onchange=()=>{stopAxialMovie();axialMovie.coordinate=el('coordinate').value;axialMovie.background=null;renderAxialMovie();};
   el('pair').onchange=()=>{stopAxialMovie();axialMovie.selectedPair=Number(el('pair').value);renderAxialMovie();};
   el('instant').onclick=event=>inspectAxialMoviePair(event);
   el('total').onclick=event=>inspectAxialMovieMarker(event);
@@ -103,8 +101,7 @@ function advanceAxialMovie(delta){
 }
 function axialMovieBackground(audit){
   const c=audit.config,V=c.viewSamples,angles=[],families=[];
-  const own=axialMovie.coordinate==='own';
-  const groupsAt=v=>axialAnimationGroups(c,v).filter(g=>!own||g.direction===0);
+  const groupsAt=v=>axialAnimationGroups(c,v);
   const segments=Math.min(V,360),firstGroups=groupsAt(audit.base);
   firstGroups.forEach(g=>families.push({id:(g.direction?'complementary-':'direct-')+g.focus,family:g.direction?'complementary':'direct',angles,axial:[],scales:[]}));
   let min=Infinity,max=-Infinity;
@@ -122,10 +119,9 @@ function axialMovieBackground(audit){
     interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:families,
     traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],
     xAxisLabel:fdkText('候補列中心  zᵢ − z₀  (mm)','Candidate row centre  zᵢ − z₀  (mm)'),
-    yAxisLabel:own?fdkText('各データの再配列角度差 (°)','Own rebinned angle offset (°)'):fdkText('基準の再配列角度差 (°)','Reference rebinned angle offset (°)'),
+    yAxisLabel:fdkText('基準の再配列角度差 (°)','Reference rebinned angle offset (°)'),
     directLegendLabel:fdkText('実データ側 ○','Direct ○'),weightLegendLabel:fdkText('重み w','Weight w'),
-    roleMarkersOnly:own,
-    weightLegendNote:own?fdkText('実線：各データの軌跡。○・△は補間対での役割。','Solid: own trajectories. ○ / △: roles in the pair.'):fdkText('○・△を同じ基準角に表示（△自身の角度は＋180°）。','○ / △ share a reference angle (own △ angle: +180°).'),
+    weightLegendNote:fdkText('○・△を同じ基準角に表示（△自身の角度は＋180°）。','○ / △ share a reference angle (own △ angle: +180°).'),
     referenceViewSamples:V,renderedAngleSamples:audit.angleSamplesPerTurn};
   const canvas=document.createElement('canvas');canvas.width=900;canvas.height=960;
   drawDiagram(canvas,diagram,'zoom');return canvas;
@@ -144,7 +140,7 @@ function paintAxialMovieWeights(canvas,points,u,accumulated){
   const rendered=[];
   for(const p of [...points].sort((a,b)=>a.weight-b.weight)){
     if(accumulated&&role!=='all'&&p.use!==role)continue;
-    const py=y(SSPZAngles.view(p,axialMovie.coordinate));
+    const py=y(p.referenceView);
     drawWeightedMarker(ctx,p.row,c.rows,x(p.z),py,5.2,p.weight,p.direction?'triangle':'circle');
     rendered.push({p,x:x(p.z),y:py});
   }
@@ -154,11 +150,11 @@ function paintAxialMovieWeights(canvas,points,u,accumulated){
   }
   if(axialMovie.mode==='thickness'||!accumulated){ctx.strokeStyle='#2166ac';ctx.lineWidth=2.5;ctx.setLineDash([7,4]);ctx.beginPath();ctx.moveTo(x(u),top);ctx.lineTo(x(u),top+height);ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();canvas.dataset.renderState='ready';canvas.dataset.startIndex=axialMovie.index;canvas.dataset.planeMm=u;canvas.dataset.partial=String(accumulated&&axialMovie.mode==='thickness');canvas.dataset.markerCount=rendered.length;
-  canvas.dataset.angleCoordinate=axialMovie.coordinate;
+  canvas.dataset.angleCoordinate='paired';
   if(accumulated)axialMovie.hitPoints=rendered;else axialMovie.instantHitPoints=rendered;
 }
 function renderAxialAngleReading(frame){
-  const a=axialMovie.audit,c=a.config,el=id=>document.getElementById('axial-movie-'+id),own=axialMovie.coordinate==='own';
+  const a=axialMovie.audit,c=a.config,el=id=>document.getElementById('axial-movie-'+id);
   const refs=[...new Set(frame.instant.map(p=>p.referenceView))].sort((a,b)=>a-b);
   if(!refs.length){el('pair').disabled=true;el('angle-values').replaceChildren();return;}
   const target=axialMovie.selectedPair??(refs[0]+refs.at(-1))/2;
@@ -169,13 +165,11 @@ function renderAxialAngleReading(frame){
     el('pair').dataset.refs=key;
   }
   el('pair').disabled=false;el('pair').value=axialMovie.selectedPair;
-  el('coordinate-note').textContent=own
-    ?fdkText('同じ点・同じ重みを、各データ自身の角度に表示。対向側△は、基準角にそろえた表示から180°移ります。（a）の枠は同じ補間対です。','The same points and weights, placed at their own angles. Complementary triangles move by 180° from the aligned view. Boxes in (a) identify one pair.')
-    :fdkText('○と△を同じ補間対の基準角にそろえています。半回転に並んでも、半回転分のデータだけを使う意味ではありません。（a）の枠は同じ補間対です。','Circles and triangles share the reference angle of their pair. Half-turn marker coverage does not mean half-turn data use. Boxes in (a) identify one pair.');
+  el('coordinate-note').textContent=fdkText('実データは実線・○、対向データは破線・△です。同じ補間対を同じ基準角にそろえて表示しています。（a）の枠は同じ補間対です。','Direct data: solid lines and circles. Complementary data: dashed lines and triangles. Each pair shares a reference angle; boxes in (a) identify one pair.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
   const rows=SSPZAngles.pair(c,a.base,axialMovie.selectedPair).map(q=>{
     const tr=document.createElement('tr');
-    const values=[q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'),(own?q.ownOffset:q.referenceOffset).toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
+    const values=[q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'),q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
     values.forEach((value,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=value;tr.append(td);});
     return tr;
   });
