@@ -2,7 +2,7 @@
 // Mori et al., CT and MRI, pp.72–74 (Fig.6.25). See MORI_STATIC_METHOD.md.
 // This is an explicit reduced finite-focus benchmark, not an exact reproduction of that
 // figure, a full image FDK reconstruction, or the helical simulator's operator.
-export const MORI_STATIC_VERSION = '2026-09-18.2';
+export const MORI_STATIC_VERSION = '2026-09-18.3';
 export const MORI_STATIC_DEFAULTS = Object.freeze({
   rows:16,rowPitch:2,axialAperture:2,sourceRadius:600,detectorDistance:1070,
   viewSamples:900,zStep:.05,radii:Object.freeze([0,80,160]),
@@ -41,19 +41,25 @@ function validateSelection(c,{row,radius,angleDeg}) {
   if(!Number.isFinite(angleDeg))throw Error('angleDeg must be finite');
 }
 
-// Each row is on a source-centred cylindrical detector. All source and row
-// coordinates remain fixed while the reconstruction plane is selected.
-export function moriStaticView(config,selection={}) {
-  const c=moriStaticConfig(config);
-  const {row=0,radius=c.radii[0],angleDeg=0}=selection;
-  validateSelection(c,{row,radius,angleDeg});
+function angleGeometry(c,radius,angleDeg) {
   const beta=angleDeg*Math.PI/180,R=c.sourceRadius;
   const source={x:R*Math.cos(beta),y:R*Math.sin(beta),z:0};
   const U=R-radius*Math.cos(beta),L=Math.hypot(source.x-radius,source.y);
-  const scale=L/R,zPlane=rowZ(c,row),spacing=c.rowPitch*scale;
-  const rowCentres=Float64Array.from({length:c.rows},(_,k)=>rowZ(c,k)*scale);
-  const detectorRowCentres=Float64Array.from({length:c.rows},(_,k)=>rowZ(c,k)*c.detectorDistance/R);
-  const q=zPlane/spacing+(c.rows-1)/2;
+  const scale=L/R;
+  // A displacement t of the effective source with the detector fixed moves
+  // the ray's intersection at L by t(1-L/D). The effective focus size is not
+  // multiplied by the reference target angle a second time.
+  const focalBlurMm=c.focalSizeMm*Math.abs(1-L/c.detectorDistance);
+  return {angleDeg,beta,radius,source,transverseDistance:L,radialDistance:U,
+    detectorDistance:c.detectorDistance,magnification:scale,rowScale:scale,
+    physicalMagnification:c.detectorDistance/L,rowPitchMmAtPoint:c.rowPitch*scale,
+    apertureMm:c.axialAperture*scale,focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm,
+    // Curved-detector inverse-square convention; see the method note.
+    backprojectionWeight:(R/L)**2};
+}
+
+function selectRows(c,row,geometry) {
+  const zPlane=rowZ(c,row),q=zPlane/geometry.rowPitchMmAtPoint+(c.rows-1)/2;
   let selected,edgeSide=null;
   if(q< -EPS){selected=[{row:0,weight:1}];edgeSide='low';}
   else if(q>c.rows-1+EPS){selected=[{row:c.rows-1,weight:1}];edgeSide='high';}
@@ -62,19 +68,23 @@ export function moriStaticView(config,selection={}) {
     if(Math.abs(clipped-nearest)<EPS)selected=[{row:nearest,weight:1}];
     else {const lo=Math.floor(clipped),a=clipped-lo;selected=[{row:lo,weight:1-a},{row:lo+1,weight:a}];}
   }
-  // A displacement t of the effective source with the detector fixed moves
-  // the ray's intersection at L by t(1-L/D). focalSizeMm is already effective:
-  // the reference target angle is not applied a second time.
-  const focalBlurMm=c.focalSizeMm*Math.abs(1-L/c.detectorDistance);
-  selected=selected.map(s=>({...s,zCentre:rowCentres[s.row],apertureMm:c.axialAperture*scale,
-    focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm}));
-  // The curved-detector inverse-square factor is expressed using transverse
-  // source-to-point distance. See the explicit convention in the method note.
-  const backprojectionWeight=(R/L)**2;
-  return {angleDeg,beta,row,radius,zPlane,source,transverseDistance:L,radialDistance:U,
-    detectorDistance:c.detectorDistance,magnification:scale,rowScale:scale,physicalMagnification:c.detectorDistance/L,rowCentres,detectorRowCentres,
-    rowPitchMmAtPoint:spacing,focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm,
-    selected,edgeFallback:edgeSide!==null,edgeSide,backprojectionWeight};
+  selected=selected.map(s=>({...s,zCentre:rowZ(c,s.row)*geometry.rowScale,apertureMm:geometry.apertureMm,
+    focalBlurMm:geometry.focalBlurMm,effectiveFocalSizeMm:c.focalSizeMm}));
+  return {row,zPlane,selected,edgeFallback:edgeSide!==null,edgeSide};
+}
+
+// Each row is on a source-centred cylindrical detector. All source and row
+// coordinates remain fixed while the reconstruction plane is selected.
+export function moriStaticView(config,selection={}) {
+  const c=moriStaticConfig(config);
+  const {row=0,radius=c.radii[0],angleDeg=0}=selection;
+  validateSelection(c,{row,radius,angleDeg});
+  const geometry=angleGeometry(c,radius,angleDeg);
+  // Full arrays are useful for the geometry drawing, but are not built for
+  // every row/view during response accumulation.
+  const rowCentres=Float64Array.from({length:c.rows},(_,k)=>rowZ(c,k)*geometry.rowScale);
+  const detectorRowCentres=Float64Array.from({length:c.rows},(_,k)=>rowZ(c,k)*c.detectorDistance/c.sourceRadius);
+  return {...geometry,...selectRows(c,row,geometry),rowCentres,detectorRowCentres};
 }
 
 function supportExtent(c,radius) {
@@ -170,14 +180,18 @@ export function moriStaticAngleProfile(config,selection={}) {
   return angleProfile(c,selection,z,g);
 }
 
-function accumulate(c,row,radius,z,g,lastView=c.viewSamples) {
+function sampledGeometry(c,radius) {
+  return Array.from({length:c.viewSamples},(_,i)=>angleGeometry(c,radius,i*360/c.viewSamples));
+}
+
+function accumulate(c,row,radius,z,g,lastView=c.viewSamples,geometries=sampledGeometry(c,radius)) {
   const raw=new Float64Array(z.length);let edgeCount=0,weightSum=0,area=0,firstMoment=0,secondMoment=0;
   for(let i=0;i<lastView;i++){
-    const v=moriStaticView(c,{row,radius,angleDeg:i*360/c.viewSamples});
+    const geometry=geometries[i],v=selectRows(c,row,geometry);
     if(v.edgeFallback)edgeCount++;
-    weightSum+=v.backprojectionWeight/c.viewSamples;
+    weightSum+=geometry.backprojectionWeight/c.viewSamples;
     for(const s of v.selected){
-      const mass=s.apertureMm*s.weight*v.backprojectionWeight/c.viewSamples;
+      const mass=s.apertureMm*s.weight*geometry.backprojectionWeight/c.viewSamples;
       addBlurredRectangle(raw,z,g,s.zCentre,s.apertureMm,s.focalBlurMm,mass);
       area+=mass;firstMoment+=mass*s.zCentre;
       secondMoment+=mass*(s.zCentre*s.zCentre+(s.apertureMm*s.apertureMm+s.focalBlurMm*s.focalBlurMm)/12);
@@ -209,18 +223,29 @@ function measure(z,raw,g,zPlane,moments) {
     sampledCentroid,sampledSigma:Math.sqrt(variance),peak,fwhm,halfMaxLeft:left,halfMaxRight:right};
 }
 
-export function moriStaticCalculate(config={}) {
+// One yield per completed detector row lets the browser report progress and
+// service controls without reducing the requested angles or axial samples.
+// All operations and accumulation order are shared with the synchronous API.
+export function* moriStaticCalculateSteps(config={}) {
   const c=moriStaticConfig(config),z=moriStaticGrid(c),g=gridInfo(z),groups=[];
+  let completed=0;const total=c.rows*c.radii.length;
   for(const radius of c.radii){
-    const profiles=[];
+    const profiles=[],geometries=sampledGeometry(c,radius);
     for(let row=0;row<c.rows;row++){
-      const result=accumulate(c,row,radius,z,g),zPlane=rowZ(c,row);
+      const result=accumulate(c,row,radius,z,g,c.viewSamples,geometries),zPlane=rowZ(c,row);
       profiles.push({row,zPlane,...measure(z,result.raw,g,zPlane,result.moments),edgeCount:result.edgeCount,
         edgeFraction:result.edgeCount/c.viewSamples,weightSum:result.weightSum});
+      yield {completed:++completed,total,radius,row};
     }
     groups.push({radius,profiles});
   }
   return {version:MORI_STATIC_VERSION,config:c,z,groups};
+}
+
+export function moriStaticCalculate(config={}) {
+  const steps=moriStaticCalculateSteps(config);let step;
+  do {step=steps.next();}while(!step.done);
+  return step.value;
 }
 
 // Uses actual acquisition angles and the final response area. Intermediate
@@ -231,7 +256,8 @@ export function moriStaticProgress(config,selection={}) {
   const z=selection.z??moriStaticGrid(c,{radius}),g=gridInfo(z);
   checkSupport(c,radius,z,g);
   const viewsIncluded=angleDeg>=360?c.viewSamples:angleDeg<=0?0:Math.ceil(angleDeg/360*c.viewSamples-1e-10);
-  const total=accumulate(c,row,radius,z,g),part=viewsIncluded===c.viewSamples?total:accumulate(c,row,radius,z,g,viewsIncluded);
+  const geometries=sampledGeometry(c,radius);
+  const total=accumulate(c,row,radius,z,g,c.viewSamples,geometries),part=viewsIncluded===c.viewSamples?total:accumulate(c,row,radius,z,g,viewsIncluded,geometries);
   const normalizingArea=total.raw.reduce((a,b)=>a+b*g.dz,0);
   return {z,profile:Float64Array.from(part.raw,v=>v/normalizingArea),fraction:viewsIncluded/c.viewSamples,
     viewsIncluded,viewCount:c.viewSamples,normalizingArea,edgeCount:part.edgeCount};

@@ -2,18 +2,19 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>検出器列とSSP — 図6.25の計算をたどる</title>
+  <title>寝台静止時の再構成位置とSSPz</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="mori-static.css?v=20260918-11">
+  <link rel="stylesheet" href="mori-static.css?v=20260918-15">
 </head>
 <body>
 <main>
   <nav><a id="back" href="./">← SSPzシミュレーション</a><a id="language" href="?lang=en">English</a></nav>
   <header>
-    <p class="eyebrow" data-ja="CTとMRI · 図6.25を理解する" data-en="CT and MRI · Understanding Fig. 6.25"></p>
+    <p class="eyebrow" data-ja="寝台静止時の再構成位置とSSPz" data-en="Reconstruction positions and SSPz with a stationary table"></p>
     <h1 data-ja="同じ断面でも、使う検出器列は回転とともに変わる" data-en="The same plane uses different detector rows as the source rotates"></h1>
-    <p class="intro" data-ja="まず再構成する面を1つ選びます。X線源を回して、その面を挟む列と重みの変化を見てください。1回転分をまとめると、その面のSSPになります。" data-en="Choose one reconstruction plane. Rotate the source to see which rows bracket it and how their weights change. Combining a full turn produces the SSP for that plane."></p>
+    <p class="intro" data-ja="まず再構成する面を1つ選びます。X線源を回して、その面を挟む列と重みの変化を見てください。1回転分をまとめると、その面のモデルSSPzになります。" data-en="Choose one reconstruction plane. Rotate the source to see which rows bracket it and how their weights change. Combining a full turn produces the model SSPz for that plane."></p>
     <p class="scope" id="scope"></p>
+    <p class="small" data-ja="列間補間・逆投影の距離重み・1回転の合算による、静止寝台の体軸応答モデルです。Feldkamp法による画像再構成全体を計算するものではありません。" data-en="This stationary-table axial response model combines row interpolation, backprojection distance weighting and a full turn. It does not compute the complete Feldkamp image reconstruction."></p>
   </header>
   <section class="controls" aria-label="条件">
     <label><span data-ja="回転中心からの距離" data-en="Distance from rotation axis"></span><select id="radius"><option value="0">0 mm</option><option value="80">80 mm</option><option value="160" selected>160 mm</option></select></label>
@@ -47,27 +48,27 @@
     </section>
   </div>
   <section class="stage family-stage">
-    <div class="stage-heading"><b>4</b><h2 data-ja="再構成面を変えて、16本のSSPを並べる" data-en="Repeat for all 16 reconstruction planes"></h2></div>
+    <div class="stage-heading"><b>4</b><h2 id="family-title"></h2></div>
     <p data-ja="1本の曲線は、1つの再構成面のSSPです。その列だけの寄与を抜き出した曲線ではありません。青色は上で選択した面です。" data-en="Each curve is the SSP of one reconstruction plane, not the isolated contribution of one detector row. Blue highlights the plane selected above."></p>
-    <div id="families" aria-busy="true"><p role="status" data-ja="16か所の応答を計算しています…" data-en="Calculating responses for all 16 planes…"></p></div>
-    <div class="downloads"><button id="download" type="button" disabled data-ja="計算値をCSVで保存" data-en="Download calculated values (CSV)"></button><button id="save-svg" type="button" disabled data-ja="16本の図をSVGで保存" data-en="Download 16-profile figure (SVG)"></button><button id="copy" type="button" data-ja="この表示のURLをコピー" data-en="Copy view URL"></button><span id="save-status" role="status"></span></div>
+    <div id="families" aria-busy="true"><p role="status" data-ja="各再構成位置の応答を計算しています…" data-en="Calculating responses at each reconstruction position…"></p></div>
+    <div class="downloads"><button id="download" type="button" disabled data-ja="計算値をCSVで保存" data-en="Download calculated values (CSV)"></button><button id="save-svg" type="button" disabled data-ja="全再構成位置の図をSVGで保存" data-en="Download all-plane figure (SVG)"></button><button id="copy" type="button" data-ja="この表示のURLをコピー" data-en="Copy view URL"></button><span id="save-status" role="status"></span></div>
   </section>
   <details>
-    <summary data-ja="本書の条件・この検証で定めた条件" data-en="Book conditions and explicit model assumptions"></summary>
+    <summary data-ja="計算の範囲と参考文献" data-en="Calculation scope and references"></summary>
     <ul>
       <li data-ja="本書：16列、コリメーション幅2 mm、回転中心から0・80・160 mm、列間の線形補間、1回転分の合算、等面積正規化。" data-en="Book: 16 rows, 2 mm collimation, radii 0/80/160 mm, linear row interpolation, full-turn sum, equal-area normalization."></li>
-      <li data-ja="図6.6の実効焦点1.2 × 1.2 mmを採用し、体軸方向の1.2 mmを使用します。ターゲット角7°は参照条件で、方向による焦点形状の変化は含めません。点焦点との比較も選べます。" data-en="Adopts the 1.2 × 1.2 mm effective focus of Fig.6.6, using its 1.2 mm axial extent. The 7° target angle is reference metadata; direction-dependent changes in focal shape are not modelled. Point focus is available for comparison."></li>
+      <li data-ja="本体の列数・列幅・線源距離・体軸方向の実効焦点寸法・評価半径・view数・z刻みを引き継ぎます。寝台は静止させ、設定スライス厚Tによる追加平均化は行いません。" data-en="Transfers row count, row width, source distances, effective axial focal size, evaluation radius, view count and z step. The table stays stationary; no additional averaging by the configured slice thickness T is applied."></li>
       <li data-ja="各角度で検出器開口の矩形応答と、一様な有限焦点によるぼけを畳み込みます。評価位置での焦点ぼけ幅は f |1 − L/D| です。fは体軸方向の実効焦点寸法、Lは線源から評価点までの面内距離、Dは線源―検出器距離です。" data-en="At each angle, the detector-aperture rectangle is convolved with a uniform focal blur. Its width at the evaluation point is f |1 − L/D|, where f is the effective axial focal size, L the transverse source-to-point distance, and D the source-to-detector distance."></li>
-      <li data-ja="追加条件：線源―回転中心600 mm、線源―検出器1070 mm、900方向、体軸刻み0.05 mm。焦点条件を含め、これらを図6.25に完全に指定された条件とは扱いません。" data-en="Additional choices: source–axis 600 mm, source–detector 1070 mm, 900 angles, axial spacing 0.05 mm. These choices, including the focal conditions, are not all explicitly specified for Fig.6.25."></li>
+      <li data-ja="設定を指定せずにこのページを開いた場合は、16列×2 mm、線源―回転中心600 mm、線源―検出器1070 mm、実効焦点1.2 mm、900方向、z刻み0.05 mmを参照条件とします。書籍の掲載曲線を厳密に再現したものではありません。" data-en="Without explicit settings, the reference uses 16 × 2 mm rows, source–axis 600 mm, source–detector 1070 mm, effective focus 1.2 mm, 900 angles and z step 0.05 mm. This is not an exact reproduction of the published curves."></li>
       <li data-ja="距離重みは円弧検出器の幾何に対する (R/L)² とします。端で必要な列がない場合は、最も近い取得列で代替し、その角度を表示します。" data-en="Distance weighting is (R/L)² for curved-detector geometry. Outside the acquired row range, the nearest end row substitutes; these angles are identified."></li>
       <li data-ja="各再構成面と取得幾何は固定し、薄い対象の体軸位置に対する応答を計算します。面内画像FBP、ヘリカル寝台送り、追加の矩形平均化は含みません。" data-en="The reconstruction plane and acquisition geometry stay fixed; the response varies with axial object position. No transverse image FBP, helical table motion, or additional rectangular average is included."></li>
-      <li data-ja="このページは体軸の補間を理解するための独立した検証です。メインモデルの面内ピッチ・開口0.58 mmへの変更とは、計算の適用範囲が異なります。" data-en="This is a separate axial interpolation benchmark. Its scope differs from the main model’s adoption of 0.58 mm transverse pitch and aperture."></li>
+      <li data-ja="このページは、本体で選択する補間方式とは独立した参照計算です。面内方向の有限開口・再配列、焦点の交互移動（z-FFS）は含みません。" data-en="This reference calculation is independent of the interpolation rule selected in the main simulator. Transaxial finite aperture and rebinning, and alternating focal shifts (z-FFS), are not included."></li>
     </ul>
     <p><a href="MORI_STATIC_METHOD.md" data-ja="計算式と検証内容" data-en="Equations and verification"></a> · <a href="https://www.coronasha.co.jp/np/isbn/9784339072259/" data-ja="森一生ほか『CTとMRI』pp.72–74、図6.25" data-en="Mori et al., CT and MRI, pp.72–74, Fig.6.25"></a> · <a href="https://www.coronasha.co.jp/np/data/seigos/978-4-339-07225-9_1.pdf" data-ja="出版社正誤表" data-en="Publisher errata"></a></p>
   </details>
   <p id="error" role="alert" hidden></p>
-  <footer>Static axial benchmark 2026-09-18.2 · Web 2026-09-18.11</footer>
+  <footer>Static axial benchmark 2026-09-18.3 · Web 2026-09-18.15</footer>
 </main>
-<script type="module" src="mori-static-ui.js?v=20260918-11"></script>
+<script type="module" src="mori-static-ui.js?v=20260918-15"></script>
 </body>
 </html>

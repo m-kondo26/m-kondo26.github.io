@@ -1,3 +1,9 @@
+## Static-table response linked to current settings (2026-09-18.15)
+
+The reference link is now named by its subject: reconstruction positions and SSPz with a stationary table. It transfers the current row count (1–320), row width, source distances, effective axial focus, radius, view count and z step. Row selection, all-plane curves, CSV and SVG use that configuration; returning to the main page preserves the main conditions. This independent axial model uses row interpolation, distance weighting and full-turn accumulation, not complete Feldkamp image reconstruction. It does not inherit helical motion, the main interpolation rule, T averaging, transverse aperture/rebinning or z-FFS. A direct legacy link without settings retains the original 16 × 2 mm reference conditions.
+
+Static core 2026-09-18.3 reuses angle geometry and provides row-by-row progress without reducing view count or z resolution. Default and 320-row profiles remain bitwise equal to the prior core. The main helical calculation is unchanged. Exact acquired angles are retained for calculation; only visible angle text is rounded.
+
 ## Playback angle controls (2026-09-18.14)
 
 Panel 2C now has a permanent acquisition-start-angle slider shared by (a), (b), and (c). The plane-position slider is separate; the output-direction selector lives in the angle details and only highlights a direction within the same acquisition. A pending start-angle change clears all three old panels, disables profile export, and rejects superseded replies. Playback, manual selection, and PNG export use the same selected profile. Numerical acquisition and response calculations are unchanged.

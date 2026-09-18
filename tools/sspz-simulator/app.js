@@ -94,7 +94,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.14 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.15 / shared axial response 2026-09-18.8 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -186,7 +186,29 @@ function updateInputDecorations() {
   if (inspectState) inspectState.value = String(selectedStateIndex);
   if (inspectStateLabel) inspectStateLabel.textContent = `状態 ${selectedStateIndex}/359（s = ${(selectedStateIndex / 360).toFixed(3)}）`;
   if (inspectState) inspectState.setAttribute("aria-valuetext", `状態${selectedStateIndex}、相対位置${(selectedStateIndex / 360).toFixed(3)}`);
+  syncStaticReferenceLink();
 }
+
+// This reference has its own stationary-table operator. Transfer only the
+// shared axial acquisition geometry and sampling, not the helical method/T.
+function syncStaticReferenceLink() {
+  const link = document.getElementById('static-response-link');
+  if (!link) return;
+  const p = readParams(), target = new URL('mori-static.html', location.href);
+  // FormData omits disabled fields while the main calculation is running.
+  // The reference link must still carry the values visible in those fields.
+  for (const [key,value] of Object.entries(p)) {
+    const input = form.elements.namedItem(key);
+    if (input) p[key] = typeof value === 'number' ? Number(input.value) : input.value;
+  }
+  for (const [key, value] of Object.entries({n:p.rows,d:p.rowWidth,R:p.sourceRadius,D:p.focalSourceDetectorMm,r:p.radius,focus:p.focalSizeMm,nv:p.viewSamples,dz:p.zStep,from:'main'})) target.searchParams.set(key,value);
+  if (document.documentElement.lang === 'en') target.searchParams.set('lang','en');
+  target.searchParams.set('main',paramsToUrl(p).search);
+  link.href = target.href;
+}
+document.getElementById('static-response-link')?.addEventListener('click',syncStaticReferenceLink);
+form.addEventListener('input',syncStaticReferenceLink);
+form.addEventListener('change',syncStaticReferenceLink);
 
 function paramsToUrl(params) {
   const url = new URL(window.location.href);
