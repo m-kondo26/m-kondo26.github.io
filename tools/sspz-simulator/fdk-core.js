@@ -23,7 +23,7 @@ export function fdkConfig(input={}) {
     c.axialAverageMm=c.sliceThicknessMm;
   }
   for(const k of Object.keys(FDK_DEFAULTS)) if(!['normalization','objectModel'].includes(k)&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
-  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
+  for(const [k,lo,hi] of [['rows',input.response==='axial-interpolation'?1:2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
     if(!(c.objectModel==='point'&&k==='apertureSamples')&&(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi))throw Error(`${k}: integer ${lo}–${hi} required`);
   for(const [k,lo,hi] of [['axialAverageMm',0,20],['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
     if(!(c.objectModel==='point'&&k==='sphereDiameter')&&(c[k]<lo||c[k]>hi))throw Error(`${k}: ${lo}–${hi} required`);

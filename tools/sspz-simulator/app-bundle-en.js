@@ -3047,6 +3047,11 @@ globalThis.SSPZAngles = Object.freeze({
       angularMeanFactor: 1 / result.config.viewSamples,
       samples: this.expand(result.weightAudit.pairedSamples, result.config)};
   },
+  sample(c, base, point) {
+    const theta=c.phase+point.view*2*Math.PI/c.viewSamples;
+    const gamma=c.axialRule==='parallel'?0:Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius);
+    return {...point,theta,gamma,beta:theta+gamma,referenceOffset:this.offset(c,base,point.referenceView),ownOffset:this.offset(c,base,point.view)};
+  },
   pair(c, base, referenceView, oppositeView = referenceView + c.viewSamples / 2) {
     return [0, 1].map(direction => {
       const view = direction ? oppositeView : referenceView;
@@ -3177,8 +3182,9 @@ function initializeAxialMovie(after){
   </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
   <details class="reading-details axial-angle-detail"><summary>${fdkText('','Tube angle and fan-angle correspondence')}</summary>
+    <p id="axial-movie-source-window"></p>
     <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('','Role')}</th><th>${fdkText('','Plotted offset (°)')}</th><th>${fdkText('','Rebinned θ (°)')}</th><th>${fdkText('','Fan angle γ (°)')}</th><th>${fdkText('','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
-    <p>${fdkText('','Opposing rebinned angles θ differ by 180°. Their tube angles β include fan angle γ, so their β separation is generally not 180°. β is the rebinning query angle; neighboring acquired views supply the interpolated data. Table angles θ and β are unwrapped across turns. Plot zero is a fixed display reference, not tube angle zero.')}</p>
+    <p>${fdkText('','Direct and opposing θ differ by 180° modulo a full turn. The table lists actual selected rows and turns, with β = θ + γ. Both selected rows may belong to the same side. Neighboring acquired views used for rebinning must also fit the stated finite source interval. Table angles are unwrapped. Plot zero is a display reference, not tube angle zero.')}</p>
   </details>
   <label class="axial-movie-role-control">${fdkText('','Side shown in (b)')}<select id="axial-movie-role"><option value="all">${fdkText('','Both sides')}</option><option value="direct">${fdkText('','Direct ○')}</option><option value="complementary">${fdkText('','Complementary △')}</option></select></label>
   <div class="axial-movie-grid">
@@ -3329,10 +3335,13 @@ function renderAxialAngleReading(frame){
   el('pair').disabled=false;el('pair').value=axialMovie.selectedPair;
   el('coordinate-note').textContent=fdkText('','All output directions over 0–360° are shown. Direct data (solid, ○) and complementary data (dashed, △) for each output direction share a height. Boxes in (a) mark the selected direction’s candidates.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
-  const opposite=frame.instant.find(p=>p.referenceView===axialMovie.selectedPair).oppositeView;
-  const rows=SSPZAngles.pair(c,a.base,axialMovie.selectedPair,opposite).map(q=>{
+  const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
+  el('source-window').textContent=fdkText('','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('',' (full fan Φ = ')+`${c.axialRule==='parallel'?0:c.fullFanAngleDeg}°)`;
+  const chosen=frame.instant.filter(p=>p.referenceView===axialMovie.selectedPair);
+  const rows=chosen.map(p=>SSPZAngles.sample(c,a.base,p)).map(q=>{
     const tr=document.createElement('tr');
-    const values=[q.direction?fdkText('','Complementary △'):fdkText('','Direct ○'),q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
+    const role=(q.direction?fdkText('','Complementary △'):fdkText('','Direct ○'))+` / ${fdkText('','row')} ${q.row+1}${c.zFfsEnabled?' / '+(q.focus?'B':'A'):''}`;
+    const values=[role,q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
     values.forEach((value,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=value;tr.append(td);});
     return tr;
   });
@@ -3445,7 +3454,7 @@ function renderFdkSelected(){
   if(r.weightAudit?.pairedSamples)document.getElementById('fdk-weight-scope').textContent=fdkText('','Circles: direct; triangles: complementary. For each output direction, weights on the same datum are summed over T. Reuse as complementary data for the opposing output direction is also shown. Excel and JSON retain full-direction weights.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
-  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
+  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   renderZffsSelected();
   syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
@@ -3561,13 +3570,17 @@ function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
+  if(r.acquisition.centreWindow){
+    sheets.push(['Source_support',[['plane_z_relative_mm','source_beta_min_rad','source_beta_max_rad','first_acquired_view','last_acquired_view_inclusive'],
+      ...[[-r.config.axialAverageMm/2,r.acquisition.averagingWindowStart],[0,r.acquisition.centreWindow],[r.config.axialAverageMm/2,r.acquisition.averagingWindowEnd]].map(([z,w])=>[z,w.betaMin,w.betaMax,w.firstView,w.lastView])]]);
+  }
   if(r.config.zFfsEnabled){sheets.push(['zFFS_acquired_weights',zffsWeightRows(r)]);sheets.push(['zFFS_rebinned_weights',[['view_index','focus','row_index','theta_rad','beta_rad','z_relative_mm','weight','rebinned_value'],...r.rebinnedWeightAudit.map(q=>[q.view,q.focus?'B':'A',q.row,q.theta,q.beta,q.z,q.weight,q.acquiredValue])]]);}
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
   if(r.weightAudit.pairedSamples){
-    sheets[0][1].push(['paired_diagram','Full-turn output interpolation directions. Directional_weights uses angular factor 1/V; legacy Paired_weights and Selected_weights use 2/V. Alternative representations of the same response: do not add sheets together. Opposite views can be +V/2 or -V/2.']);
-    sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
+    sheets[0][1].push(['paired_diagram','Full-turn output interpolation directions. Directional_weights uses angular factor 1/V; legacy Paired_weights and Selected_weights use 2/V. Alternative representations of the same response: do not add sheets together. Direction families are separated by V/2 modulo V; actual acquisition turns remain explicit.']);
+    sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','focus','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.focus??0,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
     const directional=SSPZAngles.weightAudit(r);
-    sheets.push(['Directional_weights',[['start_index','output_view_unwrapped','opposite_views_unwrapped','direction','rebinned_view_unwrapped','row_index','output_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...directional.samples.map(q=>[selectedStateIndex,q.referenceView,q.oppositeViews.join(';'),q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,directional.angularMeanFactor,q.acquiredValue])]]);
+    sheets.push(['Directional_weights',[['start_index','output_view_unwrapped','opposite_views_unwrapped','direction','rebinned_view_unwrapped','focus','row_index','output_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...directional.samples.map(q=>[selectedStateIndex,q.referenceView,q.oppositeViews.join(';'),q.direction?'complementary':'direct',q.view,q.focus??0,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,directional.angularMeanFactor,q.acquiredValue])]]);
   }
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }
@@ -3583,7 +3596,7 @@ async function exportFdkWorkflowCanvas(id){
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
 const FDK_UI_FIELDS={method:'rri',edgePolicy:'available',axialAverageMm:0,objectModel:'point',
-  xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
+  xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,fullFanAngleDeg:50,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
@@ -3618,12 +3631,13 @@ function writeFdkUrl(url,p){
   for(const k of ['zffs','zffs_m','zffs_a'])url.searchParams.delete(k);
   if(p.zFfsEnabled){url.searchParams.set('zffs','1');url.searchParams.set('zffs_m',p.zFfsMagnification);url.searchParams.set('zffs_a',p.zFfsOffset);}
   for(const key of ['nf','pm','rp','nz',...Object.keys(FDK_UI_FIELDS).map(k=>'fdk_'+k)])url.searchParams.delete(key);
-  for(const k of ['edgePolicy','zStep','phase','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
+  for(const k of ['edgePolicy','zStep','phase','fullFanAngleDeg','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
 }
 function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
+  out.sourceSupportMigrated=!!q.get('v')&&Number(q.get('v'))<12;
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
   if(out.legacyCbaComparison)out.method='rri';
@@ -3638,16 +3652,18 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   controls.innerHTML=`<p class="section-summary">${fdkText('','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('','Interpolation rules and shared numerical settings')}</summary>
-  <p>${fdkText('','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same acquired data and angles. The nondivergent reference uses a separate geometry assumption.')}</p>
+  <p>${fdkText('','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same finite source-angle support of 360° + 2Φ, where Φ is the full fan opening. The nondivergent reference uses a separate geometry assumption.')}</p>
   <div class="parameter-grid">
   <input type="hidden" id="fdk-method" value="rri"><input type="hidden" id="fdk-objectModel" value="point"><input type="hidden" id="fdk-axialAverageMm" value="1"><input type="hidden" id="fdk-xyExtent" value="0.5"><input type="hidden" id="fdk-xySamples" value="5"><input type="hidden" id="fdk-zExtent" value="3"><input type="hidden" id="fdk-state" value="0"><input type="hidden" id="fdk-phaseCount" value="360">
+  <label>${fdkText('','Full fan opening Φ (°)')}<input id="fdk-fullFanAngleDeg" type="number" min="1" max="179" step="0.1" value="50"><small>${fdkText('','Source support is 360° + 2Φ. The default 50° is a model setting, not a scanner specification.')}</small></label>
   <label>${fdkText('','Axial calculation spacing (mm)')}<input id="fdk-zStep" type="number" min="0.01" max="0.2" step="0.01" value="0.05"></label>
   <label>${fdkText('','Base start angle (rad)')}<input id="fdk-phase" type="number" min="0" max="6.28318530718" step="0.01" value="0"></label>
-  <label>${fdkText('','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('','Use acquired rows')}</option><option value="strict">${fdkText('','Require both complete brackets')}</option></select></label>
+  <label>${fdkText('','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('','Use acquired rows')}</option><option value="strict">${fdkText('','Require complete selected brackets')}</option></select></label>
   <label>${fdkText('','Normalization')}<select id="fdk-normalization"><option value="minmax">${fdkText('','Minimum 0, maximum 1')}</option><option value="peak">${fdkText('','Peak 1')}</option></select></label>
   </div><p>${fdkText('','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain follows T and detector-row width to include the tails.')}</p>
   <p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
+  if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
   if(initial.legacyResponse){const note=document.createElement('p');note.className='model-note';note.id='axial-response-migration';note.textContent=fdkText('','Older settings loaded. The current shared axial interpolation model produces different values from previous FBP and axial results.');controls.prepend(note);}
   document.getElementById('fdk-method').setAttribute('aria-describedby','fdk-controls');
   document.getElementById('fdk-method').addEventListener('change',syncFdkMethodControls);
@@ -3707,7 +3723,7 @@ function initializeFdkUi(initial){
     if(r.reference){sheets[0][1].push(['CBA','Conjugate backprojection algorithm: jointly weighted conjugate detector-row samples'],['RRI','Row-to-row interpolation: linear interpolation between adjacent detector rows; matched reference with shared edge extension'],['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(r.model.kind.startsWith('axial-')){
       sheets[0][1].push(['RRI','Row-to-row interpolation; linear weights with an explicit acquired-row edge extension']);
-      sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','interpolation_weight',...(r.config.zFfsEnabled?['focus']:[])],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],...(r.config.zFfsEnabled?[v.focus[i]?'B':'A']:[])]))]]);
+      sheets.push(['Sample_weights',[['output_pair_angle_deg','selected_rebinned_view','selected_source_angle_rad','sample','z_relative_mm','interpolation_weight',...(r.config.zFfsEnabled?['focus']:[])],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.views?.[i]??'',v.betas?.[i]??'',i,z,v.weights[i],...(r.config.zFfsEnabled?[v.focus[i]?'B':'A']:[])]))]]);
     }
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
@@ -3765,6 +3781,7 @@ function runFdkSimulation(){
       if(text.startsWith('AXIAL_DOMAIN'))text=fdkText('',text);
       if(text.startsWith('ZFFS_GEOMETRY'))text=fdkText('',text);
       if(text.startsWith('AXIAL_COVERAGE'))text=fdkText('',text);
+      if(text.startsWith('AXIAL_FAN'))text=fdkText('',text);
       if(text.startsWith('CBA_VIEWS')||text.startsWith('AXIAL_VIEWS'))text=fdkText('',text);
       fail(text);
     }
@@ -3945,7 +3962,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.6 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.7 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4040,7 +4057,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 11,
+    v: 12,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     n: params.rows,

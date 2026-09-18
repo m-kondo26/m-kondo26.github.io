@@ -1,10 +1,10 @@
-# Shared axial interpolation response — 2026-09-17.6
+# Shared axial interpolation response — 2026-09-18.7
 
 The public model compares candidate selection and longitudinal interpolation, using the same acquisition operator. It is called a **model SSPz / axial interpolation response**, not a reconstructed-image SSP from full 2D or 3D filtered backprojection (FBP). A three-dimensional cone-ray geometry does not, by itself, imply that three-dimensional image reconstruction has been performed.
 
 ## Scope and common quantities
 
-Both cone models use the same fixed, unit-integral ideal point at `(r, 0, z0)`, source helix, cylindrical detector cells, acquired views, rowwise fan-to-parallel rebinning, full-turn interval, axial averaging width T, normalization, and native-sample width crossings. An optional nondivergent parallel reference is a separate acquisition assumption; it is not a fan-beam image reconstruction.
+Both cone models use the same fixed, unit-integral ideal point at `(r, 0, z0)`, source helix, cylindrical detector cells, acquired views, rowwise fan-to-parallel rebinning, finite source-angle support, axial averaging width T, normalization, and native-sample width crossings. An optional nondivergent parallel reference is a separate acquisition assumption; it is not a fan-beam image reconstruction.
 
 No finite sphere is used. Active transaxial aperture and channel-center spacing remain separate physical parameters, specified at isocenter. Axial active aperture equals the row spacing in this idealized detector. There is no transverse image grid, reconstructed image volume, transverse ramp convolution, cone-FBP preweight, or inverse-distance FBP weight. Angular aggregation at a fixed transverse point remains; it should not be described as the absence of every operation resembling backprojection.
 
@@ -37,7 +37,7 @@ Rebinning linearly reads the two neighboring acquired angles and channels; row i
 ## Explicit interpolation alternatives
 
 1. **Merged bracketing pair:** enumerate acquired row centers from both directions and select the nearest positions below and above evaluation z. Their linear coefficients are `(z_hi-z)/(z_hi-z_lo)` and `(z-z_lo)/(z_hi-z_lo)`. Coincident rows split the endpoint coefficient equally. A missing bracket is an unsupported condition.
-2. **RRI-equivalent row interpolation:** for each direction, use its fractional row coordinate f. Each acquired row has compact weight `max(0,1-|f-i|)`. Normalize these weights across both directions. With two complete brackets, this is the mean of the two ordinary linear interpolants. Omitting unavailable rows and renormalizing is an explicitly added edge policy, not a claimed scanner implementation. The optional strict policy requires both brackets.
+2. **RRI-equivalent row interpolation:** for each source-supported direction and turn, use its fractional row coordinate f. Each acquired row has compact weight `max(0,1-|f-i|)`. Normalize these weights over the supported groups. With two complete brackets, this is the mean of the two ordinary linear interpolants. More than two groups can fall inside the declared source interval. Omitting unavailable rows and renormalizing is an explicitly added edge policy, not a claimed scanner implementation. The optional strict policy requires complete row brackets in each group receiving nonzero weight. A single row is allowed, but a row tent without support remains an error; it is not extrapolated.
 
 The second alternative uses the linear RRI reference discussed by Hsieh et al. (2007). It does not implement their quadratic CBA algorithm. The first uses the generalized neighboring-sample interpolation concept discussed by Hu (1999), in the shared rebinned geometry defined above; it is not an unchanged reproduction of the earlier browser's acquired-angle implementation.
 
@@ -45,16 +45,31 @@ The second alternative uses the linear RRI reference discussed by Hsieh et al. (
 
 ## Moving-plane response and averaging
 
-The point and its acquired data stay fixed while evaluation z moves. Each z uses one slice-centred turn of rebinned views, organized as V/2 opposite-direction pairs. The interval starts at the first theta sample at or above `beta0 + 2 pi z/h - pi`. With `P_k` the unfiltered rebinned acquired response:
+The point and its acquired data stay fixed while evaluation z moves. The output-direction lattice has V directions, represented numerically as V/2 opposite-direction pairs. Its fixed origin is the first theta sample at or above `beta0 + 2 pi z0/h - pi`. This output lattice does not restrict acquired source angles.
+
+At each evaluation z, define the source-angle centre `beta_c = beta0 + 2 pi z/h`. For full fan opening Phi, use the finite acquisition interval
 
 ```
-A_m(z) = (2/V) sum over pairs in the z-dependent window [sum_k w_m,k(z) P_k]
+beta_c - (pi + Phi) <= beta <= beta_c + (pi + Phi)
+total span = 360 degrees + 2 Phi
+```
+
+Phi is the FULL opening, not the individual ray angle gamma nor the half-fan angle. It is a common input, default 50 degrees (a model choice, not a scanner specification). Changing evaluation radius does not change Phi. The point must lie within this opening. For the nondivergent reference, effective Phi is zero.
+
+For each direction family, enumerate only integer turns inside this interval. Keep a rebinned candidate only when every nonzero acquired-angle interpolation stencil entry is also inside it. Actual source views are the integer grid points inside the closed interval; endpoints are not rounded outward. Focal switching uses the same rule with its within-focus stencil. No additional z-distance or T-based cutoff is imposed. The nearest lower and upper rows are selected from this finite set, or an explicit coverage error is returned. Large pitch does not authorize an unlimited-turn search.
+
+The finite envelope is motivated by Toki's classical opposing-beam interpolation description, Figs. 4–6 of [EP0450152B1](https://patents.google.com/patent/EP0450152B1/en): a central turn plus a full-fan interval on either side. Its application to the present multirow reduced model is an explicit modelling choice, not a universal support theorem for all multislice reconstruction algorithms.
+
+With `P_k` the unfiltered rebinned acquired response:
+
+```
+A_m(z) = (2/V) sum over fixed direction pairs [sum_k w_m,k(z) P_k]
 B_m(z) = (1/T) integral from z-T/2 to z+T/2 A_m(u) du
 ```
 
 For T=0 in the numerical API, B=A. The browser uses its single configured thickness T as the rectangular averaging width. FWHM is an output and is never fitted to T. Candidates are reselected at every evaluation u before averaging. The numerical integral is exact for the piecewise-linear sampled A(u), not necessarily for the underlying continuous acquisition/interpolation process. Axial grid and acquired-view convergence therefore still matter.
 
-The published browser no longer uses the former finite-K Taguchi shifted sum. Taguchi and Aradate's filter-interpolation concept motivates averaging longitudinal interpolants, but the current continuous piecewise-linear integral is a declared numerical choice. The former finite-K API and full FBP APIs remain available in their unchanged source modules for reproducing historical results.
+The published browser no longer uses the former finite-K Taguchi shifted sum. Taguchi and Aradate's filter-interpolation concept motivates averaging longitudinal interpolants, but the current continuous piecewise-linear integral is a declared numerical choice. The former finite-K API and full FBP APIs remain available in their unchanged source modules for reproducing historical results. The previous rebinned-one-turn axial calculation is retained only as explicit numerical API option `candidateSearch: 'one-turn'`; the browser uses `source-fan-window`. This support correction can change candidates, weights, profiles and widths, and is not merely a display change.
 
 The output half-domain is `max(1 mm, T + 2d(1+r/R))`, plus the padding required for the integral. The calculation checks both width crossings and response tails; it does not silently accept a cropped response. An object entirely in inactive detector space produces geometry-only output and no invented width.
 
@@ -121,7 +136,8 @@ URL schema v11 and model version 2026-09-17.6 identify this change. Old URLs loa
 - Hsieh J et al. *Conjugate cone-beam reconstruction algorithm.* Optical Engineering. 2007;46:067001. [doi:10.1117/1.2746866](https://doi.org/10.1117/1.2746866). SSP/interpolation concept, row rebinning, and RRI comparison; not validation of all added assumptions above.
 - Hu H. *Multi-slice helical CT: Scan and reconstruction.* Medical Physics. 1999;26:5–18. [doi:10.1118/1.598470](https://doi.org/10.1118/1.598470).
 - Taguchi K, Aradate H. *Algorithm for image reconstruction in multi-slice helical CT.* Medical Physics. 1998;25:550–561. [doi:10.1118/1.598230](https://doi.org/10.1118/1.598230).
-- Kudo H et al. *Exact and approximate algorithms for helical cone-beam CT.* Physics in Medicine and Biology. 2004;49:2913–2931. [doi:10.1088/0031-9155/49/13/011](https://doi.org/10.1088/0031-9155/49/13/011). Background for the declared slice-centred angular interval, not use of the paper's exact reconstruction.
+- Toki Y. *Computerized tomographic imaging method and apparatus utilizing data interpolation for helical scanning.* [EP0450152B1, Figs. 4–6](https://patents.google.com/patent/EP0450152B1/en). Source-angle support for classical opposing-beam interpolation; not validation of this entire reduced model.
+- Kudo H et al. *Exact and approximate algorithms for helical cone-beam CT.* Physics in Medicine and Biology. 2004;49:2913–2931. [doi:10.1088/0031-9155/49/13/011](https://doi.org/10.1088/0031-9155/49/13/011). Background on exact and approximate reconstruction; this model does not implement its exact reconstruction.
 
 The supplied textbook scan is not redistributed by this website.
 
@@ -165,4 +181,8 @@ additional direction. The ordinary diagram and animation share this convention.
 This is a display and audit change. It is not half-scan image reconstruction,
 does not add acquired views, and does not establish image reconstruction
 sufficiency. The finite candidate-window selection is unchanged; the separate
-question of nearby data excluded by that window remains open.
+question of nearby data excluded by that window was resolved separately in Web 2026-09-18.7, as specified above. This paragraph records the scope of the older display-only revision.
+
+## Source-support verification (Web 2026-09-18.7)
+
+`tests/source-support.mjs` independently enumerates all detector rows and eligible turns using Cartesian ray lengths and an acquired-source grid. It covers 1, 4, 80, 160 and 320 rows, three pitches, both interpolation rules, the parallel reference and optional focal switching. Unsupported cases must report missing support. It checks the user's recovered near datum, a direct acquired-data response oracle, one-row responses, and saved before/after profiles. Animation tests separately verify the exact T-integrated weights, physical identities and full-turn directional normalization. These are implementation and declared-model checks, not scanner validation or final manuscript convergence.

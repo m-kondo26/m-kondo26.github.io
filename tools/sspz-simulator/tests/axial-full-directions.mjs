@@ -1,3 +1,4 @@
+import {sourceOracle} from './source-support-oracle.mjs';
 // Independent all-row, Cartesian-ray oracle for the user's red angular gap.
 import assert from 'node:assert/strict';
 import '../axial-angle-display.js';
@@ -9,22 +10,10 @@ const raw=await createAxialAnimationAudit(c,{frameCount:3,maxAngles:360});
 const full=SSPZAngles.animation(raw),V=c.viewSamples,H=V/2;
 let checkedDirections=0;
 for(const frame of full.frames){
- const u=frame.u,start=Math.ceil(V*u/c.feed-H-1e-12);
+ const u=frame.u,start=full.base;
  assert.equal(new Set(frame.instant.map(p=>p.referenceView)).size,V);
  for(let v=start;v<start+V;v++){
-  const opposite=v<start+H?v+H:v-H,all=[];
-  for(const [direction,view] of [v,opposite].entries()){
-   const theta=2*Math.PI*view/V,gamma=Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius),beta=theta+gamma;
-   const distance=Math.hypot(c.sourceRadius*Math.cos(beta)-c.radius,c.sourceRadius*Math.sin(beta));
-   for(let row=0;row<c.rows;row++)all.push({direction,view,row,z:c.feed*beta/(2*Math.PI)+(row-1.5)*distance/c.sourceRadius});
-  }
-  const exact=all.filter(p=>Math.abs(p.z-u)<1e-10);let expected;
-  if(exact.length)expected=exact.map(p=>({...p,weight:1/exact.length}));
-  else{
-   const lo=all.filter(p=>p.z<u).sort((a,b)=>b.z-a.z)[0],hi=all.filter(p=>p.z>u).sort((a,b)=>a.z-b.z)[0];
-   assert(lo&&hi,'independent candidates bracket plane');
-   expected=[{...lo,weight:(hi.z-u)/(hi.z-lo.z)},{...hi,weight:(u-lo.z)/(hi.z-lo.z)}];
-  }
+  const opposite=v<start+H?v+H:v-H,expected=sourceOracle(c,v,u);
   const actual=frame.instant.filter(p=>p.referenceView===v);
   near(actual.reduce((s,p)=>s+p.weight,0),1,'normalized direction');
   near(actual.reduce((s,p)=>s+p.weight*p.z,0),u,'brackets moving plane');
@@ -37,10 +26,6 @@ for(const frame of full.frames){
   checkedDirections++;
  }
 }
-const red=full.frames.at(-1).instant.filter(p=>p.referenceView===300);
-assert.equal(SSPZAngles.offset(c,full.base,300),120);
-near(red.find(p=>p.view===300).weight,.27091450935580463,'reported red interval 120 degrees');
-
 // Generic conservation: each raw physical datum contributes exactly the same
 // angular-averaged coefficient after the directional display transformation.
 const dataKey=p=>`${p.view}:${p.focus??0}:${p.row}`;

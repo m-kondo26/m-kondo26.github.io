@@ -4,6 +4,7 @@ import {axialPairWeights} from './axial-response-core.js';
 import {cbaCoordinates} from './cba-core.js';
 import {zffsCandidateWeights} from './zffs-response.js';
 import {zffsShift} from './zffs-geometry.js';
+import {sourceSupportedAxialWeights} from './axial-source-support.js';
 
 export function axialAnimationGroups(c,view){
   const V=c.viewSamples,groups=[];
@@ -42,15 +43,16 @@ export async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,ca
   let stride=Math.max(1,Math.ceil(V/maxAngles));while(half%stride!==0)stride++;
   const totalCoefficients=axialAnimationIntegralCoefficients(c,T/2),mid=(totalCoefficients.length-1)/2;
   const groupCache=new Map(),nodePoints=new Map();
-  const key=p=>`${p.referenceView}:${p.direction}:${p.focus}:${p.row}`;
+  const key=p=>`${p.referenceView}:${p.direction}:${p.view}:${p.focus}:${p.row}`;
   const dataKey=p=>`${p.view}:${p.focus}:${p.row}`;
   const groupsAt=v=>{if(!groupCache.has(v))groupCache.set(v,axialAnimationGroups(c,v));return groupCache.get(v);};
   const pointsAt=(u,z=z0+u)=>{
-    const start=Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12),points=[];
+    const finiteSupport=c.candidateSearch==='source-fan-window';
+    const start=finiteSupport?base:Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12),points=[];
     const first=base+Math.ceil((start-base)/stride)*stride;
     for(let v=first;v<start+half;v+=stride){
-      const groups=groupsAt(v),ws=c.zFfsEnabled?zffsCandidateWeights(c,groups,z):axialPairWeights(c,groups[0],groups[1],z);
-      for(const s of ws)points.push({referenceView:v,view:v+s.direction*half,direction:s.direction,focus:s.focus??0,row:s.row,z:s.z-z0,weight:s.weight});
+      const groups=groupsAt(v),ws=finiteSupport?sourceSupportedAxialWeights(c,groups,z):c.zFfsEnabled?zffsCandidateWeights(c,groups,z):axialPairWeights(c,groups[0],groups[1],z);
+      for(const s of ws)points.push({referenceView:v,view:finiteSupport?s.view:v+s.direction*half,direction:s.direction,focus:s.focus??0,row:s.row,z:s.z-z0,weight:s.weight});
     }
     return points;
   };
@@ -85,7 +87,7 @@ export async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,ca
     if(performance.now()-yielded>20){await new Promise(resolve=>setTimeout(resolve,0));yielded=performance.now();}
   }
   return {config:c,zObject:z0,base,stride,frames,total:classify(total),angleSamplesPerTurn:Math.ceil(V/stride),
-    xHalfSpan:Math.max(T/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+(c.zFfsEnabled?2*c.zFfsSourceOffsetMm:0),1),
+    xHalfSpan:Math.max(T/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+(c.zFfsEnabled?2*c.zFfsSourceOffsetMm:0),1,...frames.flatMap(f=>f.instant.map(p=>Math.abs(p.z)*1.05))),
     coordinate:'common direct-side rebinned angle; opposing data at theta+pi',
     definition:'Display-angle subset only; exact native-grid integral coefficients; partial integral divided by full T; SSP from original full-view calculation.'};
 }

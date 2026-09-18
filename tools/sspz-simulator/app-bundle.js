@@ -3047,6 +3047,11 @@ globalThis.SSPZAngles = Object.freeze({
       angularMeanFactor: 1 / result.config.viewSamples,
       samples: this.expand(result.weightAudit.pairedSamples, result.config)};
   },
+  sample(c, base, point) {
+    const theta=c.phase+point.view*2*Math.PI/c.viewSamples;
+    const gamma=c.axialRule==='parallel'?0:Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius);
+    return {...point,theta,gamma,beta:theta+gamma,referenceOffset:this.offset(c,base,point.referenceView),ownOffset:this.offset(c,base,point.view)};
+  },
   pair(c, base, referenceView, oppositeView = referenceView + c.viewSamples / 2) {
     return [0, 1].map(direction => {
       const view = direction ? oppositeView : referenceView;
@@ -3177,8 +3182,9 @@ function initializeAxialMovie(after){
   </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
   <details class="reading-details axial-angle-detail"><summary>${fdkText('X線管角度・ファン角との対応','Tube angle and fan-angle correspondence')}</summary>
+    <p id="axial-movie-source-window"></p>
     <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('（a）で強調した対：θ ＋ γ = β','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('使用する側','Role')}</th><th>${fdkText('図での角度差 (°)','Plotted offset (°)')}</th><th>${fdkText('再配列角 θ (°)','Rebinned θ (°)')}</th><th>${fdkText('ファン角 γ (°)','Fan angle γ (°)')}</th><th>${fdkText('X線管角 β (°)','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
-    <p>${fdkText('対向側の再配列角θは180°異なります。対応するX線管角βにはファン角γが加わるため、βの差は一般に180°ではありません。βは再配列で参照する角度で、実際には前後の取得ビューから補間します。表のθ・βは回転をまたいでも折り返しません。図の0°は固定した表示基準で、X線管角0°ではありません。','Opposing rebinned angles θ differ by 180°. Their tube angles β include fan angle γ, so their β separation is generally not 180°. β is the rebinning query angle; neighboring acquired views supply the interpolated data. Table angles θ and β are unwrapped across turns. Plot zero is a fixed display reference, not tube angle zero.')}</p>
+    <p>${fdkText('実・対向方向の再配列角θは、360°で折り返すと180°異なります。表には実際に選んだ列・回転のθと、ファン角γを加えたX線管角βを示します。同じ側の異なる列が選ばれる場合もあります。βの前後で用いる取得ビューも、下記の有限取得範囲内に限ります。表の角度は折り返しません。図の0°は表示基準であり、X線管角0°ではありません。','Direct and opposing θ differ by 180° modulo a full turn. The table lists actual selected rows and turns, with β = θ + γ. Both selected rows may belong to the same side. Neighboring acquired views used for rebinning must also fit the stated finite source interval. Table angles are unwrapped. Plot zero is a display reference, not tube angle zero.')}</p>
   </details>
   <label class="axial-movie-role-control">${fdkText('（b）に表示する側','Side shown in (b)')}<select id="axial-movie-role"><option value="all">${fdkText('両側','Both sides')}</option><option value="direct">${fdkText('実データ側 ○','Direct ○')}</option><option value="complementary">${fdkText('対向データ側 △','Complementary △')}</option></select></label>
   <div class="axial-movie-grid">
@@ -3329,10 +3335,13 @@ function renderAxialAngleReading(frame){
   el('pair').disabled=false;el('pair').value=axialMovie.selectedPair;
   el('coordinate-note').textContent=fdkText('補間対象の全周0～360°を表示します。各方向で使う実データ側（実線・○）と対向側（破線・△）を、同じ高さに示します。（a）の枠は選んだ方向の候補です。','All output directions over 0–360° are shown. Direct data (solid, ○) and complementary data (dashed, △) for each output direction share a height. Boxes in (a) mark the selected direction’s candidates.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
-  const opposite=frame.instant.find(p=>p.referenceView===axialMovie.selectedPair).oppositeView;
-  const rows=SSPZAngles.pair(c,a.base,axialMovie.selectedPair,opposite).map(q=>{
+  const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
+  el('source-window').textContent=fdkText('この断面の取得範囲 β：','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('（全ファン角 Φ＝',' (full fan Φ = ')+`${c.axialRule==='parallel'?0:c.fullFanAngleDeg}°)`;
+  const chosen=frame.instant.filter(p=>p.referenceView===axialMovie.selectedPair);
+  const rows=chosen.map(p=>SSPZAngles.sample(c,a.base,p)).map(q=>{
     const tr=document.createElement('tr');
-    const values=[q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'),q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
+    const role=(q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'))+` / ${fdkText('列','row')} ${q.row+1}${c.zFfsEnabled?' / '+(q.focus?'B':'A'):''}`;
+    const values=[role,q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
     values.forEach((value,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=value;tr.append(td);});
     return tr;
   });
@@ -3445,7 +3454,7 @@ function renderFdkSelected(){
   if(r.weightAudit?.pairedSamples)document.getElementById('fdk-weight-scope').textContent=fdkText('○は実データ側、△は対向データ側です。各補間対象方向について、同じデータに掛かる重みを幅Tにわたり合算しています。同じデータが180°異なる方向で対向側として使われる場合も表示します。全方向の重みはExcel・JSONに保存します。','Circles: direct; triangles: complementary. For each output direction, weights on the same datum are summed over T. Reuse as complementary data for the opposing output direction is also shown. Excel and JSON retain full-direction weights.');
   document.getElementById('fdk-inspection-status').textContent=fdkText('展開図・重み・モデルSSPzは、選択した同じ開始角度に対応しています。','Geometry, weights and model SSPz now refer to the same selected start angle.');
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
-  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
+  const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   renderZffsSelected();
   syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
@@ -3561,13 +3570,17 @@ function addFdkWorkflowSheets(sheets){
   sheets[0][1]=sheets[0][1].filter(([key])=>!['volume_storage','sample_weights_scope'].includes(key));
   sheets[0][1].push(['selected_start_index',selectedStateIndex],['start_angle_sweep','base phase + 0..359 degrees; object z fixed'],['volume_storage','No image volume; JSON stores selected-angle response and weights'],['thickness_definition','Configured thickness T is the rectangular averaging width; FWHM is measured from the resulting SSPz, not prescribed'],['first_angle_weights','Sample_weights contains the unaveraged centre snapshot at index 0; Selected_weights includes the response-average window at the inspected angle']);
   const r=fdkSelectedResult;if(!r?.weightAudit)return;
+  if(r.acquisition.centreWindow){
+    sheets.push(['Source_support',[['plane_z_relative_mm','source_beta_min_rad','source_beta_max_rad','first_acquired_view','last_acquired_view_inclusive'],
+      ...[[-r.config.axialAverageMm/2,r.acquisition.averagingWindowStart],[0,r.acquisition.centreWindow],[r.config.axialAverageMm/2,r.acquisition.averagingWindowEnd]].map(([z,w])=>[z,w.betaMin,w.betaMax,w.firstView,w.lastView])]]);
+  }
   if(r.config.zFfsEnabled){sheets.push(['zFFS_acquired_weights',zffsWeightRows(r)]);sheets.push(['zFFS_rebinned_weights',[['view_index','focus','row_index','theta_rad','beta_rad','z_relative_mm','weight','rebinned_value'],...r.rebinnedWeightAudit.map(q=>[q.view,q.focus?'B':'A',q.row,q.theta,q.beta,q.z,q.weight,q.acquiredValue])]]);}
   sheets[0][1].push(['selected_weight_scope',r.weightAudit.definition]);
   if(r.weightAudit.pairedSamples){
-    sheets[0][1].push(['paired_diagram','Full-turn output interpolation directions. Directional_weights uses angular factor 1/V; legacy Paired_weights and Selected_weights use 2/V. Alternative representations of the same response: do not add sheets together. Opposite views can be +V/2 or -V/2.']);
-    sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
+    sheets[0][1].push(['paired_diagram','Full-turn output interpolation directions. Directional_weights uses angular factor 1/V; legacy Paired_weights and Selected_weights use 2/V. Alternative representations of the same response: do not add sheets together. Direction families are separated by V/2 modulo V; actual acquisition turns remain explicit.']);
+    sheets.push(['Paired_weights',[['start_index','reference_view_unwrapped','direction','rebinned_view_unwrapped','focus','row_index','reference_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.pairedSamples.map(q=>[selectedStateIndex,q.referenceView,q.direction?'complementary':'direct',q.view,q.focus??0,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,r.weightAudit.db,q.acquiredValue])]]);
     const directional=SSPZAngles.weightAudit(r);
-    sheets.push(['Directional_weights',[['start_index','output_view_unwrapped','opposite_views_unwrapped','direction','rebinned_view_unwrapped','row_index','output_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...directional.samples.map(q=>[selectedStateIndex,q.referenceView,q.oppositeViews.join(';'),q.direction?'complementary':'direct',q.view,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,directional.angularMeanFactor,q.acquiredValue])]]);
+    sheets.push(['Directional_weights',[['start_index','output_view_unwrapped','opposite_views_unwrapped','direction','rebinned_view_unwrapped','focus','row_index','output_theta_rad','rebinned_theta_rad','source_angle_rad','z_relative_mm','weight','angular_mean_factor','unfiltered_acquired_value'],...directional.samples.map(q=>[selectedStateIndex,q.referenceView,q.oppositeViews.join(';'),q.direction?'complementary':'direct',q.view,q.focus??0,q.row,r.config.phase+q.referenceView*2*Math.PI/r.config.viewSamples,q.theta,q.beta,q.z,q.weight,directional.angularMeanFactor,q.acquiredValue])]]);
   }
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }
@@ -3583,7 +3596,7 @@ async function exportFdkWorkflowCanvas(id){
 // Integrated UI for the browser worker, using the existing shared form,
 // geometry conventions, XLSX writer and PNG resolution metadata.
 const FDK_UI_FIELDS={method:'rri',edgePolicy:'available',axialAverageMm:0,objectModel:'point',
-  xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,normalization:'minmax'};
+  xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,fullFanAngleDeg:50,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
 const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
@@ -3618,12 +3631,13 @@ function writeFdkUrl(url,p){
   for(const k of ['zffs','zffs_m','zffs_a'])url.searchParams.delete(k);
   if(p.zFfsEnabled){url.searchParams.set('zffs','1');url.searchParams.set('zffs_m',p.zFfsMagnification);url.searchParams.set('zffs_a',p.zFfsOffset);}
   for(const key of ['nf','pm','rp','nz',...Object.keys(FDK_UI_FIELDS).map(k=>'fdk_'+k)])url.searchParams.delete(key);
-  for(const k of ['edgePolicy','zStep','phase','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
+  for(const k of ['edgePolicy','zStep','phase','fullFanAngleDeg','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
 }
 function fdkParamsFromUrl(q){
   const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
+  out.sourceSupportMigrated=!!q.get('v')&&Number(q.get('v'))<12;
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
   if(out.legacyCbaComparison)out.method='rri';
@@ -3638,16 +3652,18 @@ function initializeFdkUi(initial){
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   controls.innerHTML=`<p class="section-summary">${fdkText('共通の点対象・検出器開口から、候補の選択と体軸補間によるモデルSSPzを求めます。横断画像は再構成しません。','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('補間規則と共通の計算設定','Interpolation rules and shared numerical settings')}</summary>
-  <p>${fdkText('候補統合では、実・対向方向の列データ全体から評価位置を挟む2点を選びます。RRI（row-to-row interpolation）は各方向の隣接列を線形補間し、対向ペアで重みを正規化します。どちらも同じ取得データと角度集合を用います。発散なしの基準は、別の幾何仮定です。','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same acquired data and angles. The nondivergent reference uses a separate geometry assumption.')}</p>
+  <p>${fdkText('候補統合では、実・対向方向の列データ全体から評価位置を挟む2点を選びます。RRI（row-to-row interpolation）は各方向の隣接列を線形補間し、対向ペアで重みを正規化します。どちらもX線管角360°＋2Φの同じ有限取得範囲を用います。Φは全ファン角です。発散なしの基準は、別の幾何仮定です。','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same finite source-angle support of 360° + 2Φ, where Φ is the full fan opening. The nondivergent reference uses a separate geometry assumption.')}</p>
   <div class="parameter-grid">
   <input type="hidden" id="fdk-method" value="rri"><input type="hidden" id="fdk-objectModel" value="point"><input type="hidden" id="fdk-axialAverageMm" value="1"><input type="hidden" id="fdk-xyExtent" value="0.5"><input type="hidden" id="fdk-xySamples" value="5"><input type="hidden" id="fdk-zExtent" value="3"><input type="hidden" id="fdk-state" value="0"><input type="hidden" id="fdk-phaseCount" value="360">
+  <label>${fdkText('全ファン角 Φ (°)','Full fan opening Φ (°)')}<input id="fdk-fullFanAngleDeg" type="number" min="1" max="179" step="0.1" value="50"><small>${fdkText('取得範囲は360°＋2Φ。初期値50°はモデル設定であり、装置固有値ではありません。','Source support is 360° + 2Φ. The default 50° is a model setting, not a scanner specification.')}</small></label>
   <label>${fdkText('体軸方向の計算間隔 (mm)','Axial calculation spacing (mm)')}<input id="fdk-zStep" type="number" min="0.01" max="0.2" step="0.01" value="0.05"></label>
   <label>${fdkText('基準開始角度 (rad)','Base start angle (rad)')}<input id="fdk-phase" type="number" min="0" max="6.28318530718" step="0.01" value="0"></label>
-  <label>${fdkText('検出器端の扱い','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('取得済みの列を使用','Use acquired rows')}</option><option value="strict">${fdkText('両方向の隣接列を要求','Require both complete brackets')}</option></select></label>
+  <label>${fdkText('検出器端の扱い','Detector-edge policy')}<select id="fdk-edgePolicy"><option value="available">${fdkText('取得済みの列を使用','Use acquired rows')}</option><option value="strict">${fdkText('選択した方向の隣接列を要求','Require complete selected brackets')}</option></select></label>
   <label>${fdkText('正規化','Normalization')}<select id="fdk-normalization"><option value="minmax">${fdkText('最小値0・最大値1','Minimum 0, maximum 1')}</option><option value="peak">${fdkText('最大値1','Peak 1')}</option></select></label>
   </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はTと検出器列幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain follows T and detector-row width to include the tails.')}</p>
   <p><a href="AXIAL_RESPONSE_METHOD.md">${fdkText('計算式と適用範囲','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
+  if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('取得範囲の判定を再配列角360°からX線管角360°＋2Φへ修正しました。旧版とは候補・重み・SSPzが変わる場合があります。全ファン角を確認して再計算してください。','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
   if(initial.legacyResponse){const note=document.createElement('p');note.className='model-note';note.id='axial-response-migration';note.textContent=fdkText('旧版の条件を読み込みました。現在は共通の体軸補間応答モデルで計算するため、従来のFBP・体軸モデルの保存結果とは数値が異なります。','Older settings loaded. The current shared axial interpolation model produces different values from previous FBP and axial results.');controls.prepend(note);}
   document.getElementById('fdk-method').setAttribute('aria-describedby','fdk-controls');
   document.getElementById('fdk-method').addEventListener('change',syncFdkMethodControls);
@@ -3707,7 +3723,7 @@ function initializeFdkUi(initial){
     if(r.reference){sheets[0][1].push(['CBA','Conjugate backprojection algorithm: jointly weighted conjugate detector-row samples'],['RRI','Row-to-row interpolation: linear interpolation between adjacent detector rows; matched reference with shared edge extension'],['comparison','CBA and RRI share acquired projections, rebinning, filter, image grid and fixed-point readout; CBA power 2, RRI power 1'],['sample_weights_scope','first angle; object point voxel; local row interpolation only']);sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','CBA_weight','RRI_weight','CBA_weighted_distance_mm','RRI_weighted_distance_mm'],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],v.rriWeights[i],v.weightedDistance,v.rriWeightedDistance]))]]);}
     if(r.model.kind.startsWith('axial-')){
       sheets[0][1].push(['RRI','Row-to-row interpolation; linear weights with an explicit acquired-row edge extension']);
-      sheets.push(['Sample_weights',[['pair_angle_deg','source_angle_rad','conjugate_source_angle_rad','sample','z_relative_mm','interpolation_weight',...(r.config.zFfsEnabled?['focus']:[])],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.beta,v.betaConjugate,i,z,v.weights[i],...(r.config.zFfsEnabled?[v.focus[i]?'B':'A']:[])]))]]);
+      sheets.push(['Sample_weights',[['output_pair_angle_deg','selected_rebinned_view','selected_source_angle_rad','sample','z_relative_mm','interpolation_weight',...(r.config.zFfsEnabled?['focus']:[])],...r.sampleAudit.flatMap(v=>v.z.map((z,i)=>[v.relativeAngleDeg,v.views?.[i]??'',v.betas?.[i]??'',i,z,v.weights[i],...(r.config.zFfsEnabled?[v.focus[i]?'B':'A']:[])]))]]);
     }
     if(fdkShapeGroups){
       sheets[0][1].push(['shape_distribution','Each native FWHM midpoint translated to zero; no width rescaling; 0.01-mm linear common grid; each method own mean subtracted; bin width 0.002; intensity fraction^0.35'],['shape_arrow','Mean of individual native FWHMs; values and SD retain full precision in Widths']);
@@ -3765,6 +3781,7 @@ function runFdkSimulation(){
       if(text.startsWith('AXIAL_DOMAIN'))text=fdkText('取得応答がないか、裾が計算範囲を超えています。開口・標本間隔・計算範囲を確認してください。',text);
       if(text.startsWith('ZFFS_GEOMETRY'))text=fdkText('焦点移動の幾何条件を確認してください。距離比は1より大きく、検出器は評価点の外側にある必要があります。片側移動量は0～0.5列分です。',text);
       if(text.startsWith('AXIAL_COVERAGE'))text=fdkText('この条件では、選択規則に必要な取得列が不足しています。ピッチまたは検出器端の設定を確認してください。',text);
+      if(text.startsWith('AXIAL_FAN'))text=fdkText('全ファン角は0°より大きく180°未満とし、評価位置を含む範囲にしてください。',text);
       if(text.startsWith('CBA_VIEWS')||text.startsWith('AXIAL_VIEWS'))text=fdkText('RRIでは、1回転の取得ビュー数を偶数にしてください。',text);
       fail(text);
     }
@@ -3945,7 +3962,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.6 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.7 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4040,7 +4057,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 11,
+    v: 12,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     n: params.rows,

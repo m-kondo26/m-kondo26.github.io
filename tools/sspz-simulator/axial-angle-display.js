@@ -57,6 +57,11 @@ globalThis.SSPZAngles = Object.freeze({
       angularMeanFactor: 1 / result.config.viewSamples,
       samples: this.expand(result.weightAudit.pairedSamples, result.config)};
   },
+  sample(c, base, point) {
+    const theta=c.phase+point.view*2*Math.PI/c.viewSamples;
+    const gamma=c.axialRule==='parallel'?0:Math.asin(-c.radius*Math.sin(theta)/c.sourceRadius);
+    return {...point,theta,gamma,beta:theta+gamma,referenceOffset:this.offset(c,base,point.referenceView),ownOffset:this.offset(c,base,point.view)};
+  },
   pair(c, base, referenceView, oppositeView = referenceView + c.viewSamples / 2) {
     return [0, 1].map(direction => {
       const view = direction ? oppositeView : referenceView;

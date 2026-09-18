@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-17.7",
+  "version": "2026-09-18.7",
   "checks": 183,
   "scope": "Implementation consistency of an ideal axial focal-switching extension; not scanner or publication-convergence validation",
   "cases": [
@@ -8,18 +8,18 @@
       "radius": 0,
       "T": 1,
       "axialRule": "merged",
-      "fwhm": 1.0906049792634032,
-      "fwtm": 1.8615277956558791,
-      "closureError": 0
+      "fwhm": 1.090604959382964,
+      "fwtm": 1.861527295102448,
+      "closureError": 2.220446049250313e-16
     },
     {
       "rows": 4,
       "radius": 0,
       "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.4169182137048955,
-      "fwtm": 2.49142070615355,
-      "closureError": 1.5543122344752192e-15
+      "fwhm": 1.423398894310036,
+      "fwtm": 2.5011490730122192,
+      "closureError": 2.220446049250313e-16
     },
     {
       "rows": 4,
@@ -27,8 +27,8 @@
       "T": 5,
       "axialRule": "merged",
       "fwhm": 5,
-      "fwtm": 5.834037858415409,
-      "closureError": -2.7755575615628914e-16
+      "fwtm": 5.834038535569472,
+      "closureError": 5.551115123125783e-17
     },
     {
       "rows": 4,
@@ -36,70 +36,70 @@
       "T": 5,
       "axialRule": "rri",
       "fwhm": 5,
-      "fwtm": 6.289741985566016,
-      "closureError": 1.1102230246251565e-16
-    },
-    {
-      "rows": 4,
-      "radius": 102,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.105776434544093,
-      "fwtm": 1.864616729089908,
+      "fwtm": 6.296587440137415,
       "closureError": 0
     },
     {
       "rows": 4,
       "radius": 102,
       "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.109500930067578,
+      "fwtm": 1.869749767253055,
+      "closureError": -2.220446049250313e-16
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.3844613357023305,
-      "fwtm": 2.4149767013398185,
+      "fwhm": 1.387074498209686,
+      "fwtm": 2.4419575728671545,
+      "closureError": 0
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.000128744263126,
+      "fwtm": 5.8386908392274,
+      "closureError": 1.3877787807814457e-17
+    },
+    {
+      "rows": 4,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 4.999999823276638,
+      "fwtm": 6.247936839752624,
+      "closureError": -1.3877787807814457e-17
+    },
+    {
+      "rows": 4,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0702081588089558,
+      "fwtm": 1.8148424762388538,
       "closureError": -2.7755575615628914e-17
     },
     {
       "rows": 4,
-      "radius": 102,
-      "T": 5,
-      "axialRule": "merged",
-      "fwhm": 5.000325762580718,
-      "fwtm": 5.83331841250644,
-      "closureError": -2.7755575615628914e-17
-    },
-    {
-      "rows": 4,
-      "radius": 102,
-      "T": 5,
+      "radius": 250,
+      "T": 1,
       "axialRule": "rri",
-      "fwhm": 5.000022868034993,
-      "fwtm": 6.23270242040439,
+      "fwhm": 1.3423953828472723,
+      "fwtm": 2.3951738963024507,
       "closureError": 0
     },
     {
       "rows": 4,
       "radius": 250,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.0601691979032393,
-      "fwtm": 1.7841172898555846,
-      "closureError": 0
-    },
-    {
-      "rows": 4,
-      "radius": 250,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.3254735544421896,
-      "fwtm": 2.3550987077931964,
-      "closureError": -5.551115123125783e-17
-    },
-    {
-      "rows": 4,
-      "radius": 250,
       "T": 5,
       "axialRule": "merged",
-      "fwhm": 4.999542390497249,
-      "fwtm": 5.760683006686127,
+      "fwhm": 5.000910178165717,
+      "fwtm": 5.787967181895533,
       "closureError": 6.938893903907228e-18
     },
     {
@@ -107,27 +107,27 @@
       "radius": 250,
       "T": 5,
       "axialRule": "rri",
-      "fwhm": 5.000039963880005,
-      "fwtm": 6.190038254568172,
-      "closureError": -1.3877787807814457e-17
+      "fwhm": 4.99997958719786,
+      "fwtm": 6.215715946214537,
+      "closureError": 0
     },
     {
       "rows": 80,
       "radius": 0,
       "T": 1,
       "axialRule": "merged",
-      "fwhm": 1.002710028377471,
-      "fwtm": 1.5330864344923365,
-      "closureError": -2.220446049250313e-16
+      "fwhm": 1.002710019761179,
+      "fwtm": 1.533086297153089,
+      "closureError": -6.661338147750939e-16
     },
     {
       "rows": 80,
       "radius": 0,
       "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.0405511975279507,
-      "fwtm": 1.7215875120664492,
-      "closureError": 4.440892098500626e-16
+      "fwhm": 1.0404913018445718,
+      "fwtm": 1.7214456529309472,
+      "closureError": -1.3322676295501878e-15
     },
     {
       "rows": 80,
@@ -135,8 +135,8 @@
       "T": 5,
       "axialRule": "merged",
       "fwhm": 5,
-      "fwtm": 5.532098779713133,
-      "closureError": -5.551115123125783e-17
+      "fwtm": 5.532098644716152,
+      "closureError": 3.885780586188048e-16
     },
     {
       "rows": 80,
@@ -144,16 +144,16 @@
       "T": 5,
       "axialRule": "rri",
       "fwhm": 5,
-      "fwtm": 5.704476294130226,
-      "closureError": -1.6653345369377348e-16
+      "fwtm": 5.704357130632399,
+      "closureError": -2.7755575615628914e-16
     },
     {
       "rows": 80,
       "radius": 102,
       "T": 1,
       "axialRule": "merged",
-      "fwhm": 0.9999582946913279,
-      "fwtm": 1.4375164752734357,
+      "fwhm": 0.9999947743187265,
+      "fwtm": 1.4679636242859653,
       "closureError": -1.1102230246251565e-16
     },
     {
@@ -161,81 +161,81 @@
       "radius": 102,
       "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.0282794748298376,
-      "fwtm": 1.6740623426285621,
-      "closureError": 1.6653345369377348e-16
+      "fwhm": 1.0325925800312508,
+      "fwtm": 1.6891461307081554,
+      "closureError": 0
     },
     {
       "rows": 80,
       "radius": 102,
       "T": 5,
       "axialRule": "merged",
-      "fwhm": 4.99983658884506,
-      "fwtm": 5.439601491742933,
-      "closureError": 2.7755575615628914e-17
+      "fwhm": 4.999933428851495,
+      "fwtm": 5.468614152897361,
+      "closureError": 0
     },
     {
       "rows": 80,
       "radius": 102,
       "T": 5,
       "axialRule": "rri",
-      "fwhm": 5.000123238200368,
-      "fwtm": 5.661684087675347,
+      "fwhm": 5.00016830211076,
+      "fwtm": 5.674868139447133,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 0.998066249295588,
+      "fwtm": 1.4257415798416981,
+      "closureError": 0
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0247383864853221,
+      "fwtm": 1.6493768614409168,
+      "closureError": 0
+    },
+    {
+      "rows": 80,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.997621123575108,
+      "fwtm": 5.430730622289799,
       "closureError": 1.3877787807814457e-17
     },
     {
       "rows": 80,
       "radius": 250,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.0001199092168556,
-      "fwtm": 1.4164625968461335,
-      "closureError": 0
-    },
-    {
-      "rows": 80,
-      "radius": 250,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.0237723331529955,
-      "fwtm": 1.6412895966587606,
-      "closureError": 2.7755575615628914e-17
-    },
-    {
-      "rows": 80,
-      "radius": 250,
-      "T": 5,
-      "axialRule": "merged",
-      "fwhm": 5.000186393395611,
-      "fwtm": 5.422577542549064,
-      "closureError": 0
-    },
-    {
-      "rows": 80,
-      "radius": 250,
       "T": 5,
       "axialRule": "rri",
-      "fwhm": 5.000502606331421,
-      "fwtm": 5.632257028811296,
-      "closureError": 6.938893903907228e-18
+      "fwhm": 5.000501324471227,
+      "fwtm": 5.6395540202374494,
+      "closureError": -6.938893903907228e-18
     },
     {
       "rows": 160,
       "radius": 0,
       "T": 1,
       "axialRule": "merged",
-      "fwhm": 1.0206786428498693,
-      "fwtm": 1.6453386065678965,
-      "closureError": -1.7763568394002505e-15
+      "fwhm": 1.0206787212575879,
+      "fwtm": 1.6453387842085923,
+      "closureError": -3.774758283725532e-15
     },
     {
       "rows": 160,
       "radius": 0,
       "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.0741847404146565,
-      "fwtm": 1.811471651111086,
-      "closureError": -1.1102230246251565e-15
+      "fwhm": 1.073993799649198,
+      "fwtm": 1.8108924527179464,
+      "closureError": -8.881784197001252e-16
     },
     {
       "rows": 160,
@@ -243,8 +243,8 @@
       "T": 5,
       "axialRule": "merged",
       "fwhm": 5,
-      "fwtm": 5.635096391763172,
-      "closureError": 5.551115123125783e-17
+      "fwtm": 5.635096516533979,
+      "closureError": -1.1102230246251565e-16
     },
     {
       "rows": 160,
@@ -252,52 +252,52 @@
       "T": 5,
       "axialRule": "rri",
       "fwhm": 5,
-      "fwtm": 5.78052079355612,
-      "closureError": -5.551115123125783e-17
-    },
-    {
-      "rows": 160,
-      "radius": 102,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 0.9999303622767681,
-      "fwtm": 1.4477084140364234,
-      "closureError": 5.551115123125783e-17
-    },
-    {
-      "rows": 160,
-      "radius": 102,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.0359029935217656,
-      "fwtm": 1.7024201900843385,
+      "fwtm": 5.7801645370367325,
       "closureError": -1.6653345369377348e-16
     },
     {
       "rows": 160,
       "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.0000523935987213,
+      "fwtm": 1.4587825782061752,
+      "closureError": 1.1102230246251565e-16
+    },
+    {
+      "rows": 160,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.038461220260937,
+      "fwtm": 1.7100342859837456,
+      "closureError": -5.551115123125783e-17
+    },
+    {
+      "rows": 160,
+      "radius": 102,
       "T": 5,
       "axialRule": "merged",
-      "fwhm": 4.999721210158761,
-      "fwtm": 5.44988838874794,
-      "closureError": 1.3877787807814457e-17
+      "fwhm": 5.000123391851533,
+      "fwtm": 5.460562990359547,
+      "closureError": 0
     },
     {
       "rows": 160,
       "radius": 102,
       "T": 5,
       "axialRule": "rri",
-      "fwhm": 5.000258349038596,
-      "fwtm": 5.686849967799512,
-      "closureError": 1.3877787807814457e-17
+      "fwhm": 5.000350729550984,
+      "fwtm": 5.693422015745024,
+      "closureError": -1.3877787807814457e-17
     },
     {
       "rows": 160,
       "radius": 250,
       "T": 1,
       "axialRule": "merged",
-      "fwhm": 1.0001274285834783,
-      "fwtm": 1.4079808932482865,
+      "fwhm": 0.9995894574215798,
+      "fwtm": 1.4032897251701675,
       "closureError": -2.7755575615628914e-17
     },
     {
@@ -305,135 +305,135 @@
       "radius": 250,
       "T": 1,
       "axialRule": "rri",
-      "fwhm": 1.0196827052036062,
-      "fwtm": 1.616473056812458,
-      "closureError": 5.551115123125783e-17
+      "fwhm": 1.020941667783945,
+      "fwtm": 1.623946648657573,
+      "closureError": 2.7755575615628914e-17
     },
     {
       "rows": 160,
       "radius": 250,
       "T": 5,
       "axialRule": "merged",
-      "fwhm": 5.00028694714428,
-      "fwtm": 5.404578779930054,
-      "closureError": 1.3877787807814457e-17
-    },
-    {
-      "rows": 160,
-      "radius": 250,
-      "T": 5,
-      "axialRule": "rri",
-      "fwhm": 4.999524096312812,
-      "fwtm": 5.606063136827504,
-      "closureError": 0
-    },
-    {
-      "rows": 320,
-      "radius": 0,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.1914146581756206,
-      "fwtm": 2.0774514417005414,
-      "closureError": 0
-    },
-    {
-      "rows": 320,
-      "radius": 0,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.2510797738651722,
-      "fwtm": 2.179315203113437,
-      "closureError": 1.3322676295501878e-15
-    },
-    {
-      "rows": 320,
-      "radius": 0,
-      "T": 5,
-      "axialRule": "merged",
-      "fwhm": 5,
-      "fwtm": 5.99137524566121,
-      "closureError": -5.551115123125783e-17
-    },
-    {
-      "rows": 320,
-      "radius": 0,
-      "T": 5,
-      "axialRule": "rri",
-      "fwhm": 5,
-      "fwtm": 6.0723965241856614,
-      "closureError": 0
-    },
-    {
-      "rows": 320,
-      "radius": 102,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.0088275647260654,
-      "fwtm": 1.5619965626922259,
-      "closureError": -5.551115123125783e-17
-    },
-    {
-      "rows": 320,
-      "radius": 102,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.0616654147103046,
-      "fwtm": 1.7777035785873796,
-      "closureError": 1.1102230246251565e-16
-    },
-    {
-      "rows": 320,
-      "radius": 102,
-      "T": 5,
-      "axialRule": "merged",
-      "fwhm": 4.999647045980419,
-      "fwtm": 5.557272067100282,
-      "closureError": 1.3877787807814457e-17
-    },
-    {
-      "rows": 320,
-      "radius": 102,
-      "T": 5,
-      "axialRule": "rri",
-      "fwhm": 5.000017012860285,
-      "fwtm": 5.748477173207422,
-      "closureError": -1.3877787807814457e-17
-    },
-    {
-      "rows": 320,
-      "radius": 250,
-      "T": 1,
-      "axialRule": "merged",
-      "fwhm": 1.000449947008402,
-      "fwtm": 1.4164893954656084,
-      "closureError": 2.7755575615628914e-17
-    },
-    {
-      "rows": 320,
-      "radius": 250,
-      "T": 1,
-      "axialRule": "rri",
-      "fwhm": 1.0189043750813274,
-      "fwtm": 1.6292911070500709,
-      "closureError": 2.7755575615628914e-17
-    },
-    {
-      "rows": 320,
-      "radius": 250,
-      "T": 5,
-      "axialRule": "merged",
-      "fwhm": 5.000686272326115,
-      "fwtm": 5.411469651675258,
+      "fwhm": 4.998941532757142,
+      "fwtm": 5.400710722284858,
       "closureError": 6.938893903907228e-18
     },
     {
+      "rows": 160,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 4.999622261251801,
+      "fwtm": 5.612065211832802,
+      "closureError": -6.938893903907228e-18
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.1914090546137732,
+      "fwtm": 2.0774439216042415,
+      "closureError": -8.881784197001252e-16
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.2493345359473453,
+      "fwtm": 2.1768943882534018,
+      "closureError": 2.6645352591003757e-15
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5,
+      "fwtm": 5.9913691464238665,
+      "closureError": -1.1102230246251565e-16
+    },
+    {
+      "rows": 320,
+      "radius": 0,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5,
+      "fwtm": 6.070170642713373,
+      "closureError": 2.220446049250313e-16
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.008977554498475,
+      "fwtm": 1.5680232080080647,
+      "closureError": 0
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0624704993119027,
+      "fwtm": 1.7795467889961238,
+      "closureError": 5.551115123125783e-17
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 4.999510512149763,
+      "fwtm": 5.56369800096927,
+      "closureError": -2.7755575615628914e-17
+    },
+    {
+      "rows": 320,
+      "radius": 102,
+      "T": 5,
+      "axialRule": "rri",
+      "fwhm": 5.000064878664484,
+      "fwtm": 5.751174670175985,
+      "closureError": 0
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "merged",
+      "fwhm": 1.000722554350269,
+      "fwtm": 1.4190992120691077,
+      "closureError": 2.7755575615628914e-17
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 1,
+      "axialRule": "rri",
+      "fwhm": 1.0216042321363925,
+      "fwtm": 1.6397624868150822,
+      "closureError": 8.326672684688674e-17
+    },
+    {
+      "rows": 320,
+      "radius": 250,
+      "T": 5,
+      "axialRule": "merged",
+      "fwhm": 5.001362325560599,
+      "fwtm": 5.413844289211897,
+      "closureError": 0
+    },
+    {
       "rows": 320,
       "radius": 250,
       "T": 5,
       "axialRule": "rri",
-      "fwhm": 4.999524512119779,
-      "fwtm": 5.622034568226175,
-      "closureError": -6.938893903907228e-18
+      "fwhm": 4.999664058670071,
+      "fwtm": 5.630892506950023,
+      "closureError": 6.938893903907228e-18
     }
   ]
 }

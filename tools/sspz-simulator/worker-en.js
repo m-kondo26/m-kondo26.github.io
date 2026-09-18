@@ -2754,7 +2754,7 @@ function fdkConfig(input={}) {
     c.axialAverageMm=c.sliceThicknessMm;
   }
   for(const k of Object.keys(FDK_DEFAULTS)) if(!['normalization','objectModel'].includes(k)&&!Number.isFinite(c[k])) throw Error(`${k}: finite value required`);
-  for(const [k,lo,hi] of [['rows',2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
+  for(const [k,lo,hi] of [['rows',input.response==='axial-interpolation'?1:2,320],['viewSamples',90,2400],['apertureSamples',1,32],['xySamples',5,65],['phaseCount',1,360]])
     if(!(c.objectModel==='point'&&k==='apertureSamples')&&(!Number.isInteger(c[k])||c[k]<lo||c[k]>hi))throw Error(`${k}: integer ${lo}–${hi} required`);
   for(const [k,lo,hi] of [['axialAverageMm',0,20],['rowWidth',.05,10],['beamPitch',0,3],['sourceRadius',100,2000],['radius',0,250],['sphereDiameter',.1,10],['channelWidth',.05,1],['xyExtent',.5,10],['zExtent',1,20],['zStep',.01,.2],['state',0,1]])
     if(!(c.objectModel==='point'&&k==='sphereDiameter')&&(c[k]<lo||c[k]>hi))throw Error(`${k}: ${lo}–${hi} required`);
@@ -3363,22 +3363,187 @@ async function computeZffsResponse(c,hooks={}){
   return {...out,profile,fwhm,fwtm};
 }
 
+// Finite acquired SOURCE-angle support. Phi denotes the FULL fan opening.
+// Rebinned theta is only an output-direction coordinate, not an acquisition gate.
+function axialSourceWindow(c,z){
+  const db=2*Math.PI/c.viewSamples,centre=2*Math.PI*z/c.feed;
+  const half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
+  const lower=centre-half,upper=centre+half;
+  return {betaMin:c.phase+lower,betaMax:c.phase+upper,
+    firstView:Math.ceil(lower/db-1e-10),lastView:Math.floor(upper/db+1e-10)};
+}
+
+// Nonzero angular-rebinning stencil; coincident focal states use the full grid.
+function axialSourceStencil(c,beta,focus=0){
+  const vf=(beta-c.phase)*c.viewSamples/(2*Math.PI);
+  const stride=c.zFfsEnabled&&c.zFfsOffset!==0?2:1,origin=stride===2?focus:0;
+  const q=(vf-origin)/stride,nearest=Math.round(q);
+  if(Math.abs(q-nearest)<1e-10)return [origin+stride*nearest];
+  const i=Math.floor(q);return [origin+stride*i,origin+stride*(i+1)];
+}
+
+function sourceSupportedAxialWeights(c,groups,z){
+  const window=axialSourceWindow(c,z),V=c.viewSamples,h=c.feed,halfRows=(c.rows-1)/2,samples=[];
+  for(const g of groups){
+    const beta=g.beta??(c.phase+g.view*2*Math.PI/V);
+    const k0=Math.ceil((window.betaMin-beta)/(2*Math.PI)-1e-10);
+    const k1=Math.floor((window.betaMax-beta)/(2*Math.PI)+1e-10);
+    for(let k=k0;k<=k1;k++){
+      const actualBeta=beta+k*2*Math.PI,stencil=axialSourceStencil(c,actualBeta,g.focus??0);
+      if(stencil[0]<window.firstView||stencil.at(-1)>window.lastView)continue;
+      const origin=g.origin+k*h,f=(z-origin)/g.spacing+halfRows,n=Math.floor(f);
+      const rows=c.axialRule==='rri'?[n,n+1]:[Math.max(0,Math.min(c.rows-1,n)),Math.max(0,Math.min(c.rows-1,n+1))];
+      for(const row of new Set(rows))if(row>=0&&row<c.rows){
+        const weight=c.axialRule==='rri'?Math.max(0,1-Math.abs(f-row)):0;
+        samples.push({direction:g.direction,focus:g.focus??0,row,view:g.view+k*V,turn:k,
+          z:origin+(row-halfRows)*g.spacing,weight,completeBracket:n>=0&&n+1<c.rows});
+      }
+    }
+  }
+  if(c.axialRule!=='rri'){
+    const exact=samples.filter(p=>Math.abs(p.z-z)<1e-10);
+    if(exact.length)exact.forEach(p=>p.weight=1/exact.length);
+    else{
+      let lo=-Infinity,hi=Infinity;
+      for(const p of samples){if(p.z<z)lo=Math.max(lo,p.z);if(p.z>z)hi=Math.min(hi,p.z);}
+      if(!Number.isFinite(lo)||!Number.isFinite(hi))throw Error('AXIAL_COVERAGE: no bracketing pair inside finite source-angle support');
+      const lower=samples.filter(p=>Math.abs(p.z-lo)<1e-10),upper=samples.filter(p=>Math.abs(p.z-hi)<1e-10);
+      lower.forEach(p=>p.weight=(hi-z)/(hi-lo)/lower.length);
+      upper.forEach(p=>p.weight=(z-lo)/(hi-lo)/upper.length);
+    }
+  }
+  const selected=samples.filter(p=>p.weight>0),sum=selected.reduce((s,p)=>s+p.weight,0);
+  if(!(sum>1e-14))throw Error('AXIAL_COVERAGE: no row support inside finite source-angle support');
+  if(c.edgePolicy==='strict'&&selected.some(p=>!p.completeBracket))throw Error('AXIAL_COVERAGE: selected direction requires complete row brackets');
+  return selected.map(({completeBracket,...p})=>({...p,weight:p.weight/sum}));
+}
+
+function sourceAxialGroups(c,v){
+  const groups=[],V=c.viewSamples;
+  for(let direction=0;direction<2;direction++){
+    const view=v+direction*V/2,theta=c.phase+view*2*Math.PI/V;
+    const q=c.axialRule==='parallel'?{sourceZ:c.feed*view/V,L:c.sourceRadius,beta:theta,t:-c.radius*Math.sin(theta)}:cbaCoordinates(c,theta,c.radius,0,0);
+    for(let focus=0;focus<(c.zFfsEnabled?2:1);focus++)groups.push({...q,view,theta,direction,focus,
+      origin:q.sourceZ+(c.zFfsEnabled?zffsShift(c,focus)*(1-q.L/c.zFfsSourceDetectorMm):0),spacing:c.rowWidth*q.L/c.sourceRadius});
+  }
+  return groups;
+}
+
+async function computeSourceSupportedAxialResponse(c,hooks={}){
+  const V=c.viewSamples,H=V/2,db=2*Math.PI/V,zObject=c.state*c.feed;
+  const padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
+  const zs=Float64Array.from({length:c.zSamples+2*padding},(_,i)=>zObject-c.zExtent+(i-padding)*c.zStep);
+  const base=Math.ceil((2*Math.PI*zObject/c.feed-Math.PI)/db-1e-12);
+  const rawCache=new Map(),rebinnedCache=new Map();let firstAcquired=Infinity,lastAcquired=-Infinity;
+  const rawAt=v=>{
+    if(!rawCache.has(v)){
+      rawCache.set(v,c.zFfsEnabled?zffsPointProjection(c,v,zObject):detectorPointProjection({...c,sourceZ:c.feed*v/V},c.phase+v*db,zObject,c.axialRule==='parallel'));
+      firstAcquired=Math.min(firstAcquired,v);lastAcquired=Math.max(lastAcquired,v);
+    }
+    return rawCache.get(v);
+  };
+  const at=(v,focus)=>{
+    const key=v+':'+focus;if(rebinnedCache.has(key))return rebinnedCache.get(key);
+    const g=sourceAxialGroups(c,v).find(q=>q.direction===0&&q.focus===focus),values=new Float64Array(c.rows);
+    if(c.zFfsEnabled){
+      const rebin=zffsRebinStencil(c,g.theta,focus),views=axialSourceStencil(c,g.beta,focus);
+      g.stencil=rebin.stencil.filter(s=>views.includes(s.view));
+      const mass=g.stencil.reduce((sum,s)=>sum+s.weight,0);
+      g.stencil=g.stencil.map(s=>({...s,weight:s.weight/mass}));
+      for(const s of g.stencil){
+        if(s.channel<0||s.channel>=c.channels)throw Error('CBA_COVERAGE: z-FFS rebinning outside acquired channels');
+        for(const [key,value] of rawAt(s.view).data){const [row,ch]=key.split(':').map(Number);if(ch===s.channel)values[row]+=s.weight*value;}
+      }
+    }else if(c.axialRule==='parallel'){
+      const p=rawAt(v);for(let k=p.k0;k<=p.k1;k++)values[k]=detectorRowReadout(c,p,k);
+    }else{
+      const views=axialSourceStencil(c,g.beta),vf=(g.beta-c.phase)/db;
+      const jf=Math.asin(g.t/c.sourceRadius)*c.sourceRadius/c.channelWidth+(c.channels-1)/2,j=Math.floor(jf),b=jf-j;
+      if(j<0||j+1>=c.channels)throw Error('CBA_COVERAGE: rebinning outside acquired channels');
+      for(const view of views){
+        const w=views.length===1?1:Math.max(0,1-Math.abs(vf-view)),p=rawAt(view);
+        for(let row=p.k0;row<=p.k1;row++){
+          const cell=ch=>ch<p.j0||ch>p.j1?0:p.data[(row-p.k0)*p.width+ch-p.j0];
+          values[row]+=w*((1-b)*cell(j)+b*cell(j+1));
+        }
+      }
+    }
+    const q={...g,values};rebinnedCache.set(key,q);return q;
+  };
+  const padded=new Float64Array(zs.length),slab=fdkSlabCoefficients(zs.length,c.zStep,c.axialAverageMm);
+  const weights=new Map(),paired=new Map(),physical=new Map(),sampleAudit=[];
+  let lastYield=performance.now(),maxBracketGapMm=0,maxCandidateDistanceMm=0;
+  for(let v=base;v<base+H;v++){
+    if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+    const groups=sourceAxialGroups(c,v);
+    for(let iz=0;iz<zs.length;iz++){
+      const ws=sourceSupportedAxialWeights(c,groups,zs[iz]);
+      maxBracketGapMm=Math.max(maxBracketGapMm,Math.max(...ws.map(s=>s.z))-Math.min(...ws.map(s=>s.z)));
+      for(const s of ws){
+        const q=at(s.view,s.focus),value=q.values[s.row];padded[iz]+=s.weight*value/H;
+        maxCandidateDistanceMm=Math.max(maxCandidateDistanceMm,Math.abs(s.z-zs[iz]));
+        if(!hooks.profileOnly&&slab[iz]>0){
+          const coeff=slab[iz]*s.weight,key=s.view+':'+s.focus+':'+s.row;
+          const point={view:s.view,row:s.row,focus:s.focus,theta:q.theta,beta:q.beta,z:s.z-zObject,weight:0,acquiredValue:value};
+          if(!weights.has(key))weights.set(key,{...point});weights.get(key).weight+=coeff;
+          const pk=v+':'+s.direction+':'+key;
+          if(!paired.has(pk))paired.set(pk,{...point,referenceView:v,direction:s.direction});paired.get(pk).weight+=coeff;
+          if(c.zFfsEnabled)for(const t of q.stencil){
+            const cell=t.view+':'+s.row+':'+t.channel;
+            if(!physical.has(cell)){const geometry=zffsRowGeometry(c,t.view,s.row);physical.set(cell,{...geometry,z:geometry.z-zObject,channel:t.channel,weight:0,acquiredValue:rawAt(t.view).data.get(s.row+':'+t.channel)??0});}
+            physical.get(cell).weight+=coeff*t.weight;
+          }
+        }
+      }
+      if(!hooks.profileOnly&&iz===(zs.length-1)/2)sampleAudit.push({theta:c.phase+v*db,relativeAngleDeg:(v-base)*360/V,beta:groups[0].beta,betaConjugate:groups.at(-1).beta,
+        z:ws.map(s=>s.z-zObject),weights:ws.map(s=>s.weight),views:ws.map(s=>s.view),betas:ws.map(s=>at(s.view,s.focus).beta),focus:ws.map(s=>s.focus)});
+    }
+    if(performance.now()-lastYield>24){hooks.progress?.((v-base)/H);await new Promise(r=>setTimeout(r,0));lastYield=performance.now();}
+  }
+  const raw=fdkSlabMean(padded,c.zStep,c.axialAverageMm,padding),z=Float64Array.from(zs.slice(padding,zs.length-padding),v=>v-zObject);
+  const min=Math.min(...raw),max=Math.max(...raw),baseline=c.normalization==='minmax'?min:0;
+  const model={version:'2026-09-18.7',kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
+    geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
+    candidateSearch:'source-fan-window',fullFanAngleDeg:c.fullFanAngleDeg,sourceAngleSpanDeg:c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg,
+    interpolation:c.axialRule==='rri'?'compact row tents normalized across source-supported directions and turns':'nearest bracketing row centres within finite source-angle support; split coincident endpoints',
+    object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',
+    angularWeight:'V/2 transverse direction pairs; equivalent to V output directions with angular factor 1/V',
+    acquisitionBoundary:'per evaluation plane: beta0 + 2 pi z/h +/- (pi + full fan opening); only acquired-grid views inside; all nonzero rebin stencil views must fit',axialAverageMm:c.axialAverageMm,
+    profileReadout:'fixed transverse point; moving axial evaluation; no reconstructed image',scientificScope:'declared geometry and interpolation model; not scanner reconstruction',
+    ...(c.zFfsEnabled?{zFfsVersion:ZFFS_VERSION,viewsDefinition:'V total physical acquisitions per turn; within-focus rebinning retained'}:{})};
+  const audit={definition:c.zFfsEnabled?'Actual acquired cell weights including within-focus rebinning and T averaging. Paired_samples are an alternative rebinned representation.':'Unfiltered rebinned row weights selected across helix turns, integrated over T; angular mean applied separately.',
+    db:1/H,axialAverageMm:c.axialAverageMm,centerValue:raw[(raw.length-1)/2],samples:[...(c.zFfsEnabled?physical:weights).values()],pairedSamples:[...paired.values()]};
+  const out={config:c,z,zObject,raw,min,max,baseline,counts:new Uint16Array(z.length).fill(V),sampleAudit,model,volume:null,
+    x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:c.zFfsEnabled?'zffs-acquired':'rebinned-theta',
+    weightAudit:hooks.profileOnly?null:audit,...(c.zFfsEnabled?{rebinnedWeightAudit:hooks.profileOnly?null:[...weights.values()]}:{}),
+    acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerTurn:V,...(c.zFfsEnabled?{viewsPerFocusPerTurn:H}:{}),rebinnedPairsPerSlice:H,candidateSearch:'source-fan-window',centreWindow:axialSourceWindow(c,zObject),averagingWindowStart:axialSourceWindow(c,zObject-c.axialAverageMm/2),averagingWindowEnd:axialSourceWindow(c,zObject+c.axialAverageMm/2),maxBracketGapMm,maxCandidateDistanceMm}};
+  if(!(max>baseline))return {...out,geometryOnly:true,reason:'no-acquired-point-response',profiles:[]};
+  const profile=Float64Array.from(raw,v=>(v-baseline)/(max-baseline)),fwhm=fdkWidth(z,profile,.5),fwtm=fdkWidth(z,profile,.1);
+  if(!fwhm||!fwtm||Math.max(profile[0],profile.at(-1))>.001)throw Error('AXIAL_DOMAIN: extend z range to contain response tails');
+  return {...out,profile,fwhm,fwtm};
+}
+
 // Shared acquisition -> local axial interpolation -> angular mean -> T average.
 // No ramp, cone-FBP preweight, inverse-distance backprojection or image volume.
 // The two selection rules are explicit reduced models, not commercial 2D/3D FBP.
-const AXIAL_RESPONSE_VERSION='2026-09-17.6';
+const AXIAL_RESPONSE_VERSION='2026-09-18.7';
 const AR_TAU=2*Math.PI;
 function axialResponseConfig(input={}){
   const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
   if(!['merged','rri','parallel'].includes(rule))throw Error('AXIAL_RULE');
   const extent=Number(input.zExtent??3);
   if(!Number.isFinite(extent)||extent<1||extent>80)throw Error('AXIAL_DOMAIN: z extent must be 1 to 80 mm');
-  const c=fdkConfig({...input,zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
+  const c=fdkConfig({...input,response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
   c.zExtent=extent;c.zSamples=2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=2*extent/(c.zSamples-1);
   if(c.beamPitch<=0)throw Error('AXIAL_GEOMETRY_ONLY: stationary table');
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
   if(!['available','strict'].includes(c.edgePolicy))throw Error('AXIAL_EDGE_POLICY');
+  c.candidateSearch=input.candidateSearch??'source-fan-window';
+  c.fullFanAngleDeg=Number(input.fullFanAngleDeg??50);
+  if(!Number.isFinite(c.fullFanAngleDeg)||c.fullFanAngleDeg<=0||c.fullFanAngleDeg>=180)throw Error('AXIAL_FAN: full fan opening must be > 0 and < 180 degrees');
+  if(rule!=='parallel'&&c.candidateSearch==='source-fan-window'&&2*Math.asin(c.radius/c.sourceRadius)*180/Math.PI>c.fullFanAngleDeg+1e-10)throw Error('AXIAL_FAN: evaluation point is outside the declared full fan opening');
+  if(!['one-turn','source-fan-window'].includes(c.candidateSearch))throw Error('AXIAL_CANDIDATE_SEARCH');
   return zffsConfig(input,c);
 }
 // RRI: normalized compact row tents. Merged: bracketing samples from the
@@ -3411,6 +3576,8 @@ function axialPairWeights(c,a,b,z){
   return samples.filter(q=>q.weight>0).map(q=>({...q,weight:q.weight/sum}));
 }
 async function computeAxialResponse(input={},hooks={}){
+  const configured=axialResponseConfig(input);
+  if(configured.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(configured,hooks);
   if(input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1')return computeZffsResponse(axialResponseConfig(input),hooks);
   const c=axialResponseConfig(input),nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
   const zObject=c.state*c.feed,padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
@@ -3479,7 +3646,7 @@ async function computeAxialResponse(input={},hooks={}){
   return {config:c,z,zObject,raw,profile,fwhm,fwtm,min,max,baseline,counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit,
     volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'rebinned-theta',
     acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerSlice:nv,rebinnedPairsPerSlice:half},
-    model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
+    model:{version:'2026-09-17.6',kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
       geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
       interpolation:c.axialRule==='rri'?'linear row interpolation within each direction; normalize acquired rows over pair':'nearest bracketing pair from union of both acquired row sets; split coincident samples',
       object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',
@@ -3538,15 +3705,16 @@ async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,cancelled
   let stride=Math.max(1,Math.ceil(V/maxAngles));while(half%stride!==0)stride++;
   const totalCoefficients=axialAnimationIntegralCoefficients(c,T/2),mid=(totalCoefficients.length-1)/2;
   const groupCache=new Map(),nodePoints=new Map();
-  const key=p=>`${p.referenceView}:${p.direction}:${p.focus}:${p.row}`;
+  const key=p=>`${p.referenceView}:${p.direction}:${p.view}:${p.focus}:${p.row}`;
   const dataKey=p=>`${p.view}:${p.focus}:${p.row}`;
   const groupsAt=v=>{if(!groupCache.has(v))groupCache.set(v,axialAnimationGroups(c,v));return groupCache.get(v);};
   const pointsAt=(u,z=z0+u)=>{
-    const start=Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12),points=[];
+    const finiteSupport=c.candidateSearch==='source-fan-window';
+    const start=finiteSupport?base:Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12),points=[];
     const first=base+Math.ceil((start-base)/stride)*stride;
     for(let v=first;v<start+half;v+=stride){
-      const groups=groupsAt(v),ws=c.zFfsEnabled?zffsCandidateWeights(c,groups,z):axialPairWeights(c,groups[0],groups[1],z);
-      for(const s of ws)points.push({referenceView:v,view:v+s.direction*half,direction:s.direction,focus:s.focus??0,row:s.row,z:s.z-z0,weight:s.weight});
+      const groups=groupsAt(v),ws=finiteSupport?sourceSupportedAxialWeights(c,groups,z):c.zFfsEnabled?zffsCandidateWeights(c,groups,z):axialPairWeights(c,groups[0],groups[1],z);
+      for(const s of ws)points.push({referenceView:v,view:finiteSupport?s.view:v+s.direction*half,direction:s.direction,focus:s.focus??0,row:s.row,z:s.z-z0,weight:s.weight});
     }
     return points;
   };
@@ -3581,7 +3749,7 @@ async function createAxialAnimationAudit(c,{frameCount=41,maxAngles=72,cancelled
     if(performance.now()-yielded>20){await new Promise(resolve=>setTimeout(resolve,0));yielded=performance.now();}
   }
   return {config:c,zObject:z0,base,stride,frames,total:classify(total),angleSamplesPerTurn:Math.ceil(V/stride),
-    xHalfSpan:Math.max(T/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+(c.zFfsEnabled?2*c.zFfsSourceOffsetMm:0),1),
+    xHalfSpan:Math.max(T/2+2*c.rowWidth*(1+c.radius/c.sourceRadius)+(c.zFfsEnabled?2*c.zFfsSourceOffsetMm:0),1,...frames.flatMap(f=>f.instant.map(p=>Math.abs(p.z)*1.05))),
     coordinate:'common direct-side rebinned angle; opposing data at theta+pi',
     definition:'Display-angle subset only; exact native-grid integral coefficients; partial integral divided by full T; SSP from original full-view calculation.'};
 }

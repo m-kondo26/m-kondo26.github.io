@@ -6,19 +6,25 @@ import {cbaCoordinates,cbaRebinAt} from './cba-core.js';
 import {detectorPointProjection,detectorRowReadout} from './detector-aperture.js';
 import {zffsConfig} from './zffs-geometry.js';
 import {computeZffsResponse} from './zffs-response.js';
-export const AXIAL_RESPONSE_VERSION='2026-09-17.6';
+import {computeSourceSupportedAxialResponse} from './axial-source-response.js';
+export const AXIAL_RESPONSE_VERSION='2026-09-18.7';
 const AR_TAU=2*Math.PI;
 export function axialResponseConfig(input={}){
   const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
   if(!['merged','rri','parallel'].includes(rule))throw Error('AXIAL_RULE');
   const extent=Number(input.zExtent??3);
   if(!Number.isFinite(extent)||extent<1||extent>80)throw Error('AXIAL_DOMAIN: z extent must be 1 to 80 mm');
-  const c=fdkConfig({...input,zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
+  const c=fdkConfig({...input,response:'axial-interpolation',zExtent:Math.min(20,extent),objectModel:'point',xyExtent:.5,xySamples:5});
   c.zExtent=extent;c.zSamples=2*Math.ceil(extent/Number(input.zStep??.05))+1;c.zStep=2*extent/(c.zSamples-1);
   if(c.beamPitch<=0)throw Error('AXIAL_GEOMETRY_ONLY: stationary table');
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
   if(!['available','strict'].includes(c.edgePolicy))throw Error('AXIAL_EDGE_POLICY');
+  c.candidateSearch=input.candidateSearch??'source-fan-window';
+  c.fullFanAngleDeg=Number(input.fullFanAngleDeg??50);
+  if(!Number.isFinite(c.fullFanAngleDeg)||c.fullFanAngleDeg<=0||c.fullFanAngleDeg>=180)throw Error('AXIAL_FAN: full fan opening must be > 0 and < 180 degrees');
+  if(rule!=='parallel'&&c.candidateSearch==='source-fan-window'&&2*Math.asin(c.radius/c.sourceRadius)*180/Math.PI>c.fullFanAngleDeg+1e-10)throw Error('AXIAL_FAN: evaluation point is outside the declared full fan opening');
+  if(!['one-turn','source-fan-window'].includes(c.candidateSearch))throw Error('AXIAL_CANDIDATE_SEARCH');
   return zffsConfig(input,c);
 }
 // RRI: normalized compact row tents. Merged: bracketing samples from the
@@ -51,6 +57,8 @@ export function axialPairWeights(c,a,b,z){
   return samples.filter(q=>q.weight>0).map(q=>({...q,weight:q.weight/sum}));
 }
 export async function computeAxialResponse(input={},hooks={}){
+  const configured=axialResponseConfig(input);
+  if(configured.candidateSearch==='source-fan-window')return computeSourceSupportedAxialResponse(configured,hooks);
   if(input.zFfsEnabled===true||input.zFfsEnabled===1||input.zFfsEnabled==='1')return computeZffsResponse(axialResponseConfig(input),hooks);
   const c=axialResponseConfig(input),nv=c.viewSamples,half=nv/2,db=AR_TAU/nv;
   const zObject=c.state*c.feed,padding=Math.ceil(c.axialAverageMm/(2*c.zStep));
@@ -119,7 +127,7 @@ export async function computeAxialResponse(input={},hooks={}){
   return {config:c,z,zObject,raw,profile,fwhm,fwtm,min,max,baseline,counts:counts.slice(padding,counts.length-padding),sampleAudit,weightAudit,
     volume:null,x:Float64Array.of(c.radius),y:Float64Array.of(0),coordinateSystem:'rebinned-theta',
     acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerSlice:nv,rebinnedPairsPerSlice:half},
-    model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
+    model:{version:'2026-09-17.6',kind:'axial-'+c.axialRule,algorithm:'reduced axial interpolation response',
       geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
       interpolation:c.axialRule==='rri'?'linear row interpolation within each direction; normalize acquired rows over pair':'nearest bracketing pair from union of both acquired row sets; split coincident samples',
       object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',

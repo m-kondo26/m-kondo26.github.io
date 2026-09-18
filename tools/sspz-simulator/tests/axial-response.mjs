@@ -44,7 +44,7 @@ const base={rows:4,rowWidth:1,beamPitch:.875,sourceRadius:600,radius:102,viewSam
 // Slow direct row enumeration and full data readout independently reproduce
 // the moving-plane response at grid locations (without the cache/sparse shortcut).
 for(const axialRule of ['merged','rri']){
- const r=await computeAxialResponse({...base,axialRule}),c=r.config,db=2*Math.PI/c.viewSamples;
+ const r=await computeAxialResponse({...base,axialRule,candidateSearch:'one-turn'}),c=r.config,db=2*Math.PI/c.viewSamples;
  const rawAt=v=>detectorPointProjection({...c,sourceZ:c.feed*v/c.viewSamples},c.phase+v*db,0);
  for(const iz of [30,36,40,45,49]){
   const z=r.z[iz],start=Math.ceil((2*Math.PI*z/c.feed-Math.PI)/db-1e-12);let sum=0;
@@ -75,5 +75,5 @@ const gap=await computeAxialResponse({...base,radius:0,channelApertureMm:.1});as
 await assert.rejects(()=>computeAxialResponse({...base,beamPitch:0}),/GEOMETRY_ONLY/);
 assert.throws(()=>axialPairWeights({rows:4,axialRule:'rri',edgePolicy:'strict'},{sourceZ:0,spacing:1},{sourceZ:10,spacing:1},0),/COVERAGE/);
 const flat=await computeAxialResponse({...base,axialRule:'parallel',axialAverageMm:1});near(flat.weightAudit.samples.reduce((s,q)=>s+q.weight*q.acquiredValue*flat.weightAudit.db,0),flat.weightAudit.centerValue);
-writeFileSync(new URL('axial-response-verification.json',import.meta.url),JSON.stringify({version:'2026-09-17.6',checks:checks+5,scope:'Implementation consistency and coordinate checks; not scanner validation or final manuscript convergence',cases},null,2)+'\n');
+writeFileSync(new URL('axial-response-verification.json',import.meta.url),JSON.stringify({version:'2026-09-18.7',checks:checks+5,scope:'Implementation consistency and coordinate checks; not scanner validation or final manuscript convergence',cases},null,2)+'\n');
 console.log(`PASS: axial response ${checks+5} groups, including chapter-3 coordinates, exhaustive weights, direct response oracle, 48 multirow cases, and trace closure`);

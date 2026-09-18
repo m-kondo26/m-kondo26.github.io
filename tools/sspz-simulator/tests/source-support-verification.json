@@ -1,0 +1,98 @@
+{
+  "version": "2026-09-18.7",
+  "checks": 1207,
+  "unsupported": 5,
+  "recovered": {
+    "direction": 1,
+    "focus": 0,
+    "row": 0,
+    "view": 150,
+    "turn": 0,
+    "z": -0.6669261659089627,
+    "weight": 0.09061457141365137
+  },
+  "sourceBetaDeg": 137.97530081943418,
+  "window": {
+    "betaMin": -4.911855180612613,
+    "betaMax": 3.1166593785613026,
+    "firstView": -281,
+    "lastView": 178
+  },
+  "single": [
+    {
+      "radius": 0,
+      "phase": 0,
+      "fwhm": 1.1493453505530509
+    },
+    {
+      "radius": 0,
+      "phase": 1.5707963267948966,
+      "fwhm": 1.149345350553051
+    },
+    {
+      "radius": 102,
+      "phase": 0,
+      "fwhm": 1.1233555886856323
+    },
+    {
+      "radius": 102,
+      "phase": 1.5707963267948966,
+      "fwhm": 1.2107042650205506
+    },
+    {
+      "radius": 250,
+      "phase": 0,
+      "fwhm": 1.1048477146278533
+    },
+    {
+      "radius": 250,
+      "phase": 1.5707963267948966,
+      "fwhm": 1.1402745066238906
+    }
+  ],
+  "comparisons": [
+    {
+      "radius": 0,
+      "T": 1,
+      "oldFwhm": 1.2080986520653927,
+      "newFwhm": 1.1920876143887642,
+      "maxProfileChange": 0.010207971916567804
+    },
+    {
+      "radius": 0,
+      "T": 5,
+      "oldFwhm": 5,
+      "newFwhm": 5,
+      "maxProfileChange": 0.00510771792105047
+    },
+    {
+      "radius": 102,
+      "T": 1,
+      "oldFwhm": 1.1826418736251203,
+      "newFwhm": 1.1404614919284515,
+      "maxProfileChange": 0.04461529967416473
+    },
+    {
+      "radius": 102,
+      "T": 5,
+      "oldFwhm": 5,
+      "newFwhm": 5,
+      "maxProfileChange": 0.0348156291039996
+    },
+    {
+      "radius": 250,
+      "T": 1,
+      "oldFwhm": 1.1260013787054606,
+      "newFwhm": 1.130935288164885,
+      "maxProfileChange": 0.021713376742579196
+    },
+    {
+      "radius": 250,
+      "T": 5,
+      "oldFwhm": 5,
+      "newFwhm": 5,
+      "maxProfileChange": 0.01835177475966787
+    }
+  ],
+  "scope": "Finite acquisition-model and implementation checks; not scanner validation"
+}

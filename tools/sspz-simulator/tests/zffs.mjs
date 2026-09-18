@@ -48,7 +48,7 @@ for(const axialRule of ['merged','rri']){
 // Slow direct angular/candidate oracle at several native z samples, no caches
 // and no optimized pair selector. T=0 leaves only the acquired response.
 for(const axialRule of ['merged','rri']){
- const r=await computeAxialResponse({...base,axialRule,axialAverageMm:0}),c=r.config;
+ const r=await computeAxialResponse({...base,axialRule,axialAverageMm:0,candidateSearch:'one-turn'}),c=r.config;
  for(const iz of [36,40,44]){
   const z=r.z[iz],step=2*Math.PI/c.viewSamples,start=Math.ceil((2*Math.PI*z/c.feed-Math.PI)/step-1e-12);let sum=0;
   for(let v=start;v<start+c.viewSamples/2;v++){
@@ -75,5 +75,5 @@ await assert.rejects(()=>computeAxialResponse(base,{cancelled:()=>true}),/CANCEL
 assert.throws(()=>axialResponseConfig({...base,zFfsMagnification:1.1}),/ZFFS_GEOMETRY/);
 assert.throws(()=>axialResponseConfig({...base,axialRule:'parallel'}),/ZFFS_GEOMETRY/);
 assert.throws(()=>axialResponseConfig({...base,viewSamples:181}),/AXIAL_VIEWS/);
-writeFileSync(new URL('zffs-verification.json',import.meta.url),JSON.stringify({version:'2026-09-17.7',checks:checks+4,scope:'Implementation consistency of an ideal axial focal-switching extension; not scanner or publication-convergence validation',cases},null,2)+'\n');
+writeFileSync(new URL('zffs-verification.json',import.meta.url),JSON.stringify({version:'2026-09-18.7',checks:checks+4,scope:'Implementation consistency of an ideal axial focal-switching extension; not scanner or publication-convergence validation',cases},null,2)+'\n');
 console.log(`PASS: z-FFS ${checks+4} groups; Cartesian geometry, physical parity, same-focus interpolation, exhaustive weights, response oracle, off/zero regression, 48 multirow cases and trace closure`);

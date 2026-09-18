@@ -22,9 +22,9 @@ for(const item of cases){
     const merged=new Map();for(const p of audit.total)merged.set(totalKey(p),(merged.get(totalKey(p))??0)+p.weight);
     for(const [key,value] of merged){const expected=r.rebinnedWeightAudit.find(p=>totalKey(p)===key);assert.ok(expected);near(value,expected.weight,'FFS full T weight');checked++;}
   }else{
-    const keys=new Map(r.weightAudit.pairedSamples.map(p=>[`${p.referenceView}:${p.direction}:${p.row}`,p]));
+    const keys=new Map(r.weightAudit.pairedSamples.map(p=>[`${p.referenceView}:${p.direction}:${p.view}:${p.row}`,p]));
     const roles=new Map();for(const p of r.weightAudit.pairedSamples){const key=totalKey(p);if(!roles.has(key))roles.set(key,[0,0]);roles.get(key)[p.direction]+=p.weight;}
-    for(const p of audit.total){const expected=keys.get(`${p.referenceView}:${p.direction}:${p.row}`);assert.ok(expected);near(p.weight,expected.weight,'ordinary full T weight');const role=roles.get(totalKey(p));near(p.directWeight,role[0],'direct role');near(p.complementaryWeight,role[1],'complementary role');checked++;}
+    for(const p of audit.total){const expected=keys.get(`${p.referenceView}:${p.direction}:${p.view}:${p.row}`);assert.ok(expected);near(p.weight,expected.weight,'ordinary full T weight');const role=roles.get(totalKey(p));near(p.directWeight,role[0],'direct role');near(p.complementaryWeight,role[1],'complementary role');checked++;}
   }
   for(const frame of audit.frames){
     const sums=new Map();for(const p of frame.instant)sums.set(p.referenceView,(sums.get(p.referenceView)??0)+p.weight);

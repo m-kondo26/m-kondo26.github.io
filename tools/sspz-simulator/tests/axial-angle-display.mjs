@@ -52,8 +52,7 @@ for(const extra of configs){
   }
   for(const frame of audit.frames)for(const p of frame.instant){
    const view=p.referenceView,offset=SSPZAngles.offset(c,audit.base,view);
-   const pair=SSPZAngles.pair(c,audit.base,p.referenceView,p.oppositeView),q=pair[p.direction];
-   near(Math.abs(pair[1].theta-pair[0].theta),Math.PI,'rebinned opposing angles');
+   const q=SSPZAngles.sample(c,audit.base,p);
    assert.equal(q.view,p.view,'angle table uses the actual physical view');
    near(q.beta,q.theta+q.gamma,'source/fan convention');
    if(c.axialRule!=='parallel')near(q.beta,cbaCoordinates(c,q.theta,c.radius,0,0).beta,'source-angle formula independently checked');

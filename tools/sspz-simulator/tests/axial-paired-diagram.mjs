@@ -27,7 +27,7 @@ for(const config of configs){
  const base=Math.ceil((2*Math.PI*r.zObject/c.feed-Math.PI)/(2*Math.PI/V)-1e-12);
  const accumulated=new Map();
  for(const p of a.pairedSamples){
-  assert.equal(p.view,p.referenceView+p.direction*V/2);
+  near(((p.view-p.referenceView-p.direction*V/2)%V+V)%V,0,'direction family modulo full turn');
   const key=p.view+':'+p.row;
   accumulated.set(key,(accumulated.get(key)??0)+p.weight);
  }

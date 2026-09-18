@@ -436,7 +436,7 @@
         </li>
         <li>
           <div class="reference-citation">Kudo H, Rodet T, Noo F, Defrise M. <a href="https://doi.org/10.1088/0031-9155/49/13/011" target="_blank" rel="noopener noreferrer">Exact and approximate algorithms for helical cone-beam CT.</a> <i>Physics in Medicine and Biology.</i> 2004;49:2913–2931.</div>
-          <p>評価断面を中心とする1回転区間の背景として参照しています。現在の体軸補間モデルではFDKや正確な3次元再構成は計算しません。</p>
+          <p>正確再構成と近似再構成の理論的背景です。現在の体軸補間モデルではFDKや正確な3次元再構成は計算しません。</p>
         </li>
         <li>
           <div class="reference-citation">Taguchi K, Aradate H. <a href="https://doi.org/10.1118/1.598230" target="_blank" rel="noopener noreferrer">Algorithm for image reconstruction in multi-slice helical CT.</a> <i>Medical Physics.</i> 1998;25:550–561.</div>
@@ -457,6 +457,10 @@
         <li>
           <div class="reference-citation">Tang X, Hsieh J, Nilsen RA, McOlash SM. <a href="https://doi.org/10.1155/IJBI/2006/45942" target="_blank" rel="noopener noreferrer">Extending three-dimensional weighted cone beam filtered backprojection (CB-FBP) algorithm for image reconstruction in volumetric CT at low helical pitches.</a> <i>International Journal of Biomedical Imaging.</i> 2006;2006:45942.</div>
           <p>旧FBP実装の前処理に参照した文献です。現在の体軸補間モデルでは面内ランプフィルタやFBPの幾何重みを適用しません。</p>
+        </li>
+        <li>
+          <div class="reference-citation">Toki Y. <a href="https://patents.google.com/patent/EP0450152B1/en" target="_blank" rel="noopener noreferrer">Computerized tomographic imaging method and apparatus utilizing data interpolation for helical scanning.</a> EP0450152B1.</div>
+          <p>図4～6の実・対向データ補間と、中央360°の両側に全ファン角分を加える取得範囲を参照します。本モデルでは360°＋2Φの有限取得範囲を明示し、Φを全ファン角とします。多列モデルへの適用は本Web版の仮定です。</p>
         </li>
       </ol>
       <details class="reading-details"><summary>体軸方向モデルの詳しい説明</summary><p><a href="AXIAL_RESPONSE_METHOD.md">Equations, assumptions, version changes and verification</a></p></details></section>

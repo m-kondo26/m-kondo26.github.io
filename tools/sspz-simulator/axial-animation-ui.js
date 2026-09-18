@@ -21,8 +21,9 @@ function initializeAxialMovie(after){
   </div>
   <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
   <details class="reading-details axial-angle-detail"><summary>${fdkText('X線管角度・ファン角との対応','Tube angle and fan-angle correspondence')}</summary>
+    <p id="axial-movie-source-window"></p>
     <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('（a）で強調した対：θ ＋ γ = β','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('使用する側','Role')}</th><th>${fdkText('図での角度差 (°)','Plotted offset (°)')}</th><th>${fdkText('再配列角 θ (°)','Rebinned θ (°)')}</th><th>${fdkText('ファン角 γ (°)','Fan angle γ (°)')}</th><th>${fdkText('X線管角 β (°)','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
-    <p>${fdkText('対向側の再配列角θは180°異なります。対応するX線管角βにはファン角γが加わるため、βの差は一般に180°ではありません。βは再配列で参照する角度で、実際には前後の取得ビューから補間します。表のθ・βは回転をまたいでも折り返しません。図の0°は固定した表示基準で、X線管角0°ではありません。','Opposing rebinned angles θ differ by 180°. Their tube angles β include fan angle γ, so their β separation is generally not 180°. β is the rebinning query angle; neighboring acquired views supply the interpolated data. Table angles θ and β are unwrapped across turns. Plot zero is a fixed display reference, not tube angle zero.')}</p>
+    <p>${fdkText('実・対向方向の再配列角θは、360°で折り返すと180°異なります。表には実際に選んだ列・回転のθと、ファン角γを加えたX線管角βを示します。同じ側の異なる列が選ばれる場合もあります。βの前後で用いる取得ビューも、下記の有限取得範囲内に限ります。表の角度は折り返しません。図の0°は表示基準であり、X線管角0°ではありません。','Direct and opposing θ differ by 180° modulo a full turn. The table lists actual selected rows and turns, with β = θ + γ. Both selected rows may belong to the same side. Neighboring acquired views used for rebinning must also fit the stated finite source interval. Table angles are unwrapped. Plot zero is a display reference, not tube angle zero.')}</p>
   </details>
   <label class="axial-movie-role-control">${fdkText('（b）に表示する側','Side shown in (b)')}<select id="axial-movie-role"><option value="all">${fdkText('両側','Both sides')}</option><option value="direct">${fdkText('実データ側 ○','Direct ○')}</option><option value="complementary">${fdkText('対向データ側 △','Complementary △')}</option></select></label>
   <div class="axial-movie-grid">
@@ -173,10 +174,13 @@ function renderAxialAngleReading(frame){
   el('pair').disabled=false;el('pair').value=axialMovie.selectedPair;
   el('coordinate-note').textContent=fdkText('補間対象の全周0～360°を表示します。各方向で使う実データ側（実線・○）と対向側（破線・△）を、同じ高さに示します。（a）の枠は選んだ方向の候補です。','All output directions over 0–360° are shown. Direct data (solid, ○) and complementary data (dashed, △) for each output direction share a height. Boxes in (a) mark the selected direction’s candidates.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
-  const opposite=frame.instant.find(p=>p.referenceView===axialMovie.selectedPair).oppositeView;
-  const rows=SSPZAngles.pair(c,a.base,axialMovie.selectedPair,opposite).map(q=>{
+  const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
+  el('source-window').textContent=fdkText('この断面の取得範囲 β：','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('（全ファン角 Φ＝',' (full fan Φ = ')+`${c.axialRule==='parallel'?0:c.fullFanAngleDeg}°)`;
+  const chosen=frame.instant.filter(p=>p.referenceView===axialMovie.selectedPair);
+  const rows=chosen.map(p=>SSPZAngles.sample(c,a.base,p)).map(q=>{
     const tr=document.createElement('tr');
-    const values=[q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'),q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
+    const role=(q.direction?fdkText('対向側 △','Complementary △'):fdkText('実データ側 ○','Direct ○'))+` / ${fdkText('列','row')} ${q.row+1}${c.zFfsEnabled?' / '+(q.focus?'B':'A'):''}`;
+    const values=[role,q.referenceOffset.toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
     values.forEach((value,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=value;tr.append(td);});
     return tr;
   });
