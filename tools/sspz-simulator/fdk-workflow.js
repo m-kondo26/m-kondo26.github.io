@@ -61,7 +61,7 @@ function renderFdkSelected(){
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
-  pairNote.textContent=fdkText('実データ側は実線、対向データ側は破線です。両側を実データ側の再配列角度θにそろえ、対向側にはθ＋180°のデータを表示します。','Solid: direct side. Dashed: complementary side. Both are shown at the direct-side rebinned angle θ; the complementary data are from θ + 180°.');
+  pairNote.textContent=fdkText('実線：実データ側。破線：対向側。両側を補間対の基準角にそろえています。対向側自身の再配列角は＋180°です。縦軸はX線管角度ではありません。2Cで角度の並べ方を切り替えて確認できます。','Solid: direct. Dashed: complementary. Both share their pair’s reference angle; the complementary data’s own rebinned angle is +180°. This axis is not tube angle. Switch coordinates in 2C to inspect the correspondence.');
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
@@ -151,9 +151,9 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
   if(paired){
-    diagram.yAxisLabel=fdkText('実データ側の角度差  θ  (°)','Direct-side angle offset  θ  (°)');
+    diagram.yAxisLabel=fdkText('基準の再配列角度差 (°)','Reference rebinned angle offset (°)');
     diagram.directLegendLabel=fdkText('実データ側 ○','Direct ○');
-    diagram.weightLegendNote=fdkText('各補間ペアの重みを幅Tで合算。軌道の重なりは混色。','Pair weights summed over T. Trace overlaps blend.');
+    diagram.weightLegendNote=fdkText('幅Tの合計重み。△自身の再配列角は基準角＋180°。','T-summed weights. Own △ angle: reference +180°.');
     diagram.angleCoordinate='common direct-side rebinned theta; complementary at theta+pi; relative to centre turn';
   }
   if(!zoom&&!paired)diagram.directLegendLabel=rebinned?fdkText('再配列後の列軌跡','Rebinned row trajectories'):fdkText('検出器列の軌跡','Detector-row trajectories');

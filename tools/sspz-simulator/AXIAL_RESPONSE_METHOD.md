@@ -92,6 +92,21 @@ normalization, direct/complementary role sums, exact agreement with existing
 weight audits, focal switching, multirow cases, cancellation and non-mutation.
 These are display/implementation checks, not scanner validation.
 
+Web 2026-09-18.3 adds a coordinate switch to the animation. The default aligns
+both members of an interpolation pair at the reference member's rebinned
+angle. The alternative puts each member at its own rebinned angle, moving
+complementary markers by 180 degrees while preserving z, row/focus/view
+identity and coefficients. The background changes to own-angle trajectories;
+circles and triangles still identify roles, not distinct acquisition types.
+The selected pair is boxed and its angles can be inspected in a table.
+Under this code's sign convention beta = theta + gamma. Beta is a rebinning
+query angle, generally evaluated using neighboring acquired source views.
+The plot folds angle offsets relative to a fixed centre-turn reference; its
+zero is not tube angle zero. Half-turn coverage by pair-reference markers
+does not indicate that half the acquired directions were discarded or that
+a short-scan image reconstruction was performed. The distinction is checked
+by `tests/axial-angle-display.mjs`; numerical model/worker files are unchanged.
+
 `tests/axial-response.mjs` checks independent all-row weight enumeration, Cartesian rays from the chapter, direct all-row response summation, exact response/weight-trace closure, selected-phase/series identity, and 4/80/160/320-row cases. These establish implementation consistency, not clinical or scanner validation. Results and cases are in `tests/axial-response-verification.json`.
 
 Excel/CSV retain unrounded values. The selected-weight sheet stores unfiltered rebinned data and a separate angular-mean factor: summing `weight * unfiltered_acquired_value * angular_mean_factor` reproduces the target point's unnormalized response after T averaging. Diagram markers subsample angles for legibility; the export retains all computed weights.

@@ -81,7 +81,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.2 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.3 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -828,8 +828,9 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = true) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
-  const items = [{ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK }];
-  if (paired) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK });
+  const rolesOnly = diagram.roleMarkersOnly && includeMarkers;
+  const items = [{ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly }];
+  if (paired || rolesOnly) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
   items.push({ label: localizedText("目的断面", "Target plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
@@ -840,13 +841,13 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
     ctx.strokeStyle = item.color;
     ctx.lineWidth = 2.4;
     ctx.setLineDash(item.dashed ? [5, 3] : []);
-    ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke();
+    if (!item.noLine) { ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke(); }
     ctx.setLineDash([]);
     ctx.fillStyle = INK;
     // A geometry-only overview has trajectories but no selected-point glyphs.
     const label = includeMarkers ? item.label : item.label.replace(/\s*[○△]/g, "");
     setFittedFigureFont(ctx, label, 26, 22, columnWidth - 44);
-    ctx.fillText(label, start + 40, y);
+    ctx.fillText(label, start + (item.noLine ? 0 : 40), y);
   });
   ctx.restore();
 }

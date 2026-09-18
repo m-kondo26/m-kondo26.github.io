@@ -2988,6 +2988,28 @@ globalThis.SSPZShapeDisplay = (() => {
   return { draw, fromFdk, intensity, ticks, exponent };
 })();
 
+// Display coordinates only. Never selects candidates or changes their weights.
+globalThis.SSPZAngles = Object.freeze({
+  offset(c, base, view) {
+    const V = c.viewSamples;
+    return ((view - base) % V + V) % V * 360 / V;
+  },
+  view(point, coordinate) {
+    return coordinate === 'own' ? point.view : point.referenceView;
+  },
+  pair(c, base, referenceView) {
+    return [0, 1].map(direction => {
+      const view = referenceView + direction * c.viewSamples / 2;
+      const theta = c.phase + view * 2 * Math.PI / c.viewSamples;
+      const gamma = c.axialRule === 'parallel' ? 0 : Math.asin(-c.radius * Math.sin(theta) / c.sourceRadius);
+      const beta = theta + gamma;
+      return { direction, view, theta, gamma, beta,
+        referenceOffset: this.offset(c, base, referenceView),
+        ownOffset: this.offset(c, base, view) };
+    });
+  }
+});
+
 // Optional acquired-point view. A/B are physical alternating exposures.
 const ZFFS_COLORS=['#0072b2','#d55e00'];
 let zffsSceneCache=null;
@@ -3084,7 +3106,7 @@ async function exportZffsPanels(){
 
 // Optional, user-started flipbook. Its phase is explicitly local to this block;
 // the original complete-view profiles provide every SSP frame.
-const axialMovie={audit:null,index:0,frame:0,mode:'thickness',playing:false,timer:null,request:0,pending:false,background:null,cache:new Map()};
+const axialMovie={audit:null,index:0,frame:0,mode:'thickness',coordinate:'paired',selectedPair:null,playing:false,timer:null,request:0,pending:false,background:null,cache:new Map()};
 function initializeAxialMovie(after){
   const section=document.createElement('section');section.id='axial-movie';section.className='workflow-block';
   section.innerHTML=`<h2>${fdkText('','2C  From candidates to SSPz: interactive playback')}</h2>
@@ -3099,6 +3121,15 @@ function initializeAxialMovie(after){
   </div>
   <label class="axial-movie-position" for="axial-movie-position"><span id="axial-movie-position-label">${fdkText('','Available after calculation')}</span><input id="axial-movie-position" type="range" min="0" max="40" step="1" value="0" disabled></label>
   <p id="axial-movie-status" role="status"></p>
+  <div class="axial-angle-controls">
+    <label>${fdkText('','Vertical coordinate in (a) and (b)')}<select id="axial-movie-coordinate"><option value="paired">${fdkText('','Align each interpolation pair')}</option><option value="own">${fdkText('','Use each datum’s own rebinned angle')}</option></select></label>
+    <label>${fdkText('','Pair highlighted in (a)')}<select id="axial-movie-pair" disabled></select></label>
+  </div>
+  <p id="axial-movie-coordinate-note" class="angle-reading-note"></p>
+  <details class="reading-details axial-angle-detail"><summary>${fdkText('','Tube angle and fan-angle correspondence')}</summary>
+    <div class="axial-angle-table-scroll" tabindex="0"><table><caption>${fdkText('','Highlighted pair in (a): θ + γ = β')}</caption><thead><tr><th>${fdkText('','Role')}</th><th>${fdkText('','Plotted offset (°)')}</th><th>${fdkText('','Rebinned θ (°)')}</th><th>${fdkText('','Fan angle γ (°)')}</th><th>${fdkText('','Tube angle β (°)')}</th></tr></thead><tbody id="axial-movie-angle-values"></tbody></table></div>
+    <p>${fdkText('','Opposing rebinned angles θ differ by 180°. Their tube angles β include fan angle γ, so their β separation is generally not 180°. β is the rebinning query angle; neighboring acquired views supply the interpolated data. Table angles θ and β are unwrapped across turns. Plot zero is a fixed display reference, not tube angle zero.')}</p>
+  </details>
   <label class="axial-movie-role-control">${fdkText('','Role categories in (b)')}<select id="axial-movie-role"><option value="all">${fdkText('','All')}</option><option value="direct">${fdkText('','Used only as direct data')}</option><option value="complementary">${fdkText('','Used only as complementary data')}</option><option value="both">${fdkText('','Used in both roles')}</option></select></label>
   <div class="axial-movie-grid">
     <article class="chart-card"><h3>${fdkText('','(a) Candidates and weights at the moving plane')}</h3><div class="axial-movie-scroll" tabindex="0"><canvas id="axial-movie-instant" width="900" height="960"></canvas></div></article>
@@ -3117,6 +3148,9 @@ function initializeAxialMovie(after){
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
   el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};
   el('role').onchange=()=>renderAxialMovie();el('apply').onclick=()=>{stopAxialMovie();selectFdkState(axialMovie.index,true);};
+  el('coordinate').onchange=()=>{stopAxialMovie();axialMovie.coordinate=el('coordinate').value;axialMovie.background=null;renderAxialMovie();};
+  el('pair').onchange=()=>{stopAxialMovie();axialMovie.selectedPair=Number(el('pair').value);renderAxialMovie();};
+  el('instant').onclick=event=>inspectAxialMoviePair(event);
   el('total').onclick=event=>inspectAxialMovieMarker(event);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopAxialMovie();});
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduced.matches)el('speed').value='500';
@@ -3129,7 +3163,7 @@ function stopAxialMovie(){
 function disableAxialMovie(){
   stopAxialMovie();axialMovie.request++;axialMovie.pending=false;axialMovie.audit=null;axialMovie.background=null;axialMovie.cache.clear();
   worker?.postMessage({type:'axial-animation-cancel'});
-  document.querySelectorAll('#axial-movie button, #axial-movie input').forEach(e=>e.disabled=true);
+  document.querySelectorAll('#axial-movie button, #axial-movie input, #axial-movie-pair').forEach(e=>e.disabled=true);
   const e=document.getElementById('axial-movie-status');if(e)e.textContent=fdkText('','Available after calculation.');
 }
 function syncAxialMovie(){
@@ -3150,7 +3184,7 @@ function receiveAxialMovie(message){
   axialMovie.audit=message.audit;axialMovie.pending=false;axialMovie.background=null;
   const key=axialMovie.mode+':'+message.index;axialMovie.cache.set(key,message.audit);
   while(axialMovie.cache.size>4)axialMovie.cache.delete(axialMovie.cache.keys().next().value);
-  document.querySelectorAll('#axial-movie button, #axial-movie input').forEach(e=>e.disabled=false);
+  document.querySelectorAll('#axial-movie button, #axial-movie input, #axial-movie-pair').forEach(e=>e.disabled=false);
   renderAxialMovie();scheduleAxialMovie();
 }
 function failAxialMovie(message){
@@ -3175,12 +3209,14 @@ function advanceAxialMovie(delta){
 }
 function axialMovieBackground(audit){
   const c=audit.config,V=c.viewSamples,angles=[],families=[];
-  const segments=Math.min(V,360),firstGroups=axialAnimationGroups(c,audit.base);
+  const own=axialMovie.coordinate==='own';
+  const groupsAt=v=>axialAnimationGroups(c,v).filter(g=>!own||g.direction===0);
+  const segments=Math.min(V,360),firstGroups=groupsAt(audit.base);
   firstGroups.forEach(g=>families.push({id:(g.direction?'complementary-':'direct-')+g.focus,family:g.direction?'complementary':'direct',angles,axial:[],scales:[]}));
   let min=Infinity,max=-Infinity;
   for(let i=0;i<=segments;i++){
     angles.push(360*i/segments);
-    axialAnimationGroups(c,audit.base+V*i/segments).forEach((g,j)=>{
+    groupsAt(audit.base+V*i/segments).forEach((g,j)=>{
       families[j].axial.push(g.origin);families[j].scales.push(g.spacing/c.rowWidth);
       for(const row of [0,c.rows-1]){const z=g.origin+(row-(c.rows-1)/2)*g.spacing-audit.zObject;min=Math.min(min,z);max=Math.max(max,z);}
     });
@@ -3192,9 +3228,10 @@ function axialMovieBackground(audit){
     interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:families,
     traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],
     xAxisLabel:fdkText('','Candidate row centre  zᵢ − z₀  (mm)'),
-    yAxisLabel:fdkText('','Direct-side angle offset  θ  (°)'),
+    yAxisLabel:own?fdkText('','Own rebinned angle offset (°)'):fdkText('','Reference rebinned angle offset (°)'),
     directLegendLabel:fdkText('','Direct ○'),weightLegendLabel:fdkText('','Weight w'),
-    weightLegendNote:fdkText('','Red: averaging centre; blue: plane within T'),
+    roleMarkersOnly:own,
+    weightLegendNote:own?fdkText('','Solid: own trajectories. ○ / △: roles in the pair.'):fdkText('','○ / △ share a reference angle (own △ angle: +180°).'),
     referenceViewSamples:V,renderedAngleSamples:audit.angleSamplesPerTurn};
   const canvas=document.createElement('canvas');canvas.width=900;canvas.height=960;
   drawDiagram(canvas,diagram,'zoom');return canvas;
@@ -3213,12 +3250,49 @@ function paintAxialMovieWeights(canvas,points,u,accumulated){
   const rendered=[];
   for(const p of [...points].sort((a,b)=>a.weight-b.weight)){
     if(accumulated&&role!=='all'&&p.use!==role)continue;
-    drawWeightedMarker(ctx,p.row,c.rows,x(p.z),y(p.referenceView),5.2,p.weight,p.direction?'triangle':'circle');
-    rendered.push({p,x:x(p.z),y:y(p.referenceView)});
+    const py=y(SSPZAngles.view(p,axialMovie.coordinate));
+    drawWeightedMarker(ctx,p.row,c.rows,x(p.z),py,5.2,p.weight,p.direction?'triangle':'circle');
+    rendered.push({p,x:x(p.z),y:py});
+  }
+  if(!accumulated){
+    ctx.strokeStyle='#233746';ctx.lineWidth=1.8;ctx.setLineDash([]);
+    for(const q of rendered)if(q.p.referenceView===axialMovie.selectedPair)ctx.strokeRect(q.x-8,q.y-8,16,16);
   }
   if(axialMovie.mode==='thickness'||!accumulated){ctx.strokeStyle='#2166ac';ctx.lineWidth=2.5;ctx.setLineDash([7,4]);ctx.beginPath();ctx.moveTo(x(u),top);ctx.lineTo(x(u),top+height);ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();canvas.dataset.renderState='ready';canvas.dataset.startIndex=axialMovie.index;canvas.dataset.planeMm=u;canvas.dataset.partial=String(accumulated&&axialMovie.mode==='thickness');canvas.dataset.markerCount=rendered.length;
-  if(accumulated)axialMovie.hitPoints=rendered;
+  canvas.dataset.angleCoordinate=axialMovie.coordinate;
+  if(accumulated)axialMovie.hitPoints=rendered;else axialMovie.instantHitPoints=rendered;
+}
+function renderAxialAngleReading(frame){
+  const a=axialMovie.audit,c=a.config,el=id=>document.getElementById('axial-movie-'+id),own=axialMovie.coordinate==='own';
+  const refs=[...new Set(frame.instant.map(p=>p.referenceView))].sort((a,b)=>a-b);
+  if(!refs.length){el('pair').disabled=true;el('angle-values').replaceChildren();return;}
+  const target=axialMovie.selectedPair??(refs[0]+refs.at(-1))/2;
+  axialMovie.selectedPair=refs.reduce((best,v)=>Math.abs(v-target)<Math.abs(best-target)?v:best,refs[0]);
+  const key=refs.join(',');
+  if(el('pair').dataset.refs!==key){
+    el('pair').replaceChildren(...refs.map(v=>new Option(fdkText('','Reference offset ')+`${SSPZAngles.offset(c,a.base,v).toFixed(1)}°`,String(v))));
+    el('pair').dataset.refs=key;
+  }
+  el('pair').disabled=false;el('pair').value=axialMovie.selectedPair;
+  el('coordinate-note').textContent=own
+    ?fdkText('','The same points and weights, placed at their own angles. Complementary triangles move by 180° from the aligned view. Boxes in (a) identify one pair.')
+    :fdkText('','Circles and triangles share the reference angle of their pair. Half-turn marker coverage does not mean half-turn data use. Boxes in (a) identify one pair.');
+  const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
+  const rows=SSPZAngles.pair(c,a.base,axialMovie.selectedPair).map(q=>{
+    const tr=document.createElement('tr');
+    const values=[q.direction?fdkText('','Complementary △'):fdkText('','Direct ○'),(own?q.ownOffset:q.referenceOffset).toFixed(1),degrees(q.theta),degrees(q.gamma),degrees(q.beta)];
+    values.forEach((value,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=value;tr.append(td);});
+    return tr;
+  });
+  el('angle-values').replaceChildren(...rows);
+}
+function inspectAxialMoviePair(event){
+  if(!axialMovie.instantHitPoints)return;
+  const rect=event.currentTarget.getBoundingClientRect(),x=(event.clientX-rect.left)*900/rect.width,y=(event.clientY-rect.top)*960/rect.height;
+  let hit=null,distance=20;
+  for(const q of axialMovie.instantHitPoints){const d=Math.hypot(q.x-x,q.y-y);if(d<distance){hit=q;distance=d;}}
+  if(hit){stopAxialMovie();axialMovie.selectedPair=hit.p.referenceView;renderAxialMovie();}
 }
 function renderAxialMovie(){
   const audit=axialMovie.audit;if(!audit||!fdkResult||axialMovie.pending)return;
@@ -3229,7 +3303,8 @@ function renderAxialMovie(){
   el('position-label').textContent=fdkText('','Start angle in this animation')+` ${phase.toFixed(1)}° / T = ${c.axialAverageMm.toFixed(2)} mm`+(axialMovie.mode==='thickness'?` / u = ${frame.u.toFixed(2)} mm`:``);
   el('status').textContent=axialMovie.mode==='thickness'?fdkText('','Fixed start angle: ')+` ${progress}% `+fdkText('','of T accumulated'):fdkText('','Comparing separate start-angle conditions: full-T weights shown');
   el('total-title').textContent=axialMovie.mode==='thickness'?fdkText('','(b) Weights accumulated within T')+` — ${progress}%`:fdkText('','(b) Total weights over T');
-  el('note').textContent=fdkText('','Panels (a) and (b) explain the central response; (c) is the computed SSPz at all evaluation positions. Markers sample ')+`${audit.angleSamplesPerTurn}`+fdkText('',' display angles.');
+  el('note').textContent=fdkText('','Red: averaging centre. Blue: plane moving within T. (a) and (b) explain the central response; (c) is the SSPz at all evaluation positions. Markers are sampled every ')+`${(360*audit.stride/c.viewSamples).toFixed(1)}°`+fdkText('','; background trajectories also include neighboring turns outside the selected interval.');
+  renderAxialAngleReading(frame);
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);
   const p=fdkResult.profiles[axialMovie.index],xs=fdkResult.z,plot=fdkAxes(el('profile'),xs[0],xs.at(-1),0,1.05,'z position (mm)','Normalized SSPz','', [0,.5,1],70);
   fdkDrawLines(plot,xs,[p.profile],FDK_PRIMARY_COLOR);fdkArrow(plot,p.fwhm,.5,FDK_PRIMARY_COLOR);
@@ -3309,7 +3384,7 @@ function renderFdkSelected(){
   drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
-  pairNote.textContent=fdkText('','Solid: direct side. Dashed: complementary side. Both are shown at the direct-side rebinned angle θ; the complementary data are from θ + 180°.');
+  pairNote.textContent=fdkText('','Solid: direct. Dashed: complementary. Both share their pair’s reference angle; the complementary data’s own rebinned angle is +180°. This axis is not tube angle. Switch coordinates in 2C to inspect the correspondence.');
   drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
   document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
@@ -3399,9 +3474,9 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     angleCoordinate:rebinned?'rebinned theta; relative to centre turn':'source beta; relative to centre turn'
   };
   if(paired){
-    diagram.yAxisLabel=fdkText('','Direct-side angle offset  θ  (°)');
+    diagram.yAxisLabel=fdkText('','Reference rebinned angle offset (°)');
     diagram.directLegendLabel=fdkText('','Direct ○');
-    diagram.weightLegendNote=fdkText('','Pair weights summed over T. Trace overlaps blend.');
+    diagram.weightLegendNote=fdkText('','T-summed weights. Own △ angle: reference +180°.');
     diagram.angleCoordinate='common direct-side rebinned theta; complementary at theta+pi; relative to centre turn';
   }
   if(!zoom&&!paired)diagram.directLegendLabel=rebinned?fdkText('','Rebinned row trajectories'):fdkText('','Detector-row trajectories');
@@ -3816,7 +3891,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.2 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.3 / shared axial response 2026-09-17.6 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4563,8 +4638,9 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = true) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
-  const items = [{ label: diagram.directLegendLabel ?? localizedText("Direct-ray candidate ○", "Direct ○"), dashed: false, color: INK }];
-  if (paired) items.push({ label: localizedText("Complementary-ray candidate △", "Complementary △"), dashed: true, color: INK });
+  const rolesOnly = diagram.roleMarkersOnly && includeMarkers;
+  const items = [{ label: diagram.directLegendLabel ?? localizedText("Direct-ray candidate ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly }];
+  if (paired || rolesOnly) items.push({ label: localizedText("Complementary-ray candidate △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
   items.push({ label: localizedText("Target plane", "Target plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
@@ -4575,13 +4651,13 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
     ctx.strokeStyle = item.color;
     ctx.lineWidth = 2.4;
     ctx.setLineDash(item.dashed ? [5, 3] : []);
-    ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke();
+    if (!item.noLine) { ctx.beginPath(); ctx.moveTo(start, y); ctx.lineTo(start + 30, y); ctx.stroke(); }
     ctx.setLineDash([]);
     ctx.fillStyle = INK;
     // A geometry-only overview has trajectories but no selected-point glyphs.
     const label = includeMarkers ? item.label : item.label.replace(/\s*[○△]/g, "");
     setFittedFigureFont(ctx, label, 26, 22, columnWidth - 44);
-    ctx.fillText(label, start + 40, y);
+    ctx.fillText(label, start + (item.noLine ? 0 : 40), y);
   });
   ctx.restore();
 }

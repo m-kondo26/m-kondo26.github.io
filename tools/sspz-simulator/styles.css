@@ -454,3 +454,13 @@ footer p { margin: 0.2rem 0; }
 #axial-movie-detail, #axial-movie-note { font-size: .9rem; line-height: 1.6; }
 @media(max-width: 1050px) { .axial-movie-grid { grid-template-columns: 1fr; } }
 @media(max-width: 600px) { #axial-movie { padding: .65rem; } .axial-movie-controls button { padding: .6rem; } }
+
+.axial-angle-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin-top: .8rem; }
+.axial-angle-controls label { min-width: 0; max-width: 100%; }
+.axial-angle-controls select { display: block; font: inherit; max-width: 100%; min-height: 44px; padding: .5rem; border: 1px solid #b9c9d6; border-radius: 5px; background: white; }
+.angle-reading-note { font-size: .9rem; line-height: 1.65; border-left: 3px solid #2166ac; padding-left: .75rem; }
+.axial-angle-detail > summary { text-align: left; min-height: 32px; }
+.axial-angle-table-scroll { overflow-x: auto; max-width: 100%; }
+.axial-angle-table-scroll table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.axial-angle-table-scroll th, .axial-angle-table-scroll td { padding: .5rem; border-bottom: 1px solid #cdd7df; text-align: right; white-space: nowrap; }
+.axial-angle-table-scroll caption { text-align: left; padding: .4rem 0; }
