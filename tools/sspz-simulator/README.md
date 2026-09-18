@@ -1,3 +1,9 @@
+## Mori static-table explanation and common detector default (2026-09-18.10)
+
+`mori-static.html` provides a separate, interactive explanation inspired by Mori et al., Fig.6.25: select a row-corresponding reconstruction plane, inspect the rotating source and row brackets, view weighted axial kernels, accumulate a full turn, and compare 16 planes at radii 0/80/160 mm. It uses the declared ideal-focus static model in `MORI_STATIC_METHOD.md`, not full image FDK or an exact reproduction of the book figure. CSV and vector SVG exports use the same computed data. The main helical response operator is unchanged.
+
+New browser sessions and Reset use transverse pitch and aperture 0.58 mm at isocentre. This is the approximate book-derived 1.03 mm physical detector scale, with equal pitch/aperture explicitly assumed. Existing URLs and saved conditions retain their explicit values and historical missing-field fallback of 0.25 mm. A default-condition change can change newly calculated responses; manuscript figures are not automatically replaced.
+
 ## Overview legend (2026-09-17.13)
 
 The geometry-only overview identifies direct and complementary trajectories by solid and dashed lines, without circle/triangle symbols. The selected-weight diagram retains these marker symbols. This applies to the screen and 600-dpi exports in both languages.

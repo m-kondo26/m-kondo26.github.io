@@ -1,4 +1,7 @@
 const replacements = [
+  ["面内開口幅とチャネル間隔の既定値0.58 mmは、『CTとMRI』（コロナ社）の幾何情報に基づく回転中心換算の概算です。開口幅＝チャネル間隔とする理想設定で、実機の仕様値ではありません。", "The default transaxial aperture and channel spacing of 0.58 mm are approximate isocenter values derived from the geometry in CT and MRI (Corona Publishing). Aperture width equals channel spacing in this idealized setting; these are not scanner specifications."],
+  ["図6.25：検出器列とSSPの関係を見る", "Figure 6.25: explore detector rows and SSP"],
+  ["『CTとMRI』で説明された、寝台を静止した条件の計算過程を別ページで確認できます。", "Explore the stationary-table calculation described in CT and MRI on a separate page."],
   ["実データ側レイと対向データ側レイ、およびファンビーム角に依存する対向焦点角の幾何学的関係を確認するために参照しました。", "Reference for the transverse relationship between direct and opposite-direction source rays, including the fan-angle-dependent source separation. "],
   ["展開図とモデルSSPzを対応させ、取得データの配置と体軸方向の補間方法を比較します。", "Relate candidate geometry to model SSPz and compare axial interpolation rules."],
   ["コーン幾何の2モデルは取得データ・検出器開口を共通にし、候補の選択と補間規則を比較します。", "The two cone models share acquired data and detector apertures while comparing candidate selection and interpolation."],
@@ -730,6 +733,7 @@ export function finalizeEnglishHtml(source) {
       '<a class="language-link" href="index.html" data-language-target="index.html" lang="ja">Japanese</a>',
     )
     .replace('href="https://m-kondo26.github.io/ja/#contact"', 'href="https://m-kondo26.github.io/#contact"')
+    .replace('href="mori-static.html"', 'href="mori-static.html?lang=en"')
     .replace(/src="worker-source\.js(\?[^\"]*)?"/g, 'src="worker-source-en.js$1"')
     .replace(/src="app-bundle\.js(\?[^\"]*)?"/g, 'src="app-bundle-en.js$1"');
 }

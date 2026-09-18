@@ -5,6 +5,17 @@ import {
   RECONSTRUCTION_PATHS,
 } from "./sim-core.js";
 
+// Browser defaults use the textbook-derived isocenter estimate. The numerical
+// core keeps its historical defaults so incomplete saved conditions retain
+// their original detector settings when loaded below.
+const WEB_DEFAULT_PARAMS = Object.freeze({
+  ...DEFAULT_PARAMS,
+  channelWidth: 0.58,
+  channelApertureMm: 0.58,
+  detectorModel: "finite-channel",
+  thicknessMapping: "configured-rectangular",
+});
+
 // Figure palette and typography follow the journal-facing conventions used by
 // Medical Physics: black sans-serif text, gray gridlines, restrained color,
 // and redundant line/marker encodings.  Japanese and future English labels use
@@ -81,7 +92,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.9 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.10 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -217,8 +228,8 @@ function paramsFromUrl() {
     ...DEFAULT_PARAMS,
     rows: get("n", DEFAULT_PARAMS.rows),
     rowWidth: get("d", DEFAULT_PARAMS.rowWidth),
-    channelWidth: get("cp",get("fdk_channelWidth",.25)),
-    channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",.25))),
+    channelWidth: get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelWidth)),
+    channelApertureMm: get("ca",get("cp",get("fdk_channelWidth",DEFAULT_PARAMS.channelApertureMm))),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
@@ -3335,7 +3346,7 @@ runButton.addEventListener("click", runSimulation);
 cancelButton.addEventListener("click", () => worker?.postMessage({ type: "cancel" }));
 resetButton.addEventListener("click", () => {
   selectedStateIndex = 0;
-  writeParams(DEFAULT_PARAMS);
+  writeParams(WEB_DEFAULT_PARAMS);
   if (metricSelect) metricSelect.value = "fwhm";
   try { localStorage.removeItem("sspz-unwrapped-params"); } catch { /* storage may be disabled */ }
   try { history.replaceState(null, "", window.location.pathname); } catch { /* file:// may restrict history mutation */ }
@@ -3381,7 +3392,8 @@ window.addEventListener("resize", () => {
 
 const initial = paramsFromUrl() ?? (() => {
   try {
-    const stored = JSON.parse(localStorage.getItem("sspz-unwrapped-params")) || DEFAULT_PARAMS;
+    const stored = JSON.parse(localStorage.getItem("sspz-unwrapped-params"));
+    if (!stored) return { ...WEB_DEFAULT_PARAMS, zFfsEnabled: false };
     if (stored.thetaSamples != null && stored.viewSamples == null) {
       legacyInputMigrated = true;
       stored.viewSamples = stored.thetaSamples;
@@ -3396,9 +3408,16 @@ const initial = paramsFromUrl() ?? (() => {
       stored.filterSamples ??= DEFAULT_PARAMS.filterSamples;
       stored.profileMode = "taguchi-filter";
     }
-    return {...stored,zFfsEnabled:false};
+    // Saved conditions without explicit detector fields used the historical
+    // 0.25-mm defaults; do not silently recalculate them at the new defaults.
+    return {
+      ...DEFAULT_PARAMS, ...stored,
+      channelWidth: stored.channelWidth ?? DEFAULT_PARAMS.channelWidth,
+      channelApertureMm: stored.channelApertureMm ?? stored.channelWidth ?? DEFAULT_PARAMS.channelApertureMm,
+      zFfsEnabled: false,
+    };
   }
-  catch { return DEFAULT_PARAMS; }
+  catch { return WEB_DEFAULT_PARAMS; }
 })();
 if(initial!==DEFAULT_PARAMS && (initial.thicknessMapping!=='configured-rectangular' || initial.detectorModel!=='finite-channel'))legacyInputMigrated=true;
 // Old saved 3D conditions used channelWidth for both physical aperture and pitch.
