@@ -40,8 +40,8 @@ function syncZffsUi(){
   document.getElementById('zffs-unavailable').hidden=available;
   document.getElementById('zffs-options').hidden=!e.checked;
   document.getElementById('zffs-diagrams').hidden=!e.checked;
-  document.getElementById('fdk-geometry').closest('article').hidden=e.checked;
-  document.getElementById('fdk-weight-step').hidden=e.checked;
+  document.getElementById('fdk-geometry').closest('article').hidden=false;
+  document.getElementById('fdk-weight-step').hidden=false;
   for(const id of ['zffs-png','zffs-csv'])document.getElementById(id).disabled=!fdkSelectedResult?.config.zFfsEnabled;
 }
 function zffsWeightRows(r){return [['focus','view_unwrapped','row_index_zero_based','channel_index_zero_based','source_angle_rad','source_z_mm','row_center_relative_mm','interpolation_weight','angular_mean_factor','acquired_point_value','response_contribution'],...r.weightAudit.samples.map(q=>[q.focus?'B':'A',q.view,q.row,q.channel,q.beta,q.sourceZ,q.z,q.weight,r.weightAudit.db,q.acquiredValue,q.weight*r.weightAudit.db*q.acquiredValue])];}

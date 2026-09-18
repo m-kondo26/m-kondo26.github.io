@@ -21,50 +21,55 @@ function initializeFdkWorkflow(panel){
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
   const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,shape,images);
   initializeAxialMovie(weights);
+  initializeGeometryPlayback(geometry,weights);
+  geometry.querySelector('.geometry-role-grid').before(document.getElementById('fdk-paired-coordinate'));
   // The old first-angle-only audit is superseded by the linked window audit.
   document.getElementById('cba-samples-wrap').hidden=true;
   document.getElementById('cba-samples-wrap').style.display='none';
   document.getElementById('fdk-inspect').oninput=e=>selectFdkState(Number(e.target.value));
   document.getElementById('fdk-prev').onclick=()=>selectFdkState(selectedStateIndex-1,true);
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
-  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-selected-profile','fdk-difference']){
+  for(const id of ['fdk-weights-rri','fdk-selected-profile','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('600 dpi PNG保存','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
   }
 }
 function fdkWorkflowAvailability(on){
-  if(!on)disableAxialMovie();
+  if(!on){resetGeometryPlayback();disableAxialMovie();}
+  document.getElementById('geometry-play').disabled=!on;
   for(const id of ['fdk-inspect','fdk-prev','fdk-next'])document.getElementById(id).disabled=!on;
   document.querySelectorAll('[data-fdk-canvas]').forEach(b=>b.disabled=!on||!fdkSelectedResult);
 }
-function selectFdkState(index,immediate=false){
+function selectFdkState(index,immediate=false,playback=false){
   if(!fdkResult)return;
+  if(!playback)stopGeometryPlayback();
   stopAxialMovie();
+  geometryPlayback.pending=true;updateGeometryPlayControl();
   selectedStateIndex=((Math.round(index)%360)+360)%360;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkSelectedResult=null;
   document.getElementById('fdk-inspect').value=selectedStateIndex;
   const angle=fdkResult.profiles[selectedStateIndex].phase*180/Math.PI;
   document.getElementById('fdk-inspect-label').textContent=`+${selectedStateIndex}° / ${fdkText('開始角度','start angle')} ${angle.toFixed(1)}°`;
   document.getElementById('fdk-inspection-status').textContent=fdkText('選択角度の展開図・重み・応答を更新中…','Updating geometry, weights and response for the selected angle…');
-  for(const id of ['fdk-geometry','fdk-weights-primary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
-  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  if(!playback)for(const id of ['fdk-geometry','fdk-geometry-direct','fdk-geometry-complementary','fdk-weights-primary','fdk-weights-primary-direct','fdk-weights-primary-complementary','fdk-weights-rri','fdk-axial','fdk-coronal'])drawCanvasStatus(document.getElementById(id),'',fdkText('選択角度を計算中','Computing selected angle'));
   syncZffsUi();for(const cv of document.querySelectorAll('#zffs-diagrams canvas'))drawCanvasStatus(cv,'z-FFS',fdkText('選択角度を計算中','Computing selected angle'));
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=true;document.getElementById('fdk-xlsx').disabled=true;
   const url=paramsToUrl(fdkRunParams);try{history.replaceState(null,'',url);}catch{}syncLanguageLinks(url.search);
   const requestId=fdkInspectionRequest;
+  if(geometryPlayback.cache.has(selectedStateIndex)){receiveGeometryInspection(geometryPlayback.cache.get(selectedStateIndex));return;}
   const send=()=>worker?.postMessage({type:'fdk-inspect',index:selectedStateIndex,requestId});
   if(immediate)send();else fdkInspectionTimer=setTimeout(send,180);
 }
 function renderFdkSelected(){
   const r=fdkSelectedResult;if(!r)return;
   clearCanvasStatusAnimations();
-  document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(r);
+  document.getElementById('fdk-primary-weight-title').textContent=fdkText('③ 重ね合わせ','3. Overlay');
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('RRI：列間の線形補間','RRI: linear row interpolation');
-  drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),r,false);
+  drawFdkRoleDiagrams(r);
+  drawFdkSelectedProfile(document.getElementById('fdk-selected-profile'));fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
   pairNote.textContent=fdkText('実線：実データ側。破線：対向側。補間対象の全周0～360°を表示し、各方向の両側の候補を同じ高さに示します。対向側自身の再配列角は±180°異なります。縦軸はX線管角度ではなく、2Cの表でその対応を確認できます。','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
-  drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),r,true,false);
   document.getElementById('fdk-rri-weights-card').hidden=!r.reference;
-  document.getElementById('fdk-rri-weights-card').parentElement.classList.toggle('two',!!r.reference);
+  document.getElementById('fdk-rri-weights-card').parentElement.classList.remove('two');
   if(r.reference)drawFdkCandidateDiagram(document.getElementById('fdk-weights-rri'),r,true,true);
   // Reduced response has no image volume.
   document.getElementById('fdk-weight-scope').textContent=fdkText('対象点の位置で、幅Tにわたり合算した補間重みです。フィルタ前の取得応答と掛け合わせて、同じ位置の応答を再計算できます。角度は0～360°に折り返しますが、異なる回転のデータは別の点として保持しています。','Weights sum over T at the object point. Combined with unfiltered acquired responses, they reproduce that response sample. Angles are folded into 0–360°, while samples from different turns retain separate identities.');
@@ -73,18 +78,18 @@ function renderFdkSelected(){
   document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。角度を選んで、候補データからSSPzまで確認できます。','All 360 conditions are complete. Select an angle to inspect the candidates, weights and SSPz.');
   const c=fdkResult.config;document.getElementById('fdk-result-config').textContent=`${c.rows} rows × ${c.rowWidth.toFixed(2)} mm / pitch ${c.beamPitch} / r = ${c.radius} mm / ${c.viewSamples} views/turn / 360 start angles / full fan Φ = ${c.fullFanAngleDeg}° / source support = ${c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg}° / T = axial averaging width = ${(c.axialAverageMm??0).toFixed(2)} mm`;
   renderZffsSelected();
-  syncAxialMovie();
+  if(!geometryPlayback.playing)syncAxialMovie();
   fdkWorkflowAvailability(true);document.getElementById('fdk-json').disabled=false;document.getElementById('fdk-xlsx').disabled=false;
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
 // Only the scene data differ; palette, opacity, marker size and layout are shared.
-function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
-  if(r.config.zFfsEnabled)return drawZffsPanel(canvas,r,zoom?3:2);
+function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all'){
+  if(r.config.zFfsEnabled&&!r.weightAudit?.pairedSamples)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
   const paired=!!audit.pairedSamples,samples=paired?SSPZAngles.expand(audit.pairedSamples,c):audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
   const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
-  const rebinned=r.coordinateSystem==='rebinned-theta'||!!r.reference;
+  const rebinned=paired||r.coordinateSystem==='rebinned-theta'||!!r.reference;
   const physical=!zoom&&!rebinned;
   const rowMin=rebinned||physical?0:Math.min(...samples.map(q=>q.row))-2;
   const rowMax=rebinned||physical?c.rows-1:Math.max(...samples.map(q=>q.row))+2;
@@ -126,6 +131,10 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
       }
     }
   }
+  if(c.zFfsEnabled){
+    const reach=c.zFfsSourceOffsetMm*(1+(1+c.radius/c.sourceRadius)/c.zFfsMagnification);
+    extent+=reach;minCentral-=reach;maxCentral+=reach;
+  }
   const xLimit=symmetricNiceAxis(zoom?zoomLimit:extent,3).xMax;
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
@@ -135,13 +144,24 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
   const trace={id:'acquired',family:'direct',angles,axial,scales};
   const traceFamilies=[trace];
   if(paired)traceFamilies.push({id:'complementary-rebinned',family:'complementary',angles,axial:opposedAxial,scales:opposedScales});
+  if(c.zFfsEnabled){
+    for(const family of [...traceFamilies]){
+      const original=family.axial;
+      for(const focus of [0,1]){
+        const offset=(focus?1:-1)*c.zFfsSourceOffsetMm;
+        const axial=original.map((z,i)=>z+offset*(1-family.scales[i]*c.sourceRadius/c.zFfsSourceDetectorMm));
+        if(focus===0)family.axial=axial;
+        else traceFamilies.push({...family,id:family.id+'-focus-b',axial});
+      }
+    }
+  }
   const referenceView=q=>paired?q.referenceView:q.view;
   const diagram={totalRows:rows,z0:r.zObject,overviewXLimit:extent,zoomXLimit:zoomLimit,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
     weightedPoints:zoom?samples.filter(q=>((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
-      x:q.z,y:fold(referenceView(q)),row:q.row-rowMin,weight:reference?q.referenceWeight:q.weight,
-      referenceViewIndex:referenceView(q),absoluteViewIndex:q.view,traceFamilyId:paired&&q.direction?'complementary-rebinned':'acquired',dataKind:'unfiltered-data'
+      x:q.z,y:fold(referenceView(q)),row:q.row-rowMin,focus:q.focus??0,weight:reference?q.referenceWeight:q.weight,
+      referenceViewIndex:referenceView(q),absoluteViewIndex:q.view,traceFamilyId:(paired&&q.direction?'complementary-rebinned':'acquired')+(c.zFfsEnabled&&q.focus?'-focus-b':''),dataKind:'unfiltered-data'
     })):[],
     referenceViewSamples:c.viewSamples,renderedAngleSamples:Math.ceil(c.viewSamples/stride),acquiredTraceSamples:angles.length,
     xAxisLabel:fdkText('候補列中心  zᵢ − z₀  (mm)','Candidate row centre  zᵢ − z₀  (mm)'),
@@ -165,7 +185,14 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false){
     diagram.weightLegendNote=fdkText('仮想平面上の行補間重み。軌道の重なりは混色。','Flat-grid row weights; trace overlaps blend.');
   }
   canvas.dataset.renderScale=String(canvas.width/900);
+  // Split the same scene by role; axis limits and each retained weight stay fixed.
+  diagram.visibleRole=role;
+  if(role!=='all'){
+    diagram.traceFamilies=diagram.traceFamilies.filter(t=>t.family===role);
+    diagram.weightedPoints=diagram.weightedPoints.filter(p=>p.traceFamilyId.startsWith('complementary-')===(role==='complementary'));
+  }
   drawDiagram(canvas,diagram,zoom?'zoom':'overview');
+  canvas.dataset.visibleRole=role;
   for(const key of Object.keys(canvas.dataset))if(canvas.dataset[key]==='undefined')delete canvas.dataset[key];
   canvas.dataset.renderState='ready';
   canvas.dataset.complementaryMarkerShape=paired?'triangle':'not-applicable-in-own-angle-coordinate';
@@ -202,9 +229,10 @@ function addFdkWorkflowSheets(sheets){
   sheets.push(['Selected_weights',[['start_index','view_unwrapped','row_index','theta_rad','source_angle_rad','z_relative_mm',r.model?.kind==='rri'?'RRI_weight':'weight',...(r.reference?['reference_weight']:[]),'angular_mean_factor','unfiltered_acquired_value'],...r.weightAudit.samples.map(q=>[selectedStateIndex,q.view,q.row,q.theta,q.beta,q.z,q.weight,...(r.reference?[q.referenceWeight]:[]),r.weightAudit.db,q.acquiredValue])]]);
 }
 async function exportFdkWorkflowCanvas(id){
-  if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id==='fdk-geometry'||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
-  if(id==='fdk-geometry')drawFdkCandidateDiagram(c,fdkSelectedResult,false);
-  else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'));
+  if(!fdkSelectedResult)return;const source=document.getElementById(id),c=document.createElement('canvas'),diagram=id.startsWith('fdk-geometry')||id.startsWith('fdk-weights');c.width=Math.round((diagram?80:180)/25.4*600);c.height=Math.round(c.width*source.height/source.width);
+  const role=id.endsWith('-complementary')?'complementary':id.endsWith('-direct')?'direct':'all';
+  if(id.startsWith('fdk-geometry'))drawFdkCandidateDiagram(c,fdkSelectedResult,false,false,role);
+  else if(id.startsWith('fdk-weights'))drawFdkCandidateDiagram(c,fdkSelectedResult,true,id.endsWith('rri'),role);
   else if(id==='fdk-selected-profile')drawFdkSelectedProfile(c);
   else drawFdkDifference(c,fdkResult);
   const blob=await new Promise(resolve=>c.toBlob(resolve));downloadBlob(`${fdkFileStem(fdkResult)}_${id}_angle-${selectedStateIndex}_600dpi.png`,await pngWithResolution(blob,600),'image/png');

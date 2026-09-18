@@ -38,7 +38,7 @@ function initializeAxialMovie(after){
   after.after(section);
   const el=id=>document.getElementById('axial-movie-'+id);
   el('mode').onchange=()=>{stopAxialMovie();axialMovie.mode=el('mode').value;axialMovie.frame=0;requestAxialMovie(axialMovie.index);};
-  el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{axialMovie.playing=true;el('play').textContent=fdkText('Ⅱ 一時停止','Ⅱ Pause');scheduleAxialMovie();}};
+  el('play').onclick=()=>{if(axialMovie.playing)stopAxialMovie();else{stopGeometryPlayback();axialMovie.playing=true;el('play').textContent=fdkText('Ⅱ 一時停止','Ⅱ Pause');scheduleAxialMovie();}};
   el('prev').onclick=()=>{stopAxialMovie();advanceAxialMovie(-1);};el('next').onclick=()=>{stopAxialMovie();advanceAxialMovie(1);};
   el('reset').onclick=()=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(0);else{axialMovie.frame=0;renderAxialMovie();}};
   el('position').oninput=e=>{stopAxialMovie();if(axialMovie.mode==='phase')requestAxialMovie(Number(e.target.value));else{axialMovie.frame=Number(e.target.value);renderAxialMovie();}};

@@ -417,6 +417,18 @@ footer p { margin: 0.2rem 0; }
 .state-controls input[type=range] { flex: 1; min-width: 120px; }
 #fdk-inspect-label { font-weight: 600; margin-left: 1rem; }
 #fdk-weight-scope { line-height: 1.6; }
+.geometry-role-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; align-items: start; margin-top: 1rem; }
+#fdk-panel .geometry-role-grid .chart-card { max-width: 600px; min-width: 0; padding: .8rem; }
+.geometry-playback-controls { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin-top: .8rem; grid-column: 1 / -1; }
+.geometry-playback-controls label { min-width: 120px; }
+.geometry-playback-controls select { display: block; font: inherit; padding: .5rem; border: 1px solid #b9c9d6; border-radius: 5px; background: white; }
+.geometry-playback-controls button { font: inherit; padding: .65rem 1rem; border: 1px solid #2166ac; border-radius: 6px; background: #2166ac; color: white; cursor: pointer; }
+.geometry-playback-controls button:disabled { opacity: .5; cursor: default; }
+.geometry-playback-controls button:focus-visible { outline: 3px solid #e8a500; outline-offset: 3px; }
+.geometry-play-note { font-size: .9rem; line-height: 1.7; grid-column: 1 / -1; }
+#fdk-inspection-status { grid-column: 1 / -1; }
+#geometry-play-status { align-self: center; font-size: .9rem; }
+@media(max-width: 1150px) { .geometry-role-grid { grid-template-columns: 1fr; } }
 
 /* Share the same density painter with 600-dpi exports. Keep labels legible on
    narrow screens through keyboard-accessible horizontal scrolling. */

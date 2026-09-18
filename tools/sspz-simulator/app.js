@@ -81,7 +81,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-18.7 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-18.8 / shared axial response 2026-09-18.7 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -764,7 +764,7 @@ function mergeDiagramMarkers(points) {
       || ![point.x, point.y, point.weight].every(Number.isFinite) || point.weight < 0) {
       throw new Error("Invalid acquired-sample identity or coefficient in diagram marker");
     }
-    const key = `${point.referenceViewIndex}:${point.absoluteViewIndex}:${point.row}`;
+    const key = `${point.referenceViewIndex}:${point.absoluteViewIndex}:${point.focus ?? 0}:${point.row}`;
     const previous = merged.get(key);
     if (!previous) {
       merged.set(key, {
@@ -829,8 +829,9 @@ function drawWrappedLegendText(ctx, text, left, y, maxWidth, lineHeight = 22) {
 function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = true) {
   const paired = diagram.traceFamilies?.some(trace => trace.family === "complementary");
   const rolesOnly = diagram.roleMarkersOnly && includeMarkers;
-  const items = [{ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly }];
-  if (paired || rolesOnly) items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
+  const items = [];
+  if (diagram.visibleRole !== 'complementary') items.push({ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly });
+  if ((paired || rolesOnly) && diagram.visibleRole !== 'direct') items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
   items.push({ label: localizedText("目的断面", "Target plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
@@ -1049,7 +1050,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.traceSamplesPerFamily = String(diagram.acquiredTraceSamples);
   canvas.dataset.complementaryMarkerShape = "triangle";
   canvas.dataset.complementaryLineStyle = "dashed";
-  canvas.dataset.markerAggregation = "referenceViewIndex:absoluteViewIndex:row;sum-contributions";
+  canvas.dataset.markerAggregation = "referenceViewIndex:absoluteViewIndex:focus:row;sum-contributions";
   canvas.dataset.rawMarkerContributions = String(mode === "zoom" ? diagram.weightedPoints.length : 0);
   canvas.dataset.uniqueAcquiredMarkers = String(mergedPoints.length);
   canvas.dataset.inlineRowLabels = "0";

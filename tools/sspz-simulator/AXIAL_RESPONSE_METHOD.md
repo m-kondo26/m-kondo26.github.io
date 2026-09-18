@@ -186,3 +186,20 @@ question of nearby data excluded by that window was resolved separately in Web 2
 ## Source-support verification (Web 2026-09-18.7)
 
 `tests/source-support.mjs` independently enumerates all detector rows and eligible turns using Cartesian ray lengths and an acquired-source grid. It covers 1, 4, 80, 160 and 320 rows, three pitches, both interpolation rules, the parallel reference and optional focal switching. Unsupported cases must report missing support. It checks the user's recovered near datum, a direct acquired-data response oracle, one-row responses, and saved before/after profiles. Animation tests separately verify the exact T-integrated weights, physical identities and full-turn directional normalization. These are implementation and declared-model checks, not scanner validation or final manuscript convergence.
+
+## Synchronized role views and start-angle playback (Web 2026-09-18.8)
+
+Section 2 displays direct data, complementary data, and their overlay on identical
+axes, for both trajectories and T-integrated weights. A role view filters the
+original scene; it does not renormalize weights or alter candidate selection.
+Optional focal switching retains focus identity within each directional role.
+Each panel's PNG export uses the same role filter and the existing 600-dpi scale.
+
+Playback advances the existing start-angle selector, waits for that angle's
+actual response audit, updates all six diagrams and the selected SSPz together,
+and loops at 360 degrees. It compares different acquisition start phases at a
+fixed target, not tube/table motion during one scan. Playback is opt-in, pauses
+when the page is hidden, and uses a slower initial speed for reduced motion.
+`tests/geometry-playback.mjs` checks the exact union of role views, shared axes,
+unchanged weights, marker trajectories including focal identity, and immutable
+response data. The numerical model and worker are unchanged from 2026-09-18.7.

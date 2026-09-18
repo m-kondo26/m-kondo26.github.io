@@ -165,9 +165,8 @@ function runFdkSimulation(){
         for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
-        drawFdkCandidateDiagram(document.getElementById('fdk-geometry'),m.result,false);
-        drawFdkCandidateDiagram(document.getElementById('fdk-weights-primary'),m.result,true);
-        document.querySelectorAll('[data-fdk-canvas="fdk-geometry"],[data-fdk-canvas="fdk-weights-primary"]').forEach(b=>b.disabled=false);
+        drawFdkRoleDiagrams(m.result);
+        document.querySelectorAll('[data-fdk-canvas^="fdk-geometry"],[data-fdk-canvas^="fdk-weights-primary"]').forEach(b=>b.disabled=false);
         status.textContent=fdkText('取得応答がないため、展開図のみ表示します。','No acquired point response; geometry only.');
         document.getElementById('fdk-summary').textContent=fdkText('点対象の信号を取得できません。検出器開口・隙間・標本間隔を確認してください。候補配置と重みは表示できますが、SSPz・幅指標は算出できません。','The point signal is not acquired. Check detector aperture, gaps and sampling. Candidate geometry and weights remain available; SSPz and widths are undefined.');
         renderZffsSelected();releaseWorker();return;
@@ -175,8 +174,8 @@ function runFdkSimulation(){
       fdkResult=m.result;renderFdkResult(fdkResult);progress.value=1;setBusy(false);fdkToggleDownloads(true);status.textContent=fdkText('完了 ','Completed ')+((performance.now()-startedAt)/1000).toFixed(1)+' s / 360 angles';selectFdkState(selectedStateIndex,true);
     }else if(m.type==='axial-animation'){receiveAxialMovie(m);}
     else if(m.type==='axial-animation-error'){failAxialMovie(m);}
-    else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest){fdkSelectedResult=m.result;renderFdkSelected();}}
-    else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
+    else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest)receiveGeometryInspection(m.result);}
+    else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){geometryPlayback.pending=false;stopGeometryPlayback();document.getElementById('geometry-play').disabled=true;document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
     else if(m.type==='cancelled'){setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
       let text=m.message;
