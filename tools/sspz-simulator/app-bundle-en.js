@@ -3086,7 +3086,7 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
       value: 'fdk', number: '②',
       title: fdkText('', 'Interpolate rows in each direction'),
       chip: fdkText('', 'Cone geometry'),
-      description: fdkText('', 'Weight adjacent rows separately in each direction, normalize across all valid points, and combine them.'),
+      description: fdkText('', 'Within the acquisition interval, interpolate adjacent rows around the plane in each direction. Only rows closer than one row spacing at the target position receive weight.'),
       detail: fdkText('', 'This is RRI-equivalent linear interpolation (row-to-row interpolation). The number of points is not always four.'),
     },
     {
@@ -3162,12 +3162,25 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
   const details = document.createElement('details');
   details.className = 'model-choice-notes';
   const summary = document.createElement('summary');
-  summary.textContent = fdkText('', 'Schematic conditions and model details');
+  summary.textContent = fdkText('', 'Candidate search limits and schematic details');
+  const searchLimits = document.createElement('ul');
+  for (const text of [
+    fdkText('', 'For ① and ②, search acquired tube angles over 360° plus twice the full fan opening, centred on the evaluation plane. A 50° full opening gives a 460° interval.'),
+    fdkText('', 'For ②, use acquired adjacent rows in each supported direction and turn. A row at or beyond one target-projected row spacing from the plane has zero weight. With a 1 mm projected spacing, only distances below 1 mm contribute.'),
+    fdkText('', 'For ①, select the nearest bracketing positions within the same acquisition interval. There is no row-spacing distance limit as in ②.'),
+    fdkText('', 'Configured thickness T is the averaging width, not a candidate-distance limit. At detector edges, ② normalizes weights over available rows; if no row has positive weight, calculation stops for insufficient support.'),
+  ]) { const item = document.createElement('li'); item.textContent = text; searchLimits.append(item); }
+  const searchBasis = document.createElement('p');
+  searchBasis.append(document.createTextNode(fdkText('', 'Basis: the local range in ② follows adjacent-row linear interpolation described by Hsieh et al. (2007). The acquisition-angle interval refers to classical opposing-beam interpolation. Detector-edge handling and combination across turns are defined by this model.')));
+  const searchBasisLink = document.createElement('a');
+  searchBasisLink.href = fdkText('methods.html?topic=axial&lang=ja#rri-search-basis', 'methods.html?topic=axial&lang=en#rri-search-basis');
+  searchBasisLink.textContent = fdkText('', 'Sources, equations and applicability');
+  searchBasis.append(document.createTextNode(' '), searchBasisLink);
   const detailText = document.createElement('p');
   detailText.textContent = fdkText('', 'In schematics ① and ②, direct data lie at −0.8 and +0.2 mm, complementary data at −0.3 and +0.7 mm, and the target plane at 0 mm. Method ① selects −0.3 and +0.2 mm; method ② weights all four points. Coincident data, neighboring turns, focal shifts and detector boundaries can change the point count and combined weights. The acquisition-angle support is 360° for ③ and 360° plus twice the full fan angle for ① and ②. All three are axial response models, without image reconstruction.');
   const weightExplanation = document.createElement('p');
   weightExplanation.textContent = fdkText('', 'In this example, ① assigns weights 0.40 and 0.60 to positions −0.3 and +0.2 mm. In ②, the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ② the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
-  details.append(summary, detailText, weightExplanation);
+  details.append(summary, searchLimits, searchBasis, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
   selected.setAttribute('aria-live', 'polite');
@@ -4507,7 +4520,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-19.2 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-19.3 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
