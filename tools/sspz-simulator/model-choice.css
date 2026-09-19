@@ -104,13 +104,21 @@
   display: block;
   width: 100%;
   max-width: 340px;
-  height: 126px;
+  height: 166px;
   margin: 0 auto;
   overflow: visible;
   font-family: inherit;
   font-size: 12px;
   fill: #334f63;
 }
+.model-choice .model-choice-weight,
+.model-choice .model-choice-position {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.model-choice .model-choice-weight { font-weight: 700; fill: #183449; }
 .model-choice .model-choice-detail {
   display: block;
   color: #4e6577;

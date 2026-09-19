@@ -3151,7 +3151,7 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
   }
   const note = document.createElement('p');
   note.className = 'model-choice-sketch-note';
-  note.textContent = fdkText('', 'Schematics: ① and ② show two rows in each of two directions. Filled points are selected. These are not results for the current inputs.');
+  note.textContent = fdkText('', 'Schematics: weight w is above each point; position z (mm) is below. Filled points are selected; weights sum to 1 in each diagram. These two-direction, two-row examples are not results for the current inputs.');
   const comparison = document.createElement('p');
   comparison.className = 'model-choice-comparison';
   const pairRule = document.createElement('span');
@@ -3165,7 +3165,9 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
   summary.textContent = fdkText('', 'Schematic conditions and model details');
   const detailText = document.createElement('p');
   detailText.textContent = fdkText('', 'In schematics ① and ②, direct data lie at −0.8 and +0.2 mm, complementary data at −0.3 and +0.7 mm, and the target plane at 0 mm. Method ① selects −0.3 and +0.2 mm; method ② weights all four points. Coincident data, neighboring turns, focal shifts and detector boundaries can change the point count and combined weights. The acquisition-angle support is 360° for ③ and 360° plus twice the full fan angle for ① and ②. All three are axial response models, without image reconstruction.');
-  details.append(summary, detailText);
+  const weightExplanation = document.createElement('p');
+  weightExplanation.textContent = fdkText('', 'In this example, ① assigns weights 0.40 and 0.60 to positions −0.3 and +0.2 mm. In ②, the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ② the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
+  details.append(summary, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
   selected.setAttribute('aria-live', 'polite');
@@ -3193,21 +3195,22 @@ function axialModelCandidateSketch(model) {
     ? fdkText('', '①: select the nearest position on each side of the target plane')
     : fdkText('', '②: interpolate adjacent rows in each direction; this example weights four points');
   const x = z => 170 + 75 * z;
-  const point = (z, y, direction, active) => {
-    const px = x(z), color = direction ? '#b55b13' : '#2166a5', fill = active ? color : '#fff';
+  const point = (z, y, direction, weight) => {
+    const px = x(z), color = direction ? '#b55b13' : '#2166a5', fill = weight > 0 ? color : '#fff';
     const shape = direction
       ? `<path d="M${px},${y-6} L${px-6.5},${y+5.5} L${px+6.5},${y+5.5} Z"/>`
       : `<circle cx="${px}" cy="${y}" r="5.5"/>`;
-    return `<g stroke="${color}" fill="${fill}" stroke-width="1.8">${shape}</g><text x="${px}" y="${y+20}" text-anchor="middle">${z > 0 ? '+' : '−'}${Math.abs(z).toFixed(1)}</text>`;
+    return `<g class="model-choice-sample" data-z="${z}" data-weight="${weight}"><g stroke="${color}" fill="${fill}" stroke-width="1.8">${shape}</g><text class="model-choice-weight" x="${px}" y="${y-18}" text-anchor="middle">w = ${weight.toFixed(2)}</text><text class="model-choice-position" x="${px}" y="${y+22}" text-anchor="middle">z = ${z > 0 ? '+' : '−'}${Math.abs(z).toFixed(1)}</text></g>`;
   };
-  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${title}</title>
-    <line x1="170" y1="23" x2="170" y2="113" stroke="#b61d37" stroke-width="1.6"/>
-    <text x="170" y="16" text-anchor="middle" fill="#a51a31">${fdkText('', 'Target plane 0')}</text>
-    <text x="5" y="47">${fdkText('', 'Direct')}</text><text x="5" y="91">${fdkText('', 'Opposing')}</text>
-    <line x1="99" y1="42" x2="257" y2="42" stroke="#c7d5e1" stroke-width="1"/>
-    <line x1="99" y1="86" x2="257" y2="86" stroke="#e3d1c1" stroke-width="1" stroke-dasharray="4 3"/>
-    ${point(-.8,42,0,model==='fdk')}${point(.2,42,0,true)}${point(-.3,86,1,true)}${point(.7,86,1,model==='fdk')}
-    <text x="279" y="119" text-anchor="end" fill="#596b79">z (mm)</text></svg>`;
+  const rowWeights = model === 'fdk' ? [.10,.40,.35,.15] : [0,.60,.40,0];
+  return `<svg viewBox="0 0 290 166" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${title}</title>
+    <line x1="170" y1="23" x2="170" y2="148" stroke="#b61d37" stroke-width="1.6"/>
+    <text x="170" y="16" text-anchor="middle" fill="#a51a31">${fdkText('', 'Target plane z = 0')}</text>
+    <text x="5" y="60">${fdkText('', 'Direct')}</text><text x="5" y="125">${fdkText('', 'Opposing')}</text>
+    <line x1="99" y1="55" x2="257" y2="55" stroke="#c7d5e1" stroke-width="1"/>
+    <line x1="99" y1="120" x2="257" y2="120" stroke="#e3d1c1" stroke-width="1" stroke-dasharray="4 3"/>
+    ${point(-.8,55,0,rowWeights[0])}${point(.2,55,0,rowWeights[1])}${point(-.3,120,1,rowWeights[2])}${point(.7,120,1,rowWeights[3])}
+    <text x="279" y="162" text-anchor="end" fill="#596b79">${fdkText('', 'Position z (mm)')}</text></svg>`;
 }
 
 function axialModelParallelSketch() {
@@ -4504,7 +4507,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-19.1 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-19.2 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
