@@ -144,6 +144,40 @@
   line-height: 1.6;
 }
 .model-choice .model-choice-comparison > span { min-width: 0; }
+.model-choice .model-choice-range {
+  margin: 1rem 0;
+  font-size: .94rem;
+  line-height: 1.65;
+}
+.model-choice .model-choice-range table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: inherit;
+}
+.model-choice .model-choice-range caption {
+  padding: 0 0 .55rem;
+  text-align: left;
+  font-weight: 700;
+  color: #183449;
+}
+.model-choice .model-choice-range th,
+.model-choice .model-choice-range td {
+  padding: .65rem .8rem;
+  border: 1px solid #ccd9e2;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.model-choice .model-choice-range thead th { background: #edf4f9; }
+.model-choice .model-choice-range th:first-child { width: 24%; }
+.model-choice .model-choice-range tbody th { background: #f7fafc; }
+.model-choice .model-choice-range td p { margin: 0 0 .25rem; }
+.model-choice .model-choice-range > p { margin: .6rem 0 0; }
+.model-choice .model-choice-range a { color: #175b96; text-underline-offset: .15em; }
+.model-choice .model-choice-range-policy { color: #4e6577; font-size: .9rem; }
 .model-choice .model-choice-notes {
   margin: .5rem 0 0;
   color: #4e6577;
@@ -168,6 +202,11 @@
   .parameter-grid .model-choice .model-choice-card,
   .model-choice .model-choice-card { padding: .85rem; }
   .model-choice .model-choice-diagram { margin-top: 0; }
+}
+@media (max-width: 480px) {
+  .model-choice .model-choice-range th:first-child { width: 30%; }
+  .model-choice .model-choice-range th,
+  .model-choice .model-choice-range td { padding: .55rem; }
 }
 @media (forced-colors: active) {
   .model-choice .model-choice-card.is-selected { border-color: Highlight; }

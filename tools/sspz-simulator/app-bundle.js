@@ -3159,28 +3159,57 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
   const pairReference = document.createElement('span');
   pairReference.textContent = fdkText('①↔③：発散なしの比較基準との差を見る。', '①↔③: compare against the nondivergent reference.');
   comparison.append(pairRule, pairReference);
-  const details = document.createElement('details');
-  details.className = 'model-choice-notes';
-  const summary = document.createElement('summary');
-  summary.textContent = fdkText('候補を探す範囲・模式図の補足', 'Candidate search limits and schematic details');
-  const searchLimits = document.createElement('ul');
-  for (const text of [
-    fdkText('①②共通：評価する断面を基準に、X線管角360°＋全ファン角の2倍の取得範囲から探します。全ファン角50°なら460°です。', 'For ① and ②, search acquired tube angles over 360° plus twice the full fan opening, centred on the evaluation plane. A 50° full opening gives a 460° interval.'),
-    fdkText('②：各方向・各回転について、目的断面に隣接する取得済みの列を使います。その方向の列間隔を対象位置へ投影した幅より遠い列、またはちょうどその距離の列は重み0です。列間隔1 mmなら距離1 mm未満が対象です。', 'For ②, use acquired adjacent rows in each supported direction and turn. A row at or beyond one target-projected row spacing from the plane has zero weight. With a 1 mm projected spacing, only distances below 1 mm contribute.'),
-    fdkText('①：同じ取得範囲内で断面を挟む最近傍の2位置を選びます。②のような列間隔による距離制限はありません。', 'For ①, select the nearest bracketing positions within the same acquisition interval. There is no row-spacing distance limit as in ②.'),
-    fdkText('設定スライス厚Tは平均する幅であり、候補を探す距離の上限ではありません。②の検出器端では存在する列だけを使って重みを正規化し、どの列にも重みが付かなければ支持不足として停止します。', 'Configured thickness T is the averaging width, not a candidate-distance limit. At detector edges, ② normalizes weights over available rows; if no row has positive weight, calculation stops for insufficient support.'),
-  ]) { const item = document.createElement('li'); item.textContent = text; searchLimits.append(item); }
+  const searchRange = document.createElement('div');
+  searchRange.className = 'model-choice-range';
+  const rangeTable = document.createElement('table');
+  const rangeCaption = rangeTable.createCaption();
+  rangeCaption.textContent = fdkText('②の候補範囲と根拠', 'Candidate ranges and their basis in ②');
+  const headRow = rangeTable.createTHead().insertRow();
+  for (const text of [fdkText('範囲', 'Range'), fdkText('現在の定義と根拠', 'Current definition and basis')]) {
+    const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = text; headRow.append(cell);
+  }
+  const rangeBody = rangeTable.createTBody();
+  for (const entry of [
+    {
+      title: fdkText('重みを付ける列の範囲', 'Rows receiving weight'),
+      definition: fdkText('実・対向それぞれで、目的断面に隣接する列を線形補間します。', 'Linearly interpolate adjacent rows around the target plane separately on the direct and complementary sides.'),
+      source: fdkText('Hsiehら（2007）：p.067001-2、図5・式(6)', 'Hsieh et al. (2007): p.067001-2, Fig.5 and Eq.(6)'),
+      href: 'https://doi.org/10.1117/1.2746866',
+    },
+    {
+      title: fdkText('探索する取得角度の範囲', 'Acquired angles searched'),
+      definition: fdkText('360°＋全ファン角の2倍。古典的な対向ビーム補間を参照し、①②に共通採用しています。全ファン角50°なら460°です。', '360° plus twice the full fan opening. Both ① and ② adopt this interval with reference to classical opposing-beam interpolation. A 50° full opening gives 460°.'),
+      source: fdkText('Toki：EP0450152B1、図4～6・図10B', 'Toki: EP0450152B1, Figs.4–6 and 10B'),
+      href: 'https://patents.google.com/patent/EP0450152B1/en',
+    },
+  ]) {
+    const row = rangeBody.insertRow(), title = document.createElement('th');
+    title.scope = 'row'; title.textContent = entry.title; row.append(title);
+    const cell = row.insertCell(), definition = document.createElement('p'), source = document.createElement('a');
+    definition.textContent = entry.definition; source.href = entry.href; source.textContent = entry.source;
+    cell.append(definition, source);
+  }
+  const localRange = document.createElement('p');
+  localRange.textContent = fdkText('②では、目的断面からの距離が、対象位置での列間隔sより小さい列に重みが付きます。s＝1 mmなら距離1 mm未満です。設定スライス厚Tは平均する幅であり、候補を探す距離の上限ではありません。', 'In ②, a row receives weight only when its distance from the target plane is less than the local projected row spacing s. For s = 1 mm, the distance must be below 1 mm. Configured thickness T is the averaging width, not a candidate-distance limit.');
   const searchBasis = document.createElement('p');
-  searchBasis.append(document.createTextNode(fdkText('範囲の根拠：②の局所範囲はHsiehら（2007）の隣接列間の線形補間、取得角度範囲は古典的な対向ビーム補間の説明を参照しています。検出器端の処理と複数回転の合成は、本モデルで定義しています。', 'Basis: the local range in ② follows adjacent-row linear interpolation described by Hsieh et al. (2007). The acquisition-angle interval refers to classical opposing-beam interpolation. Detector-edge handling and combination across turns are defined by this model.')));
+  searchBasis.className = 'model-choice-range-policy';
+  searchBasis.append(document.createTextNode(fdkText('取得角度範囲の多列モデルへの適用、検出器端の残存列や複数回転の重みの正規化は、本モデルで採用した定義です。', 'Applying this acquisition interval to the multirow model, and normalizing available detector-edge rows and multiple-turn weights, are definitions adopted by this model.')));
   const searchBasisLink = document.createElement('a');
   searchBasisLink.href = fdkText('methods.html?topic=axial&lang=ja#rri-search-basis', 'methods.html?topic=axial&lang=en#rri-search-basis');
   searchBasisLink.textContent = fdkText('根拠文献・式・適用範囲', 'Sources, equations and applicability');
   searchBasis.append(document.createTextNode(' '), searchBasisLink);
+  searchRange.append(rangeTable, localRange, searchBasis);
+  const details = document.createElement('details');
+  details.className = 'model-choice-notes';
+  const summary = document.createElement('summary');
+  summary.textContent = fdkText('模式図と計算方法の補足', 'Schematic and calculation details');
+  const selectionLimits = document.createElement('p');
+  selectionLimits.textContent = fdkText('①は同じ取得範囲内で断面を挟む最近傍の2位置を選び、列間隔による距離制限は設けません。②は検出器端で存在する列だけを使って重みを正規化し、どの列にも重みが付かなければ支持不足として停止します。', 'Method ① selects the nearest bracketing positions within the same acquisition interval, without a row-spacing distance limit. At detector edges, ② normalizes weights over available rows; if no row has positive weight, calculation stops for insufficient support.');
   const detailText = document.createElement('p');
   detailText.textContent = fdkText('①②の模式図は、実データの位置 −0.8、+0.2 mm、対向データの位置 −0.3、+0.7 mm、目的断面 0 mm の例です。①は −0.3、+0.2 mm の2位置を選び、②は4点に重みを付けます。実際には、同一位置のデータ、隣接回転や焦点移動、検出器端の条件によって点数や合成比が変わります。③の取得角度範囲は360°、①②は360°＋全ファン角の2倍です。いずれも体軸方向の応答モデルで、画像再構成は行いません。', 'In schematics ① and ②, direct data lie at −0.8 and +0.2 mm, complementary data at −0.3 and +0.7 mm, and the target plane at 0 mm. Method ① selects −0.3 and +0.2 mm; method ② weights all four points. Coincident data, neighboring turns, focal shifts and detector boundaries can change the point count and combined weights. The acquisition-angle support is 360° for ③ and 360° plus twice the full fan angle for ① and ②. All three are axial response models, without image reconstruction.');
   const weightExplanation = document.createElement('p');
   weightExplanation.textContent = fdkText('この例では、①は位置 −0.3 mm に重み0.40、+0.2 mm に0.60を付けます。②は実データ −0.8/+0.2 mm に0.10/0.40、対向データ −0.3/+0.7 mm に0.35/0.15を付けます。同じ補間ペアでは近い側ほど重みが大きくなります。②では各方向の列間隔を基準に重みを決めるため、異なる方向の点どうしは距離だけで重みを比較できません。', 'In this example, ① assigns weights 0.40 and 0.60 to positions −0.3 and +0.2 mm. In ②, the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ② the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
-  details.append(summary, searchLimits, searchBasis, detailText, weightExplanation);
+  details.append(summary, selectionLimits, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
   selected.setAttribute('aria-live', 'polite');
@@ -3197,7 +3226,7 @@ function initializeAxialModelChoice(initial = 'axial', changed) {
   }
   select.value = methods.some(method => method.value === initialValue) ? initialValue : 'axial';
   select.addEventListener('change', () => {sync();if (typeof changed === 'function') changed(select.value);});
-  element.append(legend, scope, select, grid, note, comparison, details, selected);
+  element.append(legend, scope, select, grid, note, comparison, searchRange, details, selected);
   sync();
   return {element, select, sync};
 }
@@ -4520,7 +4549,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-19.3 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-19.4 / shared axial response 2026-09-18.9 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
