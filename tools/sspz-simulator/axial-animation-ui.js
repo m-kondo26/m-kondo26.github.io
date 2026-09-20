@@ -129,7 +129,7 @@ function advanceAxialMovie(delta){
     axialMovie.frame=next;renderAxialMovie();scheduleAxialMovie();
   }
 }
-function axialMovieBackground(audit){
+function axialMovieBackground(audit,candidatesOnly=false){
   const c=audit.config,V=c.viewSamples,angles=[],families=[];
   const groupsAt=v=>axialAnimationGroups(c,v);
   const segments=Math.min(V,360),firstGroups=groupsAt(audit.base);
@@ -147,21 +147,24 @@ function axialMovieBackground(audit){
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
   const diagram={totalRows:c.rows,z0:audit.zObject,zoomXLimit:audit.xHalfSpan,overviewXLimit:audit.xHalfSpan,
     angleMin:audit.angleRange?.[0]??0,angleMax:audit.angleRange?.[1]??360,
-    interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:families,
+    interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:candidatesOnly?[]:families,roleMarkersOnly:candidatesOnly,
     traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],
     xAxisLabel:fdkText('候補列中心  zᵢ − z₀  (mm)','Candidate row centre  zᵢ − z₀  (mm)'),
     yAxisLabel:fdkText('補間対象方向の角度差 (°)','Output interpolation direction (°)'),
     directLegendLabel:fdkText('実データ側 ○','Direct ○'),weightLegendLabel:fdkText('重み w','Weight w'),
-    weightLegendNote:fdkText('各方向の補間重み。対向側の再配列角は±180°。','Weights at each output direction; opposing data: ±180°.'),
+    weightLegendNote:candidatesOnly
+      ?fdkText('選ばれた候補点のみ。○：実データ側、△：対向側。','Selected candidates only. ○: direct; △: opposing.' )
+      :fdkText('各方向の補間重み。対向側の再配列角は±180°。','Weights at each output direction; opposing data: ±180°.'),
     referenceViewSamples:V,renderedAngleSamples:audit.angleSamplesPerTurn};
   const canvas=document.createElement('canvas');canvas.width=900;canvas.height=960;
-  drawDiagram(canvas,diagram,'zoom');return canvas;
+  drawDiagram(canvas,diagram,'zoom');canvas.dataset.geometryTrajectories=String(!candidatesOnly);return canvas;
 }
 function paintAxialMovieWeights(canvas,points,u,accumulated){
   const a=axialMovie.audit,c=a.config;
-  axialMovie.background??=axialMovieBackground(a);
-  const ctx=canvas.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,900,960);ctx.drawImage(axialMovie.background,0,0);
-  const xmin=Number(axialMovie.background.dataset.xMin),xmax=Number(axialMovie.background.dataset.xMax),left=112,top=32,width=754,height=650;
+  axialMovie.background??={};
+  const background=axialMovie.background[accumulated?'total':'instant']??=axialMovieBackground(a,!accumulated);
+  const ctx=canvas.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,900,960);ctx.drawImage(background,0,0);
+  const xmin=Number(background.dataset.xMin),xmax=Number(background.dataset.xMax),left=112,top=32,width=754,height=650;
   const angleMin=a.angleRange?.[0]??0,angleMax=a.angleRange?.[1]??360;
   const x=z=>left+(z-xmin)/(xmax-xmin)*width,y=v=>top+(SSPZAngles.offset(c,a.base,v)-angleMin)/(angleMax-angleMin)*height;
   const role=document.getElementById('axial-movie-role').value;
@@ -184,6 +187,7 @@ function paintAxialMovieWeights(canvas,points,u,accumulated){
   if(axialMovie.mode==='thickness'||!accumulated){ctx.strokeStyle='#2166ac';ctx.lineWidth=2.5;ctx.setLineDash([7,4]);ctx.beginPath();ctx.moveTo(x(u),top);ctx.lineTo(x(u),top+height);ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();canvas.dataset.renderState='ready';canvas.dataset.startIndex=axialMovie.index;canvas.dataset.planeMm=u;canvas.dataset.partial=String(accumulated&&axialMovie.mode==='thickness');canvas.dataset.markerCount=rendered.length;
   canvas.dataset.angleCoordinate='full-turn-output';
+  canvas.dataset.geometryTrajectories=background.dataset.geometryTrajectories;
   canvas.dataset.outputDirectionCount=new Set(rendered.map(q=>SSPZAngles.offset(c,a.base,q.p.referenceView))).size;
   canvas.dataset.angleMin=angleMin;canvas.dataset.angleMax=angleMax;canvas.dataset.nativeAngleDetail=String(!!a.angleRange);
   if(accumulated)axialMovie.hitPoints=rendered;else axialMovie.instantHitPoints=rendered;
@@ -204,7 +208,7 @@ function renderAxialAngleReading(frame){
   el('coordinate-note').textContent=(a.angleRange
     ?`${a.angleRange[0]}–${a.angleRange[1]}°`+fdkText('の範囲を、計算した全方向で拡大表示します。',' is enlarged with every calculated output direction.')
     :fdkText('補間対象の全周0～360°を表示します。','The display covers output directions over 0–360°.'))
-    +fdkText('各方向で使う実データ側（実線・○）と対向側（破線・△）を、同じ高さに示します。（a）の枠は選んだ方向の候補です。',' Direct data (solid, ○) and complementary data (dashed, △) for each output direction share a height. Boxes in (a) mark the selected direction’s candidates.');
+    +fdkText('各方向で使う実データ側○と対向側△を、同じ高さに示します。（a）は選ばれた候補点のみを表示し、枠は強調する方向の候補を示します。',' Direct ○ and complementary △ data for each output direction share a height. Panel (a) shows selected candidates only; boxes highlight the chosen direction’s candidates.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
   const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
   el('source-window').textContent=fdkText('この断面の取得範囲 β：','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('（全ファン角 Φ＝',' (full fan Φ = ')+`${c.axialRule==='parallel'?0:c.fullFanAngleDeg}°)`;
@@ -239,7 +243,7 @@ function renderAxialMovie(){
   el('note').textContent=fdkText('赤線：平均化の中心。青線：幅T内を動く断面。（a）（b）は中央の応答を作る重み、（c）は全評価位置で計算済みのSSPzです。','Red: averaging centre. Blue: plane moving within T. (a) and (b) explain the central response; (c) is the SSPz at all evaluation positions.')+(audit.angleRange
     ?fdkText('拡大範囲内の候補点は、計算した全方向を省略せず表示しています。',' Within the enlarged interval, markers retain every calculated output direction.')
     :fdkText('候補点は',' Markers are sampled every ')+`${(360*audit.stride/c.viewSamples).toFixed(1)}°`+fdkText('間隔で抜粋。',' from the full calculation.'))
-    +fdkText('背景の軌跡には、選択区間外の隣接回転も含みます。',' Background trajectories also include neighboring turns outside the selected interval.');
+    +fdkText('（a）は候補点のみ、（b）の背景は選択区間外の隣接回転を含む列軌跡です。',' Panel (a) shows candidates only; the background in (b) shows row trajectories, including neighboring turns outside the selected interval.');
   renderAxialAngleReading(frame);
   for(const id of ['instant','total','profile']){loadingCanvasStatuses.delete(el(id));el(id).removeAttribute('aria-busy');}
   paintAxialMovieWeights(el('instant'),frame.instant,frame.u,false);paintAxialMovieWeights(el('total'),frame.accumulated,frame.u,true);

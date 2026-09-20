@@ -74,6 +74,7 @@ B(z) = (1/T) ∫[z − T/2, z + T/2] A(u) du</code></pre>
 <p>By default, each curve is independently normalized to minimum zero and maximum one; peak-only normalization is optional. FWHM and FWTM use linear crossings between native calculation samples. Neither width is fitted to T. The calculation checks response tails and width crossings so that a cropped response is not silently accepted as a complete profile.</p>
 
 <h2>Reading the diagrams and playback</h2>
+<p>Panel 2C(a), “Candidates and weights at the moving plane”, shows only the candidates selected at that plane. Background row trajectories are omitted; ○ denotes direct data and △ complementary data. Panel 2C(b) relates the weights accumulated within T to the row trajectories.</p>
 <p>Background trajectories show row positions; markers show selected points; intensity represents interpolation weight. Direct-side, complementary-side, and combined views filter roles from the same result. They are not new calculations whose weights should be added together.</p>
 <ul>
   <li><strong>Constructing the diagram:</strong> the start phase stays fixed while successive acquired source angles reveal more row trajectories. A partially drawn diagram does not trigger a new SSPz calculation.</li>
