@@ -8,10 +8,10 @@ import {zffsConfig} from './zffs-geometry.js';
 import {computeZffsResponse} from './zffs-response.js';
 import {computeSourceSupportedAxialResponse} from './axial-source-response.js';
 import {assertAxialRawDomain,axialRawTailFraction,expandAxialDomain,AXIAL_TAIL_TOLERANCE,AXIAL_MAX_EXTENT_MM} from './axial-domain.js';
-export const AXIAL_RESPONSE_VERSION='2026-09-18.9';
+export const AXIAL_RESPONSE_VERSION='2026-09-24.1';
 const AR_TAU=2*Math.PI;
 export function axialResponseConfig(input={}){
-  const rule=input.axialRule??(input.computationModel==='fdk'?'rri':'merged');
+  const rule=input.axialRule??(input.computationModel==='parallel'?'parallel':input.computationModel==='axial'?'merged':'rri');
   if(!['merged','rri','parallel'].includes(rule))throw Error('AXIAL_RULE');
   const extent=Number(input.zExtent??3);
   if(!Number.isFinite(extent)||extent<1||extent>80)throw Error('AXIAL_DOMAIN: z extent must be 1 to 80 mm');
@@ -23,6 +23,10 @@ export function axialResponseConfig(input={}){
   if(c.beamPitch<=0)throw Error('AXIAL_GEOMETRY_ONLY: stationary table');
   if(c.viewSamples%2)throw Error('AXIAL_VIEWS: an even view count is required');
   c.axialRule=rule;c.edgePolicy=input.edgePolicy??'available';
+  c.comparisonMode=input.comparisonMode??(rule==='merged'?'legacy':'matched-rri');
+  if(!['legacy','matched-rri'].includes(c.comparisonMode))throw Error('AXIAL_COMPARISON_MODE');
+  if(c.comparisonMode==='matched-rri'&&rule==='merged')throw Error('AXIAL_COMPARISON_RULE: matched comparison requires row interpolation');
+  c.interpolationRule=rule==='rri'||c.comparisonMode==='matched-rri'?'rri':'merged';
   if(!['available','strict'].includes(c.edgePolicy))throw Error('AXIAL_EDGE_POLICY');
   c.candidateSearch=input.candidateSearch??'source-fan-window';
   c.fullFanAngleDeg=Number(input.fullFanAngleDeg??50);
@@ -40,13 +44,13 @@ export function axialPairWeights(c,a,b,z){
   for(const [q,direction] of [[a,0],[b,1]]){
     const f=(z-q.sourceZ)/q.spacing+(c.rows-1)/2,n=Math.floor(f),delta=f-n;
     if(c.edgePolicy==='strict'&&(n<0||n+1>=c.rows))throw Error('AXIAL_COVERAGE: full row brackets required');
-    const rows=c.axialRule==='rri'?[n,n+1]:[Math.max(0,Math.min(c.rows-1,n)),Math.max(0,Math.min(c.rows-1,n+1))];
+    const rows=(c.interpolationRule??c.axialRule)==='rri'?[n,n+1]:[Math.max(0,Math.min(c.rows-1,n)),Math.max(0,Math.min(c.rows-1,n+1))];
     for(const row of new Set(rows))if(row>=0&&row<c.rows){
       samples.push({direction,row,z:q.sourceZ+(row-(c.rows-1)/2)*q.spacing,
-        weight:c.axialRule==='rri'?Math.max(0,1-Math.abs(f-row)):0});
+        weight:(c.interpolationRule??c.axialRule)==='rri'?Math.max(0,1-Math.abs(f-row)):0});
     }
   }
-  if(c.axialRule!=='rri'){
+  if((c.interpolationRule??c.axialRule)!=='rri'){
     const coincident=samples.filter(q=>Math.abs(q.z-z)<1e-10);
     if(coincident.length){for(const q of coincident)q.weight=1/coincident.length;}
     else{
@@ -154,7 +158,7 @@ async function computeAxialResponseOnGrid(c,hooks){
     acquisition:{firstView:firstAcquired,lastViewExclusive:lastAcquired+1,viewsPerSlice:nv,rebinnedPairsPerSlice:half},
     model:{version:AXIAL_RESPONSE_VERSION,kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
       geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
-      interpolation:c.axialRule==='rri'?'linear row interpolation within each direction; normalize acquired rows over pair':'nearest bracketing pair from union of both acquired row sets; split coincident samples',
+      comparisonMode:c.comparisonMode,interpolationRule:c.interpolationRule,interpolation:c.interpolationRule==='rri'?'linear row interpolation within each direction; normalize acquired rows over pair':'nearest bracketing pair from union of both acquired row sets; split coincident samples',
       object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',
       angularWeight:'one slice-centred turn; common paired angular mean',extraAxialAveraging:!!c.axialAverageMm,axialAverageMm:c.axialAverageMm,
       profileReadout:'fixed transverse point; moving axial evaluation; no reconstructed image',scientificScope:'geometry and interpolation reference; not a 2D/3D FBP image SSP or commercial reconstruction'}};

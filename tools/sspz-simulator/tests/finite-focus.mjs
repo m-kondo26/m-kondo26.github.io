@@ -16,7 +16,7 @@ const hashes=[
 ];
 const hash=v=>createHash('sha256').update(Buffer.from(v.buffer)).digest('hex');
 for(const [axialRule,zFfsEnabled,raw,profile] of hashes){
-  const r=await computeAxialResponse({...base,axialRule,zFfsEnabled,focalSizeMm:0});
+  const r=await computeAxialResponse({...base,axialRule,comparisonMode:'legacy',zFfsEnabled,focalSizeMm:0});
   assert.equal(hash(r.raw),raw);assert.equal(hash(r.profile),profile);checks++;
 }
 // Independent source quadrature. A physical ray from (S_xy,base+delta+t)

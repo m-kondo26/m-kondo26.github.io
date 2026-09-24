@@ -4,7 +4,7 @@ const FDK_UI_FIELDS={method:'rri',edgePolicy:'available',axialAverageMm:0,object
   xyExtent:1.5,xySamples:17,zExtent:3,zStep:.05,phaseCount:360,phase:0,state:0,fullFanAngleDeg:50,normalization:'minmax'};
 let fdkResult=null;
 let fdkShapeGroups=null;
-const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
+const fdkMethodName=r=>({'axial-merged':'Merged axial','axial-rri':'Cone geometry','axial-parallel':'Parallel reference'}[r.model?.kind]??'Legacy FBP')+(r.config?.zFfsEnabled?' + z-FFS':'');
 const fdkGroups=r=>r.reference?[['CBA',r],['RRI',r.reference]]:[[fdkMethodName(r),r]];
 const fdkSheetPrefix=name=>name.includes('z-FFS')?name.replace(' + z-FFS','_FFS').replace(' axial',''):name;
 const fdkFileStem=r=>(r.reference?'Hsieh_CBA_RRI':fdkMethodName(r))+'_point_T'+(r.config.sliceThicknessMm??r.config.axialAverageMm)+'mm_focus-'+(r.config.focalSizeMm??0)+'mm';
@@ -32,12 +32,13 @@ function fdkCsvRows(r){return [
 function syncFdkMethodControls(){syncZffsUi();const method=document.getElementById('fdk-method');if(!method)return;for(const key of ['edgePolicy'])document.getElementById('fdk-'+key).disabled=runButton.disabled||method.value!=='rri';}
 function readFdkParams(){
   syncSharedFocalControls();
-  const out={computationModel:document.querySelector('#computationModel')?.value??'axial'};
+  const out={computationModel:document.querySelector('#computationModel')?.value??'fdk'};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS)){
     const e=document.getElementById('fdk-'+k);out[k]=e?(typeof v==='number'?Number(e.value):e.value):v;
   }
   out.axialAverageMm=Number(form.elements.namedItem('sliceThicknessMm').value);
-  out.axialRule=out.computationModel==='fdk'?'rri':out.computationModel==='parallel'?'parallel':'merged';
+  out.axialRule=out.computationModel==='parallel'?'parallel':'rri';
+  out.comparisonMode='matched-rri';
   const d=Number(form.elements.namedItem('rowWidth').value),r=Number(form.elements.namedItem('radius').value),R=Number(form.elements.namedItem('sourceRadius').value);
   out.focalSizeMm=Number(form.elements.namedItem('focalSizeMm').value);
   out.focalSourceDetectorMm=Number(form.elements.namedItem('focalSourceDetectorMm').value);
@@ -55,7 +56,7 @@ function readFdkParams(){
   return out;
 }
 function writeFdkUrl(url,p){
-  url.searchParams.set('model',p.computationModel==='fdk'?'rri':p.computationModel??'axial');
+  url.searchParams.set('model',p.computationModel==='fdk'?'rri':p.computationModel??'fdk');
   url.searchParams.set('response','axial-interpolation');
   for(const k of ['zffs','zffs_m','zffs_a'])url.searchParams.delete(k);
   if(p.zFfsEnabled){url.searchParams.set('zffs','1');url.searchParams.set('zffs_m',p.zFfsMagnification);url.searchParams.set('zffs_a',p.zFfsOffset);}
@@ -63,10 +64,12 @@ function writeFdkUrl(url,p){
   for(const k of ['edgePolicy','zStep','phase','fullFanAngleDeg','normalization'])url.searchParams.set('fdk_'+k,p[k]??FDK_UI_FIELDS[k]);
 }
 function fdkParamsFromUrl(q){
-  const out={computationModel:q.get('model')==='rri'?'fdk':['fdk','parallel'].includes(q.get('model'))?q.get('model'):'axial',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
+  const out={computationModel:q.get('model')==='parallel'?'parallel':'fdk',legacyResponse:!!q.get('v')&&Number(q.get('v'))<11};
   for(const [k,v] of Object.entries(FDK_UI_FIELDS))out[k]=q.has('fdk_'+k)?(typeof v==='number'?Number(q.get('fdk_'+k)):q.get('fdk_'+k)):v;
   out.zFfsEnabled=q.get('zffs')==='1';out.zFfsMagnification=Number(q.get('zffs_m')??1072/600);out.zFfsOffset=Number(q.get('zffs_a')??.25);
   if(q.has('fd'))out.zFfsMagnification=Number(q.get('fd'))/Number(q.get('R')??600);
+  out.comparisonMode='matched-rri';
+  out.matchedComparisonMigrated=(q.has('v')&&Number(q.get('v'))<14)||q.get('model')==='axial';
   out.sourceSupportMigrated=!!q.get('v')&&Number(q.get('v'))<12;
   out.phaseCount=360;
   out.legacyCbaComparison=out.method==='hsieh';
@@ -76,13 +79,13 @@ function fdkParamsFromUrl(q){
   return out;
 }
 function initializeFdkUi(initial){
-  initial={...initial,method:'rri'};
+  initial={...initial,matchedComparisonMigrated:initial.matchedComparisonMigrated||!!initial.computationModel&&initial.comparisonMode!=='matched-rri',method:'rri'};
   const modelChoice=initializeAxialModelChoice(initial),pick=modelChoice.element;
   form.prepend(pick);
   const controls=document.createElement('div');controls.id='fdk-controls';controls.className='fdk-controls';
   controls.innerHTML=`<p class="section-summary">${fdkText('共通の点対象・検出器開口から、候補の選択と体軸補間によるモデルSSPzを求めます。横断画像は再構成しません。','Model SSPz is the axial interpolation response of a shared point object and detector aperture. No transverse image is reconstructed.')}</p>
   <details class="reading-details"><summary>${fdkText('補間規則と共通の計算設定','Interpolation rules and shared numerical settings')}</summary>
-  <p>${fdkText('候補統合では、実・対向方向の列データ全体から評価位置を挟む2点を選びます。RRI（row-to-row interpolation）は各方向の隣接列を線形補間し、対向ペアで重みを正規化します。どちらもX線管角360°＋2Φの同じ有限取得範囲を用います。Φは全ファン角です。発散なしの基準は、別の幾何仮定です。','Merged interpolation selects the nearest bracketing pair from both directions. Row-to-row interpolation (RRI) interpolates adjacent rows within each direction and normalizes across the pair. Both cone models use the same finite source-angle support of 360° + 2Φ, where Φ is the full fan opening. The nondivergent reference uses a separate geometry assumption.')}</p>
+  <p>${fdkText('両モデルとも、実・対向方向ごとに隣接列を線形補間し、有効な重み全体を正規化します（RRI：row-to-row interpolation相当）。X線管角360°＋2Φの同じ有限取得範囲を使います。Φは全ファン角で、発散なしの基準にも比較条件として同じ範囲を適用します。','Both models interpolate adjacent rows within each direction and normalize all valid weights (RRI-equivalent row-to-row interpolation). Both use finite tube-angle support of 360° + 2Φ. Here Φ is the full fan opening; the nondivergent reference adopts the same interval as a comparison control.')}</p>
   <p>${fdkText('焦点寸法は『CTとMRI』図6.6の実効焦点1.2 × 1.2 mmのうち体軸方向の1.2 mmを参照します。焦点内の各位置から固定した検出器開口に入る信号を平均し、その取得応答に補間を適用します。ターゲット角7°による方向依存性や面内方向の焦点ぼけは含めません。発散なしの比較基準には、回転中心へ投影した一定の焦点ぼけ幅を適用します。','The effective axial focal size defaults to 1.2 mm from the 1.2 × 1.2 mm focus in CT and MRI Fig.6.6. Signals from uniformly distributed positions within the focus are averaged within each fixed detector cell before interpolation. Directional changes due to the 7° target angle and transverse focal blur are omitted. The nondivergent reference uses a constant focal-blur width projected to isocentre.')}</p>
   <div class="parameter-grid">
   <input type="hidden" id="fdk-method" value="rri"><input type="hidden" id="fdk-objectModel" value="point"><input type="hidden" id="fdk-axialAverageMm" value="1"><input type="hidden" id="fdk-xyExtent" value="0.5"><input type="hidden" id="fdk-xySamples" value="5"><input type="hidden" id="fdk-zExtent" value="3"><input type="hidden" id="fdk-state" value="0"><input type="hidden" id="fdk-phaseCount" value="360">
@@ -94,6 +97,7 @@ function initializeFdkUi(initial){
   </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はT、検出器列幅、焦点ぼけ幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain includes the tails from T, detector-row width and focal blur.')}</p>
   <p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算式と適用範囲','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
+  if(initial.matchedComparisonMigrated){const note=document.createElement('p');note.className='model-note';note.id='matched-comparison-migration';note.textContent=fdkText('旧条件を読み込みました。主比較を②と③に整理し、③も②と同じ列間補間・取得角度範囲に変更しました。旧①は②へ切り替えています。旧版の保存結果とは区別して再計算してください。','Older settings loaded. The main comparison now uses ② and ③ with matched row interpolation and acquisition support. Former model ① is mapped to ②. Recalculate and keep old saved results separate.');controls.prepend(note);}
   if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('取得範囲の判定を再配列角360°からX線管角360°＋2Φへ修正しました。旧版とは候補・重み・SSPzが変わる場合があります。全ファン角を確認して再計算してください。','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
   if(initial.legacyResponse){const note=document.createElement('p');note.className='model-note';note.id='axial-response-migration';note.textContent=fdkText('旧版の条件を読み込みました。現在は共通の体軸補間応答モデルで計算するため、従来のFBP・体軸モデルの保存結果とは数値が異なります。','Older settings loaded. The current shared axial interpolation model produces different values from previous FBP and axial results.');controls.prepend(note);}
   document.getElementById('fdk-method').setAttribute('aria-describedby','fdk-controls');
@@ -104,7 +108,7 @@ function initializeFdkUi(initial){
   syncFdkMethodControls();updateInputDecorations();
   const panel=document.createElement('section');panel.id='fdk-panel';panel.setAttribute('aria-labelledby','fdk-title');
   panel.innerHTML=`<div class="section-heading"><h2 id="fdk-title">${fdkText('展開図から体軸補間応答へ','From candidate geometry to axial response')}</h2></div>
-  <p class="section-summary">${fdkText('展開図の候補と補間重みから、モデルSSPzとその変動を示します。コーン幾何の2モデルは、取得データを共通にして補間規則を比較します。','Candidate positions and interpolation weights lead to the model SSPz and its variation. The two cone models compare interpolation rules with shared acquired data.')} <a href="#fdk-controls">${fdkText('補間規則の説明','Interpolation rules')}</a></p>
+  <p class="section-summary">${fdkText('展開図の候補と補間重みから、モデルSSPzとその変動を示します。両モデルは列間補間と取得角度範囲を共通にして、幾何の違いを比較します。','Candidate positions and interpolation weights lead to the model SSPz and its variation. The models compare geometry with shared row interpolation and acquisition-angle support.')} <a href="#fdk-controls">${fdkText('補間規則の説明','Interpolation rules')}</a></p>
   <p id="fdk-summary" aria-live="polite"></p><p id="fdk-result-config"></p><div id="cba-comparison" hidden></div>
   <div class="chart-grid two">
   <article class="chart-card"><h3>${fdkText('取得列の展開図','Acquired detector-row geometry')}</h3><canvas id="fdk-geometry" width="1000" height="700"></canvas></article>
@@ -121,7 +125,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：選択した体軸補間モデル。0.01 mm格子への線形補間、偏差ビン幅0.002を用い、濃さは各ビンの割合の0.35乗です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: the selected axial interpolation model. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('応答・重み・条件をJSON保存','Export response, weights and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('両コーンモデルの差は、共通幾何における候補選択・補間規則の差です。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The two cone models differ in candidate selection and interpolation under shared geometry. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('②と③の差には、面内・体軸方向の発散、再配列、開口と焦点ぼけの投影の違いが含まれます。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The difference between ② and ③ includes transverse and axial divergence, rebinning, and the projection of aperture and focal blur. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：点の位置位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は点の位置からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('RRI相当の線形補間：計算方法と適用範囲','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -143,7 +147,7 @@ function initializeFdkUi(initial){
   }
   initializeZffsUi(initial,modeChanged);
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',modeChanged);modeChanged();
-  resetButton.addEventListener('click',()=>{pick.querySelector('select').value='axial';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
+  resetButton.addEventListener('click',()=>{pick.querySelector('select').value='fdk';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
   document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{

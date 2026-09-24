@@ -92,10 +92,10 @@ export async function computeSourceSupportedAxialResponse(c,hooks={}){
   const min=Math.min(...raw),max=Math.max(...raw);
   assertAxialRawDomain(raw,max);
   const baseline=c.normalization==='minmax'?min:0;
-  const model={version:'2026-09-18.9',kind:'axial-'+c.axialRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
+  const model={version:'2026-09-24.1',kind:'axial-'+c.axialRule,comparisonMode:c.comparisonMode,interpolationRule:c.interpolationRule,focalBlur:focalBlurMetadata(c),algorithm:'reduced axial interpolation response',
     geometry:c.axialRule==='parallel'?'nondivergent parallel reference':'three-dimensional cylindrical cone-ray geometry',
-    candidateSearch:'source-fan-window',fullFanAngleDeg:c.fullFanAngleDeg,sourceAngleSpanDeg:c.axialRule==='parallel'?360:360+2*c.fullFanAngleDeg,
-    interpolation:c.axialRule==='rri'?'compact row tents normalized across source-supported directions and turns':'nearest bracketing row centres within finite source-angle support; split coincident endpoints',
+    candidateSearch:'source-fan-window',fullFanAngleDeg:c.fullFanAngleDeg,sourceAngleSpanDeg:c.axialRule==='parallel'&&c.comparisonMode!=='matched-rri'?360:360+2*c.fullFanAngleDeg,
+    interpolation:c.interpolationRule==='rri'?'compact row tents normalized across source-supported directions and turns':'nearest bracketing row centres within finite source-angle support; split coincident endpoints',
     object:'unit-integral ideal point; finite detector cell integrals',filter:'none; no transaxial ramp or FBP preweight',
     angularWeight:'V/2 transverse direction pairs; equivalent to V output directions with angular factor 1/V',
     acquisitionBoundary:'per evaluation plane: beta0 + 2 pi z/h +/- (pi + full fan opening); only acquired-grid views inside; all nonzero rebin stencil views must fit',axialAverageMm:c.axialAverageMm,

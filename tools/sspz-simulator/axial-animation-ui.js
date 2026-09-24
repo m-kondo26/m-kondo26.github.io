@@ -210,8 +210,9 @@ function renderAxialAngleReading(frame){
     :fdkText('補間対象の全周0～360°を表示します。','The display covers output directions over 0–360°.'))
     +fdkText('各方向で使う実データ側○と対向側△を、同じ高さに示します。（a）は選ばれた候補点のみを表示し、枠は強調する方向の候補を示します。',' Direct ○ and complementary △ data for each output direction share a height. Panel (a) shows selected candidates only; boxes highlight the chosen direction’s candidates.');
   const degrees=r=>{const d=r*180/Math.PI;return (Math.abs(d)<.05?0:d).toFixed(1);};
-  const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
-  el('source-window').textContent=fdkText('この断面の取得範囲 β：','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('（全ファン角 Φ＝',' (full fan Φ = ')+`${c.axialRule==='parallel'?0:c.fullFanAngleDeg}°)`;
+  const supportFan=c.axialRule==='parallel'&&c.comparisonMode!=='matched-rri'?0:c.fullFanAngleDeg;
+  const centre=c.phase+2*Math.PI*(a.zObject+frame.u)/c.feed,half=Math.PI+supportFan*Math.PI/180;
+  el('source-window').textContent=fdkText('この断面の取得範囲 β：','Source-angle support at this plane, β: ')+`${degrees(centre-half)}° ～ ${degrees(centre+half)}°`+fdkText('（取得範囲を決める Φ＝',' (support parameter Φ = ')+`${supportFan}°)`;
   const chosen=frame.instant.filter(p=>p.referenceView===axialMovie.selectedPair);
   const rows=chosen.map(p=>SSPZAngles.sample(c,a.base,p)).map(q=>{
     const tr=document.createElement('tr');

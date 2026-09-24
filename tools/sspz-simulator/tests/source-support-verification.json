@@ -1,7 +1,7 @@
 {
   "version": "2026-09-18.7",
-  "checks": 1207,
-  "unsupported": 5,
+  "checks": 1203,
+  "unsupported": 9,
   "recovered": {
     "direction": 1,
     "focus": 0,

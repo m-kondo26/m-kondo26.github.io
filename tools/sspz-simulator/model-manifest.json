@@ -404,5 +404,20 @@
     "browserDefaultApertureMm": 0.58,
     "legacyExplicitInputsPreserved": true,
     "helicalNumericalCoreChanged": false
+  },
+  "activeComparison": {
+    "version": "2026-09-24.1",
+    "webBuild": "2026-09-24.1",
+    "urlVersion": 14,
+    "defaultModel": "rri",
+    "models": [
+      "rri",
+      "parallel"
+    ],
+    "comparisonMode": "matched-rri",
+    "interpolationRule": "rri",
+    "sourceSupport": "360 + 2 * fullFanAngleDeg in both models",
+    "scope": "geometry-controlled reduced axial response; no image reconstruction or dose-efficiency inference",
+    "historicalEntries": "Other dated entries describe past implementations; activeComparison defines the main current UI."
   }
 }

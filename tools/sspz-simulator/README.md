@@ -1,3 +1,11 @@
+## Current matched comparison — 2026-09-24.1
+
+The main UI now has two choices: cone geometry with RRI-equivalent row interpolation (②), and a nondivergent reference with **the same row interpolation and finite source-angle support** (③). Both use 360° + 2Φ, with Φ the declared full fan opening, the same input detector/focal sizes and rectangular T average. The reference retains helical table motion, finite aperture and centre-projected focal blur; it omits fan rebinning and fixes axial row spacing to d. This comparison does not isolate the axial cone angle alone. Keep z-FFS OFF in both for this comparison.
+
+The previous parallel nearest-pair/360° calculation is historical: reproduce it only with explicit `axialRule:'parallel', comparisonMode:'legacy'`. The merged model remains in the numerical API for reproducibility but is removed from the main UI. Old UI URLs are explicitly migrated with a notice. API defaults now select RRI. New numerical exports record `comparisonMode`, `interpolationRule` and source support. Earlier sections describing two cone rules or a 360° parallel reference are retained as historical implementation notes, not the current main comparison.
+
+Candidate availability, positive interpolation weights and SSPz remain separate concepts. No dose-efficiency or complete image-reconstruction claim follows from this reduced response.
+
 ## Dense-row candidate display (2026-09-18.16)
 
 The 2B and 2C diagrams now share a display selector: the existing full-turn view samples at most 72 directions, while a 30-degree detail window retains every calculated direction in that interval. The twelve windows cover the full turn without dropping or duplicating selected points. The display reports its direction and weighted-point counts; detail PNG filenames include the angular interval. Numerical SSPz, coefficients, row/turn/focus identities and full numerical exports are unchanged. Background trajectories still include every detector row, with density-dependent fading.

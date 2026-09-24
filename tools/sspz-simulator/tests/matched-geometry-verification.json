@@ -1,0 +1,30 @@
+{
+  "checks": 720,
+  "profiles": [
+    {
+      "axialRule": "rri",
+      "T": 1,
+      "FWHM": 1.4597652219552955,
+      "version": "2026-09-24.1"
+    },
+    {
+      "axialRule": "rri",
+      "T": 5,
+      "FWHM": 5,
+      "version": "2026-09-24.1"
+    },
+    {
+      "axialRule": "parallel",
+      "T": 1,
+      "FWHM": 1.4740196831748942,
+      "version": "2026-09-24.1"
+    },
+    {
+      "axialRule": "parallel",
+      "T": 5,
+      "FWHM": 5,
+      "version": "2026-09-24.1"
+    }
+  ],
+  "scope": "Matched declared support and row weights, independent exhaustive oracle, centre lattice and trace closure. Not scanner validation."
+}

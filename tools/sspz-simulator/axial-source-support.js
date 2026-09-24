@@ -2,7 +2,7 @@
 // Rebinned theta is only an output-direction coordinate, not an acquisition gate.
 export function axialSourceWindow(c,z){
   const db=2*Math.PI/c.viewSamples,centre=2*Math.PI*z/c.feed;
-  const half=Math.PI+(c.axialRule==='parallel'?0:c.fullFanAngleDeg*Math.PI/180);
+  const half=Math.PI+(c.axialRule==='parallel'&&c.comparisonMode!=='matched-rri'?0:c.fullFanAngleDeg*Math.PI/180);
   const lower=centre-half,upper=centre+half;
   return {betaMin:c.phase+lower,betaMax:c.phase+upper,
     firstView:Math.ceil(lower/db-1e-10),lastView:Math.floor(upper/db+1e-10)};
@@ -27,15 +27,15 @@ export function sourceSupportedAxialWeights(c,groups,z){
       const actualBeta=beta+k*2*Math.PI,stencil=axialSourceStencil(c,actualBeta,g.focus??0);
       if(stencil[0]<window.firstView||stencil.at(-1)>window.lastView)continue;
       const origin=g.origin+k*h,f=(z-origin)/g.spacing+halfRows,n=Math.floor(f);
-      const rows=c.axialRule==='rri'?[n,n+1]:[Math.max(0,Math.min(c.rows-1,n)),Math.max(0,Math.min(c.rows-1,n+1))];
+      const rows=(c.interpolationRule??c.axialRule)==='rri'?[n,n+1]:[Math.max(0,Math.min(c.rows-1,n)),Math.max(0,Math.min(c.rows-1,n+1))];
       for(const row of new Set(rows))if(row>=0&&row<c.rows){
-        const weight=c.axialRule==='rri'?Math.max(0,1-Math.abs(f-row)):0;
+        const weight=(c.interpolationRule??c.axialRule)==='rri'?Math.max(0,1-Math.abs(f-row)):0;
         samples.push({direction:g.direction,focus:g.focus??0,row,view:g.view+k*V,turn:k,
           z:origin+(row-halfRows)*g.spacing,weight,completeBracket:n>=0&&n+1<c.rows});
       }
     }
   }
-  if(c.axialRule!=='rri'){
+  if((c.interpolationRule??c.axialRule)!=='rri'){
     const exact=samples.filter(p=>Math.abs(p.z-z)<1e-10);
     if(exact.length)exact.forEach(p=>p.weight=1/exact.length);
     else{

@@ -1,3 +1,11 @@
+## Current matched comparison — 2026-09-24.1
+
+The main UI now has two choices: cone geometry with RRI-equivalent row interpolation (②), and a nondivergent reference with **the same row interpolation and finite source-angle support** (③). Both use 360° + 2Φ, with Φ the declared full fan opening, the same input detector/focal sizes and rectangular T average. The reference retains helical table motion, finite aperture and centre-projected focal blur; it omits fan rebinning and fixes axial row spacing to d. This comparison does not isolate the axial cone angle alone. Keep z-FFS OFF in both for this comparison.
+
+The previous parallel nearest-pair/360° calculation is historical: reproduce it only with explicit `axialRule:'parallel', comparisonMode:'legacy'`. The merged model remains in the numerical API for reproducibility but is removed from the main UI. Old UI URLs are explicitly migrated with a notice. API defaults now select RRI. New numerical exports record `comparisonMode`, `interpolationRule` and source support. Earlier sections describing two cone rules or a 360° parallel reference are retained as historical implementation notes, not the current main comparison.
+
+Candidate availability, positive interpolation weights and SSPz remain separate concepts. No dose-efficiency or complete image-reconstruction claim follows from this reduced response.
+
 # Shared axial interpolation response — 2026-09-18.8
 
 The browser now supports a finite effective axial focal width shared by both cone models. Each acquired cell is averaged over a uniform source before angular rebinning, candidate selection, and T averaging. The detector stays fixed. Candidate centres and interpolation coefficients use the mean focal position. See [finite focal acquisition](FOCAL_BLUR_METHOD.md) for the ray integral, the isocentre-matched parallel reference, and the distinction from focal switching. Width 0 exactly retains the previous point-focus calculation; no final-SSP smoothing is applied. New/reset browser conditions use 1.2 mm and source–detector distance 1070 mm from the adopted book example. Existing saved conditions and old URLs without these fields retain a point focus.

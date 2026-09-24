@@ -34,7 +34,9 @@ const englishCore = translateEnglishSource(core);
 const englishWorker = translateEnglishSource(worker);
 // FDK UI strings have explicit Japanese/English alternatives. Remove only
 // Japanese string literals in the English build; the English branch remains.
-const englishFdkUi=(modelChoice+'\n'+fdkUi).replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
+const englishFdkUi=(modelChoice+'\n'+fdkUi)
+  .replace(/fdkText\(`[^`]*[ぁ-んァ-ヶ一-龠々〇][^`]*`,/g,'fdkText(``,')
+  .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
 const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);
 const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${englishWorker}\n`;
 const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${englishApp}\n})();\n`;

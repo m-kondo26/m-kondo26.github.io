@@ -11,7 +11,7 @@ globalThis.SSPZShapeDisplay = (() => {
     return out;
   }
   function fromFdk(result) {
-    const name={'axial-merged':'Merged axial','axial-rri':'RRI axial','axial-parallel':'Parallel axial',rri:'RRI'}[result.model?.kind]??'FDK';
+    const name={'axial-merged':'Merged axial','axial-rri':'Cone geometry','axial-parallel':'Parallel reference',rri:'RRI'}[result.model?.kind]??'FDK';
     const displayName=name+(result.config?.zFfsEnabled?' + z-FFS':'');
     const groups = result.reference ? [['CBA', result, [1, 0, 0]], ['RRI', result.reference, [0, 0, 1]]] : [[displayName, result, [1, 0, 0]]];
     return groups.map(([name, r, rgb]) => {

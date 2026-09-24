@@ -9,7 +9,7 @@ import {detectorPointProjection} from '../detector-aperture.js';
 import {zffsPointProjection} from '../zffs-response.js';
 import {zffsRebinStencil} from '../zffs-geometry.js';
 const near=(a,b,t=2e-9)=>assert.ok(Math.abs(a-b)<t,`${a} != ${b}`);
-const base={rows:4,rowWidth:1,beamPitch:.875,sourceRadius:600,radius:250,viewSamples:360,phase:0,zExtent:8,zStep:.1,axialAverageMm:5};
+const base={rows:4,rowWidth:1,beamPitch:.875,sourceRadius:600,radius:250,viewSamples:360,phase:0,zExtent:8,zStep:.1,axialAverageMm:5,axialRule:'merged'};
 let checks=0,unsupported=0;
 for(const rows of [1,4,80,160,320])for(const axialRule of ['merged','rri','parallel'])for(const zFfsEnabled of [false,true]){
  if(axialRule==='parallel'&&zFfsEnabled)continue;
@@ -23,7 +23,7 @@ for(const rows of [1,4,80,160,320])for(const axialRule of ['merged','rri','paral
    near(got.reduce((s,p)=>s+p.weight,0),1);
    assert.equal(got.filter(p=>p.weight>1e-12).length,expected.length);
    for(const p of expected){const q=got.find(q=>q.view===p.view&&q.row===p.row&&q.focus===p.focus&&q.direction===p.direction);assert(q);near(q.weight,p.weight);near(q.z,p.z);}
-   if(axialRule!=='rri')near(got.reduce((s,p)=>s+p.weight*p.z,0),z);
+   if(c.interpolationRule!=='rri')near(got.reduce((s,p)=>s+p.weight*p.z,0),z);
    checks++;
   }
  }

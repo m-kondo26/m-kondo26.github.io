@@ -1,3 +1,11 @@
+## Current matched comparison — 2026-09-24.1
+
+The main UI now has two choices: cone geometry with RRI-equivalent row interpolation (②), and a nondivergent reference with **the same row interpolation and finite source-angle support** (③). Both use 360° + 2Φ, with Φ the declared full fan opening, the same input detector/focal sizes and rectangular T average. The reference retains helical table motion, finite aperture and centre-projected focal blur; it omits fan rebinning and fixes axial row spacing to d. This comparison does not isolate the axial cone angle alone. Keep z-FFS OFF in both for this comparison.
+
+The previous parallel nearest-pair/360° calculation is historical: reproduce it only with explicit `axialRule:'parallel', comparisonMode:'legacy'`. The merged model remains in the numerical API for reproducibility but is removed from the main UI. Old UI URLs are explicitly migrated with a notice. API defaults now select RRI. New numerical exports record `comparisonMode`, `interpolationRule` and source support. Earlier sections describing two cone rules or a 360° parallel reference are retained as historical implementation notes, not the current main comparison.
+
+Candidate availability, positive interpolation weights and SSPz remain separate concepts. No dose-efficiency or complete image-reconstruction claim follows from this reduced response.
+
 ## Current browser: shared axial interpolation response (2026-09-17.6)
 
 The public comparison now uses common point acquisition, finite detector aperture, rowwise rebinning, angle/state definitions, rectangular T averaging and normalization. It compares merged candidate selection with RRI-equivalent linear row interpolation, plus a separate nondivergent reference. There is no transverse ramp or reconstructed image volume. This is a new numerical model, not an unchanged FBP SSP. See [AXIAL_RESPONSE_METHOD.md](AXIAL_RESPONSE_METHOD.md).

@@ -1,7 +1,7 @@
 // Independent exhaustive acquisition/row enumeration. No production selector,
 // support-window helper, stencil helper, or candidate shortcut is used.
 export function sourceOracle(c,reference,z){
- const V=c.viewSamples,db=2*Math.PI/V,half=(180+(c.axialRule==='parallel'?0:c.fullFanAngleDeg))*Math.PI/180;
+ const V=c.viewSamples,db=2*Math.PI/V,half=(180+(c.axialRule==='parallel'&&c.comparisonMode!=='matched-rri'?0:c.fullFanAngleDeg))*Math.PI/180;
  const centre=2*Math.PI*z/c.feed,all=[];
  for(let direction=0;direction<2;direction++){
   const root=reference+direction*V/2,kc=Math.floor(z/c.feed-root/V);
@@ -20,7 +20,7 @@ export function sourceOracle(c,reference,z){
    }
   }
  }
- if(c.axialRule==='rri')all.forEach(p=>p.weight=Math.max(0,1-Math.abs(z-p.z)/p.spacing));
+ if(c.interpolationRule==='rri')all.forEach(p=>p.weight=Math.max(0,1-Math.abs(z-p.z)/p.spacing));
  else{
   const exact=all.filter(p=>Math.abs(p.z-z)<1e-10);
   if(exact.length)exact.forEach(p=>p.weight=1/exact.length);
