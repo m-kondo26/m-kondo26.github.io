@@ -103,12 +103,13 @@
 .model-choice .model-choice-diagram svg {
   display: block;
   width: 100%;
-  max-width: 340px;
-  height: 166px;
+  max-width: 420px;
+  height: auto;
+  aspect-ratio: 390 / 260;
   margin: 0 auto;
   overflow: visible;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px;
   fill: #334f63;
 }
 .model-choice .model-choice-weight,

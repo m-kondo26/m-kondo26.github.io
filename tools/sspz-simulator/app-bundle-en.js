@@ -3094,7 +3094,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   legend.textContent = fdkText('', 'Choose an axial interpolation model');
   const scope = document.createElement('p');
   scope.className = 'model-choice-scope';
-  scope.textContent = fdkText('', 'Use matched row interpolation and acquisition support to compare how ray divergence affects candidate positions, weights and model SSPz.');
+  scope.textContent = fdkText('', 'Use matched row interpolation and acquisition support to compare how ray divergence affects candidate positions, interpolation weights and simulated SSPz.');
   const select = document.createElement('select');
   select.id = 'computationModel';
   select.name = 'computationModel';
@@ -3129,7 +3129,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
     description.textContent = method.description;
     const diagram = document.createElement('span');
     diagram.className = 'model-choice-diagram';
-    diagram.innerHTML = method.value === 'parallel' ? axialModelParallelSketch() : axialModelCandidateSketch(method.value);
+    diagram.innerHTML = axialModelCandidateSketch(method.value);
     const detail = document.createElement('span');
     detail.className = 'model-choice-detail';
     detail.textContent = method.detail;
@@ -3144,13 +3144,13 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   }
   const note = document.createElement('p');
   note.className = 'model-choice-sketch-note';
-  note.textContent = fdkText('', 'Schematic ①: weight w is above each point; position z (mm) is below. This example weights two rows per direction, with a total of 1; it is not a result for the current inputs.');
+  note.textContent = fdkText('', 'Both schematics use the same conditions and scale. Circles denote direct data; triangles denote opposing data. Weight w is above each point; position z (mm) is below. Shared example: 4 × 1 mm rows, pitch 1, radius 150 mm. One direction pair is shown before averaging over T; these are not results for the current inputs.');
   const comparison = document.createElement('p');
   comparison.className = 'model-choice-comparison';
   const pairRule = document.createElement('span');
   pairRule.textContent = fdkText('', '①↔②: compare geometry with matched row interpolation and acquisition-angle support.');
   const pairReference = document.createElement('span');
-  pairReference.textContent = fdkText('', 'Positive-weight points are a subset of the candidates available within the acquisition interval.');
+  pairReference.textContent = fdkText('', 'Samples assigned interpolation weights are a subset of the candidates available within the acquisition interval.');
   comparison.append(pairRule, pairReference);
   const searchRange = document.createElement('div');
   searchRange.className = 'model-choice-range';
@@ -3201,7 +3201,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   const detailText = document.createElement('p');
   detailText.textContent = fdkText('', 'Coincident data, neighboring turns and detector boundaries change the point count and combined weights. Reference ② also omits transverse divergence and fan rebinning; the difference is not an isolated cone-angle effect. The former nearest-pair model is no longer part of the main comparison.');
   const weightExplanation = document.createElement('p');
-  weightExplanation.textContent = fdkText('', 'In this example, ① assigns weights as follows: the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ① the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
+  weightExplanation.textContent = fdkText('', 'Shared schematic conditions: 4 × 1 mm rows, pitch 1, source-to-isocentre distance 600 mm, transverse position (x,y)=(150,0) mm, start angle 90°, target plane z=0. The direct and opposing rebinned directions are 0° and 180°. Row spacings are 0.75/1.25 mm in ① and 1.00/1.00 mm in ②. Linear interpolation weights based on each direction’s row spacing are combined and normalized to sum to 1 across the four points. Displayed weights and positions are rounded to two decimal places. Within each pair, the nearer point has greater weight; distance alone cannot compare points across directions.');
   details.append(summary, selectionLimits, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
@@ -3224,36 +3224,52 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   return {element, select, sync};
 }
 
+// Fixed illustration, checked against sourceAxialGroups and
+// sourceSupportedAxialWeights: N=4, d=1, pitch=1, R=600, r=150,
+// phase=pi/2, theta=0/pi, z=0, matched-rri, before averaging over T.
+function axialModelSketchData(model) {
+  return model === 'parallel'
+    ? [
+      {spacing: 1, points: [{z: -.5, weight: .25}, {z: .5, weight: .25}]},
+      {spacing: 1, points: [{z: -.5, weight: .25}, {z: .5, weight: .25}]},
+    ]
+    : [
+      {spacing: .75, points: [{z: -.625, weight: 1/12}, {z: .125, weight: 5/12}]},
+      {spacing: 1.25, points: [{z: -.875, weight: .15}, {z: .375, weight: .35}]},
+    ];
+}
+
 function axialModelCandidateSketch(model) {
   const id = `model-choice-sketch-${model}`;
-  const title = model === 'axial'
-    ? fdkText('', 'Former nearest-pair model: select the nearest position on each side of the target plane')
-    : fdkText('', '①: interpolate adjacent rows in each direction; this example weights four points');
-  const x = z => 170 + 75 * z;
+  const title = model === 'parallel'
+    ? fdkText('', '②: nondivergent reference. Compare direct and opposing positions, row spacings and weights on the same axis and under the same conditions as ①')
+    : fdkText('', '①: cone geometry. Compare direct and opposing positions, row spacings and weights on the same axis and under the same conditions as ②');
+  const rows = axialModelSketchData(model);
+  const x = z => 245 + 95 * z;
   const point = (z, y, direction, weight) => {
     const px = x(z), color = direction ? '#b55b13' : '#2166a5', fill = weight > 0 ? color : '#fff';
     const shape = direction
       ? `<path d="M${px},${y-6} L${px-6.5},${y+5.5} L${px+6.5},${y+5.5} Z"/>`
       : `<circle cx="${px}" cy="${y}" r="5.5"/>`;
-    return `<g class="model-choice-sample" data-z="${z}" data-weight="${weight}"><g stroke="${color}" fill="${fill}" stroke-width="1.8">${shape}</g><text class="model-choice-weight" x="${px}" y="${y-18}" text-anchor="middle">w = ${weight.toFixed(2)}</text><text class="model-choice-position" x="${px}" y="${y+22}" text-anchor="middle">z = ${z > 0 ? '+' : '−'}${Math.abs(z).toFixed(1)}</text></g>`;
+    return `<g class="model-choice-sample" data-direction="${direction}" data-z="${z}" data-weight="${weight}"><g stroke="${color}" fill="${fill}" stroke-width="1.8">${shape}</g><text class="model-choice-weight" x="${px}" y="${y-18}" text-anchor="middle">w = ${weight.toFixed(2)}</text><text class="model-choice-position" x="${px}" y="${y+21}" text-anchor="middle">z = ${z > 0 ? '+' : '−'}${Math.abs(z).toFixed(2)}</text></g>`;
   };
-  const rowWeights = model === 'fdk' ? [.10,.40,.35,.15] : [0,.60,.40,0];
-  return `<svg viewBox="0 0 290 166" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${title}</title>
-    <line x1="170" y1="23" x2="170" y2="148" stroke="#b61d37" stroke-width="1.6"/>
-    <text x="170" y="16" text-anchor="middle" fill="#a51a31">${fdkText('', 'Target plane z = 0')}</text>
-    <text x="5" y="60">${fdkText('', 'Direct')}</text><text x="5" y="125">${fdkText('', 'Opposing')}</text>
-    <line x1="99" y1="55" x2="257" y2="55" stroke="#c7d5e1" stroke-width="1"/>
-    <line x1="99" y1="120" x2="257" y2="120" stroke="#e3d1c1" stroke-width="1" stroke-dasharray="4 3"/>
-    ${point(-.8,55,0,rowWeights[0])}${point(.2,55,0,rowWeights[1])}${point(-.3,120,1,rowWeights[2])}${point(.7,120,1,rowWeights[3])}
-    <text x="279" y="162" text-anchor="end" fill="#596b79">${fdkText('', 'Position z (mm)')}</text></svg>`;
-}
-
-function axialModelParallelSketch() {
-  const id = 'model-choice-sketch-parallel';
-  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${fdkText('', '②: schematic rays with no transverse or axial divergence')}</title>
-    <text x="145" y="16" text-anchor="middle">${fdkText('', 'Parallel X-rays')}</text>
-    <g stroke="#638094" stroke-width="1.8" fill="none"><path d="M42 42 H248 M42 68 H248 M42 94 H248"/><path d="M238 37 L248 42 L238 47 M238 63 L248 68 L238 73 M238 89 L248 94 L238 99"/></g>
-    <text x="145" y="119" text-anchor="middle" fill="#596b79">${fdkText('', 'Same row interpolation and support as ①')}</text></svg>`;
+  const row = (data, direction) => {
+    const y = 60 + direction * 88, left = x(data.points[0].z), right = x(data.points[1].z);
+    return `<g data-spacing="${data.spacing}">
+      <text x="6" y="${y+5}">${direction ? fdkText('', 'Opposing') : fdkText('', 'Direct')}</text>
+      <line x1="108" y1="${y}" x2="378" y2="${y}" stroke="${direction ? '#d9c4b0' : '#bdcddd'}" stroke-width="1" ${direction ? 'stroke-dasharray="4 3"' : ''}/>
+      ${data.points.map(p => point(p.z, y, direction, p.weight)).join('')}
+      <path d="M${left} ${y+31} v6 H${right} v-6" fill="none" stroke="#7b8d9c"/>
+      <text class="model-choice-position" x="${(left+right)/2}" y="${y+53}" text-anchor="middle">${fdkText('', 'Row spacing')} ${data.spacing.toFixed(2)} mm</text>
+    </g>`;
+  };
+  return `<svg viewBox="0 0 390 260" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${title}</title>
+    <line x1="245" y1="23" x2="245" y2="220" stroke="#b61d37" stroke-width="1.6"/>
+    <text x="245" y="16" text-anchor="middle" fill="#a51a31">${fdkText('', 'Target plane z = 0')}</text>
+    ${rows.map(row).join('')}
+    <line x1="108" y1="220" x2="378" y2="220" stroke="#7b8d9c"/>
+    ${[-1,0,1].map(z => `<path d="M${x(z)} 220 v5" stroke="#7b8d9c"/><text x="${x(z)}" y="239" text-anchor="middle">${z > 0 ? '+' : ''}${z}</text>`).join('')}
+    <text x="245" y="258" text-anchor="middle" fill="#596b79">${fdkText('', 'Position z (mm)')}</text></svg>`;
 }
 
 // Drawing order only: each row trajectory retains its original coordinates.
@@ -4551,7 +4567,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-24.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
