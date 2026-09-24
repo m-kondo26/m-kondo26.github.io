@@ -5,8 +5,8 @@ function readZffsParams(){return {zFfsEnabled:!!document.getElementById('zffs-en
 function initializeZffsUi(initial,changed){
   const box=document.createElement('div');box.id='zffs-controls';box.className='zffs-controls';
   box.innerHTML=`<label class="zffs-switch"><input type="checkbox" id="zffs-enabled">${fdkText('z方向の焦点移動による倍密度サンプリング（z-FFS）','Use z-flying focal spot sampling (z-FFS)')}</label>
-  <p id="zffs-unavailable" hidden>${fdkText('③では焦点移動をOFFにします。②と③の幾何を比較するときは、両者ともOFFにしてください。','Reference ③ turns focal switching OFF. Compare ② and ③ with switching OFF in both.')}</p>
-  <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。②と③の比較では両者ともOFFにしてください。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ②/③ comparison. The default interlaces rows at half spacing at isocentre.')}</p>
+  <p id="zffs-unavailable" hidden>${fdkText('②では焦点移動をOFFにします。①と②の幾何を比較するときは、両者ともOFFにしてください。','Reference ② turns focal switching OFF. Compare ① and ② with switching OFF in both.')}</p>
+  <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。①と②の比較では両者ともOFFにしてください。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ①/② comparison. The default interlaces rows at half spacing at isocentre.')}</p>
   <details class="reading-details"><summary>${fdkText('焦点移動の幾何条件','Focal-switching geometry')}</summary><div class="parameter-grid">
   <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('回転中心での片側移動量 / 列間隔','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>

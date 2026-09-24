@@ -1,16 +1,16 @@
 <p class="lead">Matched row interpolation and acquisition-angle support allow comparison of candidate geometry, weights and model SSPz with cone divergence and a nondivergent reference.</p>
 <h2>What changes between the two models?</h2>
 <table><thead><tr><th>Model</th><th>Candidate geometry</th><th>Shared interpolation</th></tr></thead><tbody>
-<tr><th>② Cone geometry</th><td>Includes transverse and axial divergence, rowwise rebinning and target-dependent row spacing.</td><td rowspan="2">Interpolate adjacent rows separately in the direct and complementary directions, then normalize all supported weights to sum to one.</td></tr>
-<tr><th>③ Nondivergent reference</th><td>Uses constant isocentre-equivalent row spacing and omits fan rebinning. Retains table motion, finite aperture and isocentre-projected focal blur.</td></tr></tbody></table>
-<p>The former nearest-pair model ① is no longer part of the main comparison. Before 2026-09-24.1, reference ③ used nearest-pair interpolation and 360° support. It now uses the same row interpolation and 360° + 2Φ support as ②. Keep old results separate and record the calculation version.</p>
+<tr><th>① Cone geometry</th><td>Includes transverse and axial divergence, rowwise rebinning and target-dependent row spacing.</td><td rowspan="2">Interpolate adjacent rows separately in the direct and complementary directions, then normalize all supported weights to sum to one.</td></tr>
+<tr><th>② Nondivergent reference</th><td>Uses constant isocentre-equivalent row spacing and omits fan rebinning. Retains table motion, finite aperture and isocentre-projected focal blur.</td></tr></tbody></table>
+<p>The former nearest-pair model is no longer part of the main comparison. Before 2026-09-24.1, the nondivergent reference used nearest-pair interpolation and 360° support. It now uses the same row interpolation and 360° + 2Φ support as ①. Keep old results separate and record the calculation version.</p>
 <h2>What the model calculates</h2>
 <p>The object is an ideal point at a fixed location. Its acquired response includes the finite detector aperture and, when configured, axial focal blur. Rowwise fan-to-parallel rebinning, axial interpolation, angular averaging, and a rectangular average of width T produce the model SSPz, also called the axial interpolation response. No finite sphere or bead-measurement procedure is included.</p>
 <p>The current public model does not calculate transverse ramp filtering, FBP preweighting or backprojection weights, or an image volume. Using three-dimensional cone-ray geometry does not itself perform three-dimensional image reconstruction. This response should not be interpreted as Feldkamp reconstruction or as a particular scanner's complete 2D or 3D reconstruction.</p>
 
 <h2>Shared acquisition conditions</h2>
 <table>
-  <caption>Main inputs shared by ② and ③</caption>
+  <caption>Main inputs shared by ① and ②</caption>
   <thead><tr><th scope="col">Quantity</th><th scope="col">Meaning</th></tr></thead>
   <tbody>
     <tr><th scope="row">N, d, p</th><td>Detector row count, isocentre-scaled row width, and beam pitch. Table feed per turn is h = Ndp. This idealized detector uses the same d for axial active aperture and row spacing.</td></tr>
@@ -31,7 +31,7 @@
 L = √(R² − t²) − x cos θ − y sin θ
 zᵢ(θ) = h(β − β₀) / (2π) + (i − (N − 1)/2)dL/R
 i = 0, …, N − 1</code></pre>
-<p>L is the transverse distance from source to target. The projected row-centre spacing at that target is dL/R. Rebinning linearly reads neighbouring acquired angles and transaxial channels while retaining detector-row identity. Rebinning is used in ②. In ③, γ = 0, β = θ and L = R, so zᵢ = h(θ − β₀)/(2π) + (i − (N − 1)/2)d.</p>
+<p>L is the transverse distance from source to target. The projected row-centre spacing at that target is dL/R. Rebinning linearly reads neighbouring acquired angles and transaxial channels while retaining detector-row identity. Rebinning is used in ①. In ②, γ = 0, β = θ and L = R, so zᵢ = h(θ − β₀)/(2π) + (i − (N − 1)/2)d.</p>
 <p>Under this convention, the opposite direction's source angle is β′ = β + 180° − 2γ. A source defining positive fan angle in the opposite direction writes a plus sign before 2γ. Angle conventions must therefore be matched before comparing formulas. Reversing the vertical direction of a plot alone does not change a formula's sign.</p>
 <p>The diagram uses a common vertical axis for the interpolation direction. Direct-side trajectories and markers use solid lines and circles; complementary-side data use dashed lines and triangles. A triangle's own rebinned angle differs by 180° from the displayed interpolation direction. Data from different turns, rows, or focal states retain separate identities even when their plotted positions overlap. The vertical zero is an offset from the display reference, not physical source angle zero.</p>
 
@@ -40,7 +40,7 @@ i = 0, …, N − 1</code></pre>
 <pre><code>βc − (180° + Φ) ≤ β ≤ βc + (180° + Φ)
 Total acquired-source span = 360° + 2Φ</code></pre>
 <p>For example, Φ = 50° gives 460°. Φ is the full opening, not the half-fan angle or an individual ray angle γ. Changing target radius r does not change Φ. The nondivergent reference adopts the same Φ and acquisition support as a comparison control; its rays still do not diverge.</p>
-<p>The basis is Toki's <a href="https://patents.google.com/patent/EP0450152B1/en">opposing-beam interpolation description (EP0450152B1, Figs. 4–6 and 10B)</a>: a central 360° interval plus a full-fan interval on either side. This model adopts the same interval for methods ② and ③ to keep their acquisition conditions common. Applying it to this reduced multirow response is an explicit modelling choice, not a unique consequence of Hsieh's RRI or a data-sufficiency theorem for all multislice reconstructions.</p>
+<p>The basis is Toki's <a href="https://patents.google.com/patent/EP0450152B1/en">opposing-beam interpolation description (EP0450152B1, Figs. 4–6 and 10B)</a>: a central 360° interval plus a full-fan interval on either side. This model adopts the same interval for methods ① and ② to keep their acquisition conditions common. Applying it to this reduced multirow response is an explicit modelling choice, not a unique consequence of Hsieh's RRI or a data-sufficiency theorem for all multislice reconstructions.</p>
 <p>All neighbouring acquired views with nonzero rebinning coefficients must also lie within the interval. Endpoints are not rounded outward to acquire extra views. Both models use the row-spacing support described below. Neither uses T as a candidate-distance limit, and increasing pitch does not authorize an unlimited-turn search.</p>
 <p><strong>The acquisition interval and the diagram's 0–360° axis are different quantities.</strong> The diagram folds the direct/complementary relation into one turn at every interpolation direction. It expands the numerical opposite-direction pairs into both directions; it does not imply half-scan image reconstruction from only 180°.</p>
 
@@ -49,13 +49,13 @@ Total acquired-source span = 360° + 2Φ</code></pre>
 <p><strong>The use of adjacent rows follows Hsieh et al.'s (2007) definition of RRI.</strong> <a href="https://doi.org/10.1117/1.2746866">Page 067001-2</a> describes linear interpolation between two neighbouring axial rows. Figure 5 and Eq. (6) on p.067001-4, continuing onto p.067001-5, use two samples bracketing each target separately on the direct and complementary sides; choosing ξ(Δ, Δ′) = Δ in Eq. (6) gives RRI. The distance formula below expresses that adjacent-row linear interpolation in this model's coordinates. It is not an independently chosen search radius in millimetres.</p>
 <p>RRI means row-to-row interpolation. For each supported direction and turn, fractional row coordinate f gives row i the compact weight max(0, 1 − |f − i|). These weights are normalized over the acquired rows. When two directions both provide complete brackets, this equals the mean of the two ordinary linear interpolants. More than two direction/turn groups may fall within the source interval.</p>
 <p><strong>In both models, a row receives weight only when its distance from the plane is less than the row spacing projected to the target in that direction.</strong> Let z be the evaluation plane, zᵢ the candidate row centre, and s the target-projected row spacing. Here d is the row spacing at isocentre, L the transverse source-to-target distance for that direction, and R the source-to-isocentre distance. The weights are:</p>
-<pre><code>s = d L/R (②)
-s = d (③)
+<pre><code>s = d L/R (①)
+s = d (②)
 qᵢ = max(0, 1 − |zᵢ − z|/s)
 wᵢ = qᵢ / Σⱼ qⱼ</code></pre>
-<p>The denominator sums valid direction, turn and row contributions within acquisition support, including focal states when focal switching is enabled. For s = 1 mm, only adjacent rows less than 1 mm from the plane contribute; distances of 1 mm or more have zero weight. Because s in ② varies with position and direction, this is not a fixed ±1 mm cutoff for all conditions. Increasing configured thickness T widens the range of planes averaged, without changing this local row-interpolation rule at each plane.</p>
+<p>The denominator sums valid direction, turn and row contributions within acquisition support, including focal states when focal switching is enabled. For s = 1 mm, only adjacent rows less than 1 mm from the plane contribute; distances of 1 mm or more have zero weight. Because s in ① varies with position and direction, this is not a fixed ±1 mm cutoff for all conditions. Increasing configured thickness T widens the range of planes averaged, without changing this local row-interpolation rule at each plane.</p>
 <p><strong>The source-based rule and this model's extensions are distinct.</strong> With two complete direct/complementary brackets, the weights above correspond to the paper's linear RRI. Omitting unavailable rows and renormalizing the remaining positive weights at detector edges, and normalizing all groups together when multiple turns fall within the source interval, are definitions of this model. Figure 8 and the text on p.067001-6 discuss detector-edge extrapolation, conjugate compensation and multiple groups at low pitch, but do not prescribe these exact boundary and combination rules. The numerical API also provides a strict policy requiring complete brackets in every group receiving nonzero weight. A single row is allowed, but a row tent without support is not extrapolated.</p>
-<p>The RRI-equivalent rule refers to the linear comparison method discussed by Hsieh et al.; their quadratic CBA is not implemented here. Applying the same rule and acquisition interval to ③ is a declared control for comparing geometry. Differences include transverse and axial divergence, rebinning, and aperture and focal-blur projection. They are not an isolated cone-angle effect or evidence of superiority of a commercial 2D or 3D reconstruction.</p>
+<p>The RRI-equivalent rule refers to the linear comparison method discussed by Hsieh et al.; their quadratic CBA is not implemented here. Applying the same rule and acquisition interval to ② is a declared control for comparing geometry. Differences include transverse and axial divergence, rebinning, and aperture and focal-blur projection. They are not an isolated cone-angle effect or evidence of superiority of a commercial 2D or 3D reconstruction.</p>
 
 <h2>From candidate weights to a model SSPz</h2>
 <p>The point and its acquired data remain fixed while evaluation-plane position z moves. Candidates are reselected at each position. Their coefficients multiply the acquired responses Pk, followed by angular averaging. A rectangular average of this response over width T gives the unnormalized model SSPz.</p>
@@ -93,4 +93,4 @@ B(z) = (1/T) ∫[z − T/2, z + T/2] A(u) du</code></pre>
 </ol>
 <p>Geometry formulas and image-reconstruction stages have also been checked against the supplied textbooks. The scanned books are not redistributed by this website.</p>
 
-<p>The full admissible candidate pool, positive-weight rows and final model SSPz are distinct quantities. A zero weight at one plane does not establish non-use across an image volume or dose efficiency. Compare ② and ③ with focal switching (z-FFS) OFF in both.</p>
+<p>The full admissible candidate pool, positive-weight rows and final model SSPz are distinct quantities. A zero weight at one plane does not establish non-use across an image volume or dose efficiency. Compare ① and ② with focal switching (z-FFS) OFF in both.</p>

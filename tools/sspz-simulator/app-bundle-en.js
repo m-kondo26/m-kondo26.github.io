@@ -3076,17 +3076,17 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   const initialValue = typeof initial === 'string' ? initial : initial?.computationModel;
   const methods = [
     {
-      value: 'fdk', number: '②',
+      value: 'fdk', number: '①',
       title: fdkText('', 'Include cone geometry'),
       chip: fdkText('', 'Cone geometry'),
       description: fdkText('', 'Within the acquisition interval, interpolate adjacent rows around the plane in each direction. Only rows closer than one row spacing at the target position receive weight.'),
       detail: fdkText('', 'This is RRI-equivalent linear interpolation (row-to-row interpolation). The number of points is not always four.'),
     },
     {
-      value: 'parallel', number: '③',
+      value: 'parallel', number: '②',
       title: fdkText('', 'Use the nondivergent reference'),
       chip: fdkText('', 'Reference'),
-      description: fdkText('', 'Assume no transverse or axial divergence, with the same row interpolation and acquisition-angle support as ②.'),
+      description: fdkText('', 'Assume no transverse or axial divergence, with the same row interpolation and acquisition-angle support as ①.'),
       detail: fdkText('', 'Table motion, detector aperture and isocentre-projected focal blur are retained. Row spacing stays at its isocentre value.'),
     },
   ];
@@ -3144,11 +3144,11 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   }
   const note = document.createElement('p');
   note.className = 'model-choice-sketch-note';
-  note.textContent = fdkText('', 'Schematic ②: weight w is above each point; position z (mm) is below. This example weights two rows per direction, with a total of 1; it is not a result for the current inputs.');
+  note.textContent = fdkText('', 'Schematic ①: weight w is above each point; position z (mm) is below. This example weights two rows per direction, with a total of 1; it is not a result for the current inputs.');
   const comparison = document.createElement('p');
   comparison.className = 'model-choice-comparison';
   const pairRule = document.createElement('span');
-  pairRule.textContent = fdkText('', '②↔③: compare geometry with matched row interpolation and acquisition-angle support.');
+  pairRule.textContent = fdkText('', '①↔②: compare geometry with matched row interpolation and acquisition-angle support.');
   const pairReference = document.createElement('span');
   pairReference.textContent = fdkText('', 'Positive-weight points are a subset of the candidates available within the acquisition interval.');
   comparison.append(pairRule, pairReference);
@@ -3156,7 +3156,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   searchRange.className = 'model-choice-range';
   const rangeTable = document.createElement('table');
   const rangeCaption = rangeTable.createCaption();
-  rangeCaption.textContent = fdkText('', 'Candidate ranges shared by ② and ③');
+  rangeCaption.textContent = fdkText('', 'Candidate ranges shared by ① and ②');
   const headRow = rangeTable.createTHead().insertRow();
   for (const text of [fdkText('', 'Range'), fdkText('', 'Current definition and basis')]) {
     const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = text; headRow.append(cell);
@@ -3171,7 +3171,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
     },
     {
       title: fdkText('', 'Acquired angles searched'),
-      definition: fdkText('', '360° plus twice the full fan opening, following classical opposing-beam interpolation. The reference ③ uses the same interval as a comparison control. A 50° full opening gives 460° for both.'),
+      definition: fdkText('', '360° plus twice the full fan opening, following classical opposing-beam interpolation. The reference ② uses the same interval as a comparison control. A 50° full opening gives 460° for both.'),
       source: fdkText('', 'Toki: EP0450152B1, Figs.4–6 and 10B'),
       href: 'https://patents.google.com/patent/EP0450152B1/en',
     },
@@ -3183,7 +3183,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
     cell.append(definition, source);
   }
   const localRange = document.createElement('p');
-  localRange.textContent = fdkText('', 'Both assign positive weight at distances below the local row spacing s. In ②, s varies with position and direction; in ③ it equals the input row width. Thickness T is the averaging width, not a candidate-distance limit.');
+  localRange.textContent = fdkText('', 'Both assign positive weight at distances below the local row spacing s. In ①, s varies with position and direction; in ② it equals the input row width. Thickness T is the averaging width, not a candidate-distance limit.');
   const searchBasis = document.createElement('p');
   searchBasis.className = 'model-choice-range-policy';
   searchBasis.append(document.createTextNode(fdkText('', 'Applying this acquisition interval to the multirow model, and normalizing available detector-edge rows and multiple-turn weights, are definitions adopted by this model.')));
@@ -3199,9 +3199,9 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   const selectionLimits = document.createElement('p');
   selectionLimits.textContent = fdkText('', 'Both normalize over available detector-edge rows. If no row has positive weight, calculation stops for insufficient support. These are axial response models without image reconstruction.');
   const detailText = document.createElement('p');
-  detailText.textContent = fdkText('', 'Coincident data, neighboring turns and detector boundaries change the point count and combined weights. Reference ③ also omits transverse divergence and fan rebinning; the difference is not an isolated cone-angle effect. The former nearest-pair model ① is no longer part of the main comparison.');
+  detailText.textContent = fdkText('', 'Coincident data, neighboring turns and detector boundaries change the point count and combined weights. Reference ② also omits transverse divergence and fan rebinning; the difference is not an isolated cone-angle effect. The former nearest-pair model is no longer part of the main comparison.');
   const weightExplanation = document.createElement('p');
-  weightExplanation.textContent = fdkText('', 'In this example, ② assigns weights as follows: the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ② the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
+  weightExplanation.textContent = fdkText('', 'In this example, ① assigns weights as follows: the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ① the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
   details.append(summary, selectionLimits, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
@@ -3227,8 +3227,8 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
 function axialModelCandidateSketch(model) {
   const id = `model-choice-sketch-${model}`;
   const title = model === 'axial'
-    ? fdkText('', '①: select the nearest position on each side of the target plane')
-    : fdkText('', '②: interpolate adjacent rows in each direction; this example weights four points');
+    ? fdkText('', 'Former nearest-pair model: select the nearest position on each side of the target plane')
+    : fdkText('', '①: interpolate adjacent rows in each direction; this example weights four points');
   const x = z => 170 + 75 * z;
   const point = (z, y, direction, weight) => {
     const px = x(z), color = direction ? '#b55b13' : '#2166a5', fill = weight > 0 ? color : '#fff';
@@ -3250,10 +3250,10 @@ function axialModelCandidateSketch(model) {
 
 function axialModelParallelSketch() {
   const id = 'model-choice-sketch-parallel';
-  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${fdkText('', '③: schematic rays with no transverse or axial divergence')}</title>
+  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${fdkText('', '②: schematic rays with no transverse or axial divergence')}</title>
     <text x="145" y="16" text-anchor="middle">${fdkText('', 'Parallel X-rays')}</text>
     <g stroke="#638094" stroke-width="1.8" fill="none"><path d="M42 42 H248 M42 68 H248 M42 94 H248"/><path d="M238 37 L248 42 L238 47 M238 63 L248 68 L238 73 M238 89 L248 94 L238 99"/></g>
-    <text x="145" y="119" text-anchor="middle" fill="#596b79">${fdkText('', 'Same row interpolation and support as ②')}</text></svg>`;
+    <text x="145" y="119" text-anchor="middle" fill="#596b79">${fdkText('', 'Same row interpolation and support as ①')}</text></svg>`;
 }
 
 // Drawing order only: each row trajectory retains its original coordinates.
@@ -3490,8 +3490,8 @@ function readZffsParams(){return {zFfsEnabled:!!document.getElementById('zffs-en
 function initializeZffsUi(initial,changed){
   const box=document.createElement('div');box.id='zffs-controls';box.className='zffs-controls';
   box.innerHTML=`<label class="zffs-switch"><input type="checkbox" id="zffs-enabled">${fdkText('','Use z-flying focal spot sampling (z-FFS)')}</label>
-  <p id="zffs-unavailable" hidden>${fdkText('','Reference ③ turns focal switching OFF. Compare ② and ③ with switching OFF in both.')}</p>
-  <div id="zffs-options" hidden><p>${fdkText('','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ②/③ comparison. The default interlaces rows at half spacing at isocentre.')}</p>
+  <p id="zffs-unavailable" hidden>${fdkText('','Reference ② turns focal switching OFF. Compare ① and ② with switching OFF in both.')}</p>
+  <div id="zffs-options" hidden><p>${fdkText('','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ①/② comparison. The default interlaces rows at half spacing at isocentre.')}</p>
   <details class="reading-details"><summary>${fdkText('','Focal-switching geometry')}</summary><div class="parameter-grid">
   <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
@@ -4235,7 +4235,7 @@ function initializeFdkUi(initial){
   </div><p>${fdkText('','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain includes the tails from T, detector-row width and focal blur.')}</p>
   <p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
-  if(initial.matchedComparisonMigrated){const note=document.createElement('p');note.className='model-note';note.id='matched-comparison-migration';note.textContent=fdkText('','Older settings loaded. The main comparison now uses ② and ③ with matched row interpolation and acquisition support. Former model ① is mapped to ②. Recalculate and keep old saved results separate.');controls.prepend(note);}
+  if(initial.matchedComparisonMigrated){const note=document.createElement('p');note.className='model-note';note.id='matched-comparison-migration';note.textContent=fdkText('','Older settings loaded. The main comparison now uses ① and ② with matched row interpolation and acquisition support. The former nearest-pair model is mapped to cone geometry (①). Recalculate and keep old saved results separate.');controls.prepend(note);}
   if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
   if(initial.legacyResponse){const note=document.createElement('p');note.className='model-note';note.id='axial-response-migration';note.textContent=fdkText('','Older settings loaded. The current shared axial interpolation model produces different values from previous FBP and axial results.');controls.prepend(note);}
   document.getElementById('fdk-method').setAttribute('aria-describedby','fdk-controls');
@@ -4263,7 +4263,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('','Reading the distribution')}</summary><p>${fdkText('','Red: the selected axial interpolation model. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('','Export response, weights and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('','The difference between ② and ③ includes transverse and axial divergence, rebinning, and the projection of aperture and focal blur. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('','Method and verification')}</a></details>`;
+  <details class="reading-details"><summary>${fdkText('','Method and interpretation')}</summary><p>${fdkText('','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('','The difference between ① and ② includes transverse and axial divergence, rebinning, and the projection of aperture and focal blur. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('','Method and verification')}</a></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -4551,7 +4551,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-24.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-24.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

@@ -3076,17 +3076,17 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   const initialValue = typeof initial === 'string' ? initial : initial?.computationModel;
   const methods = [
     {
-      value: 'fdk', number: '②',
+      value: 'fdk', number: '①',
       title: fdkText('コーン幾何を反映する', 'Include cone geometry'),
       chip: fdkText('コーン幾何', 'Cone geometry'),
       description: fdkText('取得範囲内で、方向別に目的断面の前後の隣接列を補間します。重みが付くのは、対象位置での列間隔より近い列です。', 'Within the acquisition interval, interpolate adjacent rows around the plane in each direction. Only rows closer than one row spacing at the target position receive weight.'),
       detail: fdkText('RRI相当（row-to-row interpolation）の線形補間です。点数は常に4点とは限りません。', 'This is RRI-equivalent linear interpolation (row-to-row interpolation). The number of points is not always four.'),
     },
     {
-      value: 'parallel', number: '③',
+      value: 'parallel', number: '②',
       title: fdkText('発散なしの基準と比較する', 'Use the nondivergent reference'),
       chip: fdkText('比較基準', 'Reference'),
-      description: fdkText('面内・体軸方向ともX線が広がらない幾何を仮定し、②と同じ列間補間・取得角度範囲を使います。', 'Assume no transverse or axial divergence, with the same row interpolation and acquisition-angle support as ②.'),
+      description: fdkText('面内・体軸方向ともX線が広がらない幾何を仮定し、①と同じ列間補間・取得角度範囲を使います。', 'Assume no transverse or axial divergence, with the same row interpolation and acquisition-angle support as ①.'),
       detail: fdkText('寝台移動・検出器開口・回転中心換算の焦点ぼけは残します。列間隔は回転中心の値で一定です。', 'Table motion, detector aperture and isocentre-projected focal blur are retained. Row spacing stays at its isocentre value.'),
     },
   ];
@@ -3144,11 +3144,11 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   }
   const note = document.createElement('p');
   note.className = 'model-choice-sketch-note';
-  note.textContent = fdkText('②の模式図：点の上は重み w、下は位置 z（mm）です。2方向・各2列に重みを付ける例で、合計は1です。現在の入力値による計算結果ではありません。', 'Schematic ②: weight w is above each point; position z (mm) is below. This example weights two rows per direction, with a total of 1; it is not a result for the current inputs.');
+  note.textContent = fdkText('①の模式図：点の上は重み w、下は位置 z（mm）です。2方向・各2列に重みを付ける例で、合計は1です。現在の入力値による計算結果ではありません。', 'Schematic ①: weight w is above each point; position z (mm) is below. This example weights two rows per direction, with a total of 1; it is not a result for the current inputs.');
   const comparison = document.createElement('p');
   comparison.className = 'model-choice-comparison';
   const pairRule = document.createElement('span');
-  pairRule.textContent = fdkText('②↔③：列間補間と取得角度範囲をそろえて、幾何の違いを比較。', '②↔③: compare geometry with matched row interpolation and acquisition-angle support.');
+  pairRule.textContent = fdkText('①↔②：列間補間と取得角度範囲をそろえて、幾何の違いを比較。', '①↔②: compare geometry with matched row interpolation and acquisition-angle support.');
   const pairReference = document.createElement('span');
   pairReference.textContent = fdkText('重みの付いた点は、取得範囲内に存在する候補すべてを表すものではありません。', 'Positive-weight points are a subset of the candidates available within the acquisition interval.');
   comparison.append(pairRule, pairReference);
@@ -3156,7 +3156,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   searchRange.className = 'model-choice-range';
   const rangeTable = document.createElement('table');
   const rangeCaption = rangeTable.createCaption();
-  rangeCaption.textContent = fdkText('②③に共通する候補範囲と根拠', 'Candidate ranges shared by ② and ③');
+  rangeCaption.textContent = fdkText('①②に共通する候補範囲と根拠', 'Candidate ranges shared by ① and ②');
   const headRow = rangeTable.createTHead().insertRow();
   for (const text of [fdkText('範囲', 'Range'), fdkText('現在の定義と根拠', 'Current definition and basis')]) {
     const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = text; headRow.append(cell);
@@ -3171,7 +3171,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
     },
     {
       title: fdkText('探索する取得角度の範囲', 'Acquired angles searched'),
-      definition: fdkText('360°＋全ファン角の2倍。古典的な対向ビーム補間を参照し、比較条件をそろえるため③にも同じ範囲を採用します。全ファン角50°なら両者とも460°です。', '360° plus twice the full fan opening, following classical opposing-beam interpolation. The reference ③ uses the same interval as a comparison control. A 50° full opening gives 460° for both.'),
+      definition: fdkText('360°＋全ファン角の2倍。古典的な対向ビーム補間を参照し、比較条件をそろえるため②にも同じ範囲を採用します。全ファン角50°なら両者とも460°です。', '360° plus twice the full fan opening, following classical opposing-beam interpolation. The reference ② uses the same interval as a comparison control. A 50° full opening gives 460° for both.'),
       source: fdkText('Toki：EP0450152B1、図4～6・図10B', 'Toki: EP0450152B1, Figs.4–6 and 10B'),
       href: 'https://patents.google.com/patent/EP0450152B1/en',
     },
@@ -3183,7 +3183,7 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
     cell.append(definition, source);
   }
   const localRange = document.createElement('p');
-  localRange.textContent = fdkText('両者とも、目的断面からの距離が列間隔sより小さい列に重みが付きます。②のsは対象位置と方向で変わり、③は入力した1列幅で一定です。設定スライス厚Tは平均する幅であり、候補を探す距離の上限ではありません。', 'Both assign positive weight at distances below the local row spacing s. In ②, s varies with position and direction; in ③ it equals the input row width. Thickness T is the averaging width, not a candidate-distance limit.');
+  localRange.textContent = fdkText('両者とも、目的断面からの距離が列間隔sより小さい列に重みが付きます。①のsは対象位置と方向で変わり、②は入力した1列幅で一定です。設定スライス厚Tは平均する幅であり、候補を探す距離の上限ではありません。', 'Both assign positive weight at distances below the local row spacing s. In ①, s varies with position and direction; in ② it equals the input row width. Thickness T is the averaging width, not a candidate-distance limit.');
   const searchBasis = document.createElement('p');
   searchBasis.className = 'model-choice-range-policy';
   searchBasis.append(document.createTextNode(fdkText('取得角度範囲の多列モデルへの適用、検出器端の残存列や複数回転の重みの正規化は、本モデルで採用した定義です。', 'Applying this acquisition interval to the multirow model, and normalizing available detector-edge rows and multiple-turn weights, are definitions adopted by this model.')));
@@ -3199,9 +3199,9 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
   const selectionLimits = document.createElement('p');
   selectionLimits.textContent = fdkText('両者とも、検出器端では存在する列だけを使って重みを正規化します。どの列にも重みが付かなければ支持不足として停止します。これは体軸方向の応答モデルであり、画像再構成は行いません。', 'Both normalize over available detector-edge rows. If no row has positive weight, calculation stops for insufficient support. These are axial response models without image reconstruction.');
   const detailText = document.createElement('p');
-  detailText.textContent = fdkText('同一位置のデータ、隣接回転や検出器端の条件によって、点数や合成比は変わります。③は面内の発散と再配列も省略するため、②との差はコーン角だけの効果を単独で取り出したものではありません。①の最寄り2点モデルは主比較から外しました。', 'Coincident data, neighboring turns and detector boundaries change the point count and combined weights. Reference ③ also omits transverse divergence and fan rebinning; the difference is not an isolated cone-angle effect. The former nearest-pair model ① is no longer part of the main comparison.');
+  detailText.textContent = fdkText('同一位置のデータ、隣接回転や検出器端の条件によって、点数や合成比は変わります。②は面内の発散と再配列も省略するため、①との差はコーン角だけの効果を単独で取り出したものではありません。従来の最寄り2点モデルは主比較から外しました。', 'Coincident data, neighboring turns and detector boundaries change the point count and combined weights. Reference ② also omits transverse divergence and fan rebinning; the difference is not an isolated cone-angle effect. The former nearest-pair model is no longer part of the main comparison.');
   const weightExplanation = document.createElement('p');
-  weightExplanation.textContent = fdkText('この例では、②は実データ −0.8/+0.2 mm に0.10/0.40、対向データ −0.3/+0.7 mm に0.35/0.15を付けます。同じ補間ペアでは近い側ほど重みが大きくなります。②では各方向の列間隔を基準に重みを決めるため、異なる方向の点どうしは距離だけで重みを比較できません。', 'In this example, ② assigns weights as follows: the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ② the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
+  weightExplanation.textContent = fdkText('この例では、①は実データ −0.8/+0.2 mm に0.10/0.40、対向データ −0.3/+0.7 mm に0.35/0.15を付けます。同じ補間ペアでは近い側ほど重みが大きくなります。①では各方向の列間隔を基準に重みを決めるため、異なる方向の点どうしは距離だけで重みを比較できません。', 'In this example, ① assigns weights as follows: the direct positions −0.8/+0.2 mm receive 0.10/0.40, and the complementary positions −0.3/+0.7 mm receive 0.35/0.15. Within an interpolation pair, the nearer point has greater weight. In ① the row spacing in each direction sets the weights, so distance alone does not determine weight across different directions.');
   details.append(summary, selectionLimits, detailText, weightExplanation);
   const selected = document.createElement('p');
   selected.className = 'model-choice-selected';
@@ -3227,8 +3227,8 @@ function initializeAxialModelChoice(initial = 'fdk', changed) {
 function axialModelCandidateSketch(model) {
   const id = `model-choice-sketch-${model}`;
   const title = model === 'axial'
-    ? fdkText('①：目的断面を挟む最も近い2位置を選択', '①: select the nearest position on each side of the target plane')
-    : fdkText('②：各方向の隣接列を補間し、4点に重みを付与する例', '②: interpolate adjacent rows in each direction; this example weights four points');
+    ? fdkText('従来の最寄り2点モデル：目的断面を挟む最も近い2位置を選択', 'Former nearest-pair model: select the nearest position on each side of the target plane')
+    : fdkText('①：各方向の隣接列を補間し、4点に重みを付与する例', '①: interpolate adjacent rows in each direction; this example weights four points');
   const x = z => 170 + 75 * z;
   const point = (z, y, direction, weight) => {
     const px = x(z), color = direction ? '#b55b13' : '#2166a5', fill = weight > 0 ? color : '#fff';
@@ -3250,10 +3250,10 @@ function axialModelCandidateSketch(model) {
 
 function axialModelParallelSketch() {
   const id = 'model-choice-sketch-parallel';
-  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${fdkText('③：面内・体軸方向とも発散しない平行なX線の模式図', '③: schematic rays with no transverse or axial divergence')}</title>
+  return `<svg viewBox="0 0 290 126" role="img" aria-labelledby="${id}-title"><title id="${id}-title">${fdkText('②：面内・体軸方向とも発散しない平行なX線の模式図', '②: schematic rays with no transverse or axial divergence')}</title>
     <text x="145" y="16" text-anchor="middle">${fdkText('X線は平行', 'Parallel X-rays')}</text>
     <g stroke="#638094" stroke-width="1.8" fill="none"><path d="M42 42 H248 M42 68 H248 M42 94 H248"/><path d="M238 37 L248 42 L238 47 M238 63 L248 68 L238 73 M238 89 L248 94 L238 99"/></g>
-    <text x="145" y="119" text-anchor="middle" fill="#596b79">${fdkText('列間補間と取得範囲は②と共通', 'Same row interpolation and support as ②')}</text></svg>`;
+    <text x="145" y="119" text-anchor="middle" fill="#596b79">${fdkText('列間補間と取得範囲は①と共通', 'Same row interpolation and support as ①')}</text></svg>`;
 }
 
 // Drawing order only: each row trajectory retains its original coordinates.
@@ -3490,8 +3490,8 @@ function readZffsParams(){return {zFfsEnabled:!!document.getElementById('zffs-en
 function initializeZffsUi(initial,changed){
   const box=document.createElement('div');box.id='zffs-controls';box.className='zffs-controls';
   box.innerHTML=`<label class="zffs-switch"><input type="checkbox" id="zffs-enabled">${fdkText('z方向の焦点移動による倍密度サンプリング（z-FFS）','Use z-flying focal spot sampling (z-FFS)')}</label>
-  <p id="zffs-unavailable" hidden>${fdkText('③では焦点移動をOFFにします。②と③の幾何を比較するときは、両者ともOFFにしてください。','Reference ③ turns focal switching OFF. Compare ② and ③ with switching OFF in both.')}</p>
-  <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。②と③の比較では両者ともOFFにしてください。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ②/③ comparison. The default interlaces rows at half spacing at isocentre.')}</p>
+  <p id="zffs-unavailable" hidden>${fdkText('②では焦点移動をOFFにします。①と②の幾何を比較するときは、両者ともOFFにしてください。','Reference ② turns focal switching OFF. Compare ① and ② with switching OFF in both.')}</p>
+  <div id="zffs-options" hidden><p>${fdkText('焦点A・Bを交互に切り替え、候補点・補間重み・SSPzを計算します。取得ビュー数はA+Bの合計です。①と②の比較では両者ともOFFにしてください。初期設定では回転中心の列間隔を半分にします。','Alternate focal positions A and B for candidate geometry, interpolation weights and SSPz. The view count is the total A+B acquisitions. Keep switching OFF in both models for the ①/② comparison. The default interlaces rows at half spacing at isocentre.')}</p>
   <details class="reading-details"><summary>${fdkText('焦点移動の幾何条件','Focal-switching geometry')}</summary><div class="parameter-grid">
   <input id="zffs-magnification" type="hidden" value="${1072/600}">
   <label>${fdkText('回転中心での片側移動量 / 列間隔','One-sided isocentre offset / row pitch')}<input id="zffs-offset" type="number" min="0" max="0.5" step="0.01" value="0.25"></label></div>
@@ -4235,7 +4235,7 @@ function initializeFdkUi(initial){
   </div><p>${fdkText('対象の位置を固定し、開始角度を1°間隔で360条件計算します。設定厚Tは体軸方向の矩形平均幅です。計算範囲はT、検出器列幅、焦点ぼけ幅から裾を含むように決めます。','The object stays fixed while all 360 start angles are evaluated at 1-degree increments. T is the rectangular axial averaging width. The profile domain includes the tails from T, detector-row width and focal blur.')}</p>
   <p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算式と適用範囲','Equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866">Hsieh et al. (2007)</a></p></details>`;
   form.append(controls);
-  if(initial.matchedComparisonMigrated){const note=document.createElement('p');note.className='model-note';note.id='matched-comparison-migration';note.textContent=fdkText('旧条件を読み込みました。主比較を②と③に整理し、③も②と同じ列間補間・取得角度範囲に変更しました。旧①は②へ切り替えています。旧版の保存結果とは区別して再計算してください。','Older settings loaded. The main comparison now uses ② and ③ with matched row interpolation and acquisition support. Former model ① is mapped to ②. Recalculate and keep old saved results separate.');controls.prepend(note);}
+  if(initial.matchedComparisonMigrated){const note=document.createElement('p');note.className='model-note';note.id='matched-comparison-migration';note.textContent=fdkText('旧条件を読み込みました。主比較を①と②に整理し、②も①と同じ列間補間・取得角度範囲に変更しました。従来の最寄り2点モデルは①のコーン幾何モデルへ切り替えています。旧版の保存結果とは区別して再計算してください。','Older settings loaded. The main comparison now uses ① and ② with matched row interpolation and acquisition support. The former nearest-pair model is mapped to cone geometry (①). Recalculate and keep old saved results separate.');controls.prepend(note);}
   if(initial.sourceSupportMigrated){const note=document.createElement('p');note.className='model-note';note.textContent=fdkText('取得範囲の判定を再配列角360°からX線管角360°＋2Φへ修正しました。旧版とは候補・重み・SSPzが変わる場合があります。全ファン角を確認して再計算してください。','Source support now uses tube angles over 360° + 2Φ instead of one rebinned turn. Candidates, weights and SSPz may differ from older results. Check the full fan opening and recalculate.');controls.prepend(note);}
   if(initial.legacyResponse){const note=document.createElement('p');note.className='model-note';note.id='axial-response-migration';note.textContent=fdkText('旧版の条件を読み込みました。現在は共通の体軸補間応答モデルで計算するため、従来のFBP・体軸モデルの保存結果とは数値が異なります。','Older settings loaded. The current shared axial interpolation model produces different values from previous FBP and axial results.');controls.prepend(note);}
   document.getElementById('fdk-method').setAttribute('aria-describedby','fdk-controls');
@@ -4263,7 +4263,7 @@ function initializeFdkUi(initial){
     <details class="reading-details"><summary>${fdkText('分布図の読み方','Reading the distribution')}</summary><p>${fdkText('赤：選択した体軸補間モデル。0.01 mm格子への線形補間、偏差ビン幅0.002を用い、濃さは各ビンの割合の0.35乗です。位置合わせと正規化の影響を含み、幅方向の拡大縮小は行いません。表示範囲は偏差を切り捨てないよう拡張します。','Red: the selected axial interpolation model. Linear sampling uses a 0.01-mm grid and deviation bins of 0.002; intensity is fraction^0.35. Alignment and normalization affect the distribution; widths are not rescaled. The deviation range expands to retain all values.')}</p></details>
   </div>
   <div class="action-row"><button type="button" id="fdk-xlsx" class="secondary" disabled>${fdkText('SSPz・平均差をExcel保存','Export SSPz and mean differences to Excel')}</button><button type="button" id="fdk-csv" class="secondary" disabled>SSPz CSV</button><button type="button" id="fdk-json" class="secondary" disabled>${fdkText('応答・重み・条件をJSON保存','Export response, weights and conditions as JSON')}</button><button type="button" id="fdk-png" class="secondary" disabled>${fdkText('SSPzを600 dpi PNG保存','Save SSPz as 600-dpi PNG')}</button></div>
-  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('②と③の差には、面内・体軸方向の発散、再配列、開口と焦点ぼけの投影の違いが含まれます。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The difference between ② and ③ includes transverse and axial divergence, rebinning, and the projection of aperture and focal blur. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
+  <details class="reading-details"><summary>${fdkText('方法・解釈の範囲','Method and interpretation')}</summary><p>${fdkText('モデルSSPzは、有限検出器開口と設定した焦点寸法を反映した点対象の取得応答に、候補の選択・線形補間を適用し、角度方向に平均して求めます。面内のランプフィルタ、FBPの幾何重み、横断画像の再構成は含みません。3次元画像再構成後のSSPやTCOTを再現するものではありません。','Model SSPz applies candidate selection, linear interpolation and angular averaging to point-object measurements with the finite detector aperture and configured axial focal size. It omits the transaxial ramp, FBP geometric weights and transverse image reconstruction. It is not the image SSP of 3D FBP or TCOT.')}</p><p>${fdkText('①と②の差には、面内・体軸方向の発散、再配列、開口と焦点ぼけの投影の違いが含まれます。設定厚Tの矩形平均後に正規化し、元の計算点間の直線交点からFWHM・FWTMを求めます。FWHMをTに合わせる調整はしません。','The difference between ① and ② includes transverse and axial divergence, rebinning, and the projection of aperture and focal blur. Normalization follows rectangular T averaging; widths use linear crossings between native samples. FWHM is not fitted to T.')}</p><p>${fdkText('80～320列も計算できますが、広角コーンビームの画像再構成精度を検証するモデルではありません。','80–320 rows are supported; this model does not evaluate the accuracy of wide-cone image reconstruction.')}</p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法と確認記録','Method and verification')}</a></details>`;
   panel.insertAdjacentHTML('beforeend',`<div id="cba-samples-wrap" class="chart-card" hidden><h3>${fdkText('補間に使うサンプルと重み：点の位置位置（画像平均化前）','Interpolation samples and weights before image averaging')}</h3><canvas id="cba-samples" width="1200" height="700"></canvas><p>${fdkText('青：RRI、赤：CBA。点の面積は正規化した重みです。横軸は点の位置からの距離。各対向ペアの補間候補を、再配列後の角度で示します。これは中心位置の局所的な重みであり、SSPz全体の寄与率ではありません。','Blue: RRI; red: CBA. Marker area represents normalized weight. The interpolation candidates in each conjugate pair are shown at the rebinned angle and relative to the object point. These are local weights at the central point, not total contributions to SSPz.')}</p></div><p><a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('RRI相当の線形補間：計算方法と適用範囲','RRI-equivalent interpolation: equations and scope')}</a> · <a href="https://doi.org/10.1117/1.2746866" target="_blank" rel="noopener noreferrer">Hsieh et al. (2007)</a></p>`);
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
@@ -4551,7 +4551,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-24.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-24.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
