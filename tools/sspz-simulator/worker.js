@@ -128,6 +128,7 @@ self.onmessage = async event => {
     try {
       const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
+        captureDiagramFrames: true,
         cancelled: () => cancelled,
         domainExpanded: domain => self.postMessage({type:'domain-expansion',...domain}),
         progress: value => self.postMessage({type:'progress',value,label:`Axial interpolation ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),

@@ -407,7 +407,7 @@
   },
   "activeComparison": {
     "version": "2026-09-24.1",
-    "webBuild": "2026-09-25.2",
+    "webBuild": "2026-09-25.3",
     "urlVersion": 15,
     "defaultModel": "rri",
     "models": [
@@ -421,10 +421,18 @@
   },
   "positionPreview": {
     "lifecycle": "Debounced independent worker; superseded workers terminated; older full-sweep results invalidated",
-    "webBuild": "2026-09-25.2",
+    "webBuild": "2026-09-25.3",
     "computation": "Production computeAxialResponse with unchanged requested sampling, RRI and matched-rri support",
     "oldModels": "Parallel and merged retained only in historical numerical APIs",
     "display": "Both canvases and JSON use one response object; production result renderers",
     "phase": "Fixed base start angle from current inputs"
+  },
+  "positionPlayback": {
+    "webBuild": "2026-09-25.3",
+    "scope": "360 start-angle conditions at one fixed evaluation radius; not scan-time tube motion",
+    "numericalSampling": "All acquired views and native profile z samples retained",
+    "display": "All 360 grey profiles; selected red; fixed common axes; cached sampled diagram weights",
+    "invalidation": "Setting changes stop playback and retain explicitly labelled previous plots until atomic replacement",
+    "export": "Sampled display audit is diagramFrame, distinct from complete selected-angle weightAudit"
   }
 }

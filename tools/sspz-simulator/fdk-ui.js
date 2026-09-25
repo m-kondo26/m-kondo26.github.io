@@ -177,7 +177,7 @@ function initializeFdkUi(initial){
 function fdkToggleDownloads(on){syncZffsUi();for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
 function runFdkSimulation(){
   stopPositionPreview();document.getElementById('fdk-panel').hidden=false;
-  if(!positionResult)clearPositionResult(fdkText('全開始角度を計算中です。完了後に基準角度の結果を表示します。','Computing all start angles. The base-angle result will appear on completion.'),'idle');
+  beginPositionSeries();
   const params={...readParams(),...readFdkParams()};
   for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=false;
   fdkRunParams=params;
@@ -190,13 +190,13 @@ function runFdkSimulation(){
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
   syncLanguageLinks(url.search);worker=createComputationWorker();
   const activeWorker=worker;
-  const fail=text=>{if(worker!==activeWorker)return;if(!positionResult)clearPositionResult(text,'error');setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('計算を完了できませんでした','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',fdkText('有効な応答なし','No valid response'),'error');releaseWorker();};
+  const fail=text=>{if(worker!==activeWorker)return;failPositionSeries(text);setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('計算を完了できませんでした','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',fdkText('有効な応答なし','No valid response'),'error');releaseWorker();};
   worker.onmessage=({data:m})=>{
     if(worker!==activeWorker)return;
-    if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;}
+    if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;positionSeriesProgress(fdkText(`360開始角度を準備中：${Math.floor(m.value*360)} / 360`,`Preparing start angles: ${Math.floor(m.value*360)} / 360`));}
     else if(m.type==='domain-expansion'){progress.value=0;status.textContent=fdkText(`裾を確認するため、計算範囲を±${m.extentMm.toFixed(2)} mmに広げて再計算しています。`,`Recomputing all angles over ±${m.extentMm.toFixed(2)} mm to check the response tails.`);document.getElementById('fdk-summary').textContent=status.textContent;}
     else if(m.type==='fdk-result'){
-      renderPositionPreview(m.result,'series');
+      preparePositionSeries(m.result);
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
         for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
@@ -214,7 +214,7 @@ function runFdkSimulation(){
     else if(m.type==='axial-animation-error'){failAxialMovie(m);}
     else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest)receiveGeometryInspection(m.result);}
     else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){geometryPlayback.pending=false;stopGeometryPlayback();document.getElementById('geometry-play').disabled=true;document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
-    else if(m.type==='cancelled'){if(!positionResult)clearPositionResult(fdkText('計算を中止しました','Calculation cancelled'),'cancelled');setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
+    else if(m.type==='cancelled'){failPositionSeries(fdkText('計算を中止しました','Calculation cancelled'));setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
       let text=m.message;
       if(text.startsWith('FDK_COVERAGE'))text=fdkText('この条件では、点の投影または局所画像に必要な連続360°のデータが検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。展開図・体軸方向モデルは引き続き選択できます。',text);

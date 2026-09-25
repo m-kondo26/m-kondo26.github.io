@@ -438,7 +438,13 @@ assert.match(englishAppBundle, /Generating figures for the current conditions/);
 assert.match(appSource, /st: params\.sliceThicknessMm/);
 assert.doesNotMatch(appSource, /fw: params\.filterWidthMm/);
 assert.match(appSource, /nf: params\.filterSamples/);
-assert.match(appSource, /旧条件は共通開口で再計算されるため/);
+// Saved settings now migrate into the fixed cone-geometry interface. Preserve
+// both the finite-aperture explanation and the boundary on reusing old results.
+assert.match(appSource, /legacyUrlNote\.hidden = !legacyInputMigrated/);
+assert.match(appSource, /面内有限開口を含むコーン幾何モデルで再計算します/);
+assert.match(appSource, /旧版の体軸補間モデルの結果とは区別してください/);
+assert.match(appSource, /Recalculation uses cone geometry with a finite transaxial aperture/);
+assert.match(appSource, /Keep results from the older axial model separate/);
 assert.match(appSource, /設定厚Tは平均化幅として使用します/);
 assert.match(appSource, /filter_width_mm/);
 assert.match(appSource, /filter_resampling_count/);

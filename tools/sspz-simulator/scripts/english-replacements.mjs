@@ -25,6 +25,7 @@ const replacements = [
   ["点対象がチャネル間の非感度領域にあります：展開図のみ表示", "Point object lies in a detector gap: geometry only"],
   ["回転中心の点が偶数チャネルの中央の隙間にあり、信号を取得できません。SSPz・幅指標は計算できません。", "The isocenter point lies in the central gap of the even-channel grid. No signal is acquired; SSPz and widths are unavailable."],
   ["両モデルに共通の面内有限開口を導入しました。旧条件は共通開口で再計算されるため、従来の体軸補間モデルと結果が異なります。設定厚Tは平均化幅として使用します。", "A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width."],
+  ["面内有限開口を含むコーン幾何モデルで再計算します。旧版の体軸補間モデルの結果とは区別してください。設定厚Tは平均化幅として使用します。", "Recalculate with cone geometry and a finite transaxial aperture. Distinguish these results from the former axial-only model. Configured thickness T sets the averaging width."],
 
   ["両モデルで検出器の取得開口を共通にします。体軸補間モデルは面内の線形補間を、3次元モデルはフィルタと逆投影も計算します。", "Both models share the detector acquisition aperture. The axial model uses linear transaxial readout; the 3D model also filters and backprojects the data. "],
   ["開口幅と計算方法", "Aperture and calculation method"],

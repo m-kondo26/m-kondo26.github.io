@@ -3795,6 +3795,36 @@ async function computeAxialResponseOnGrid(c,hooks){
       angularWeight:'one slice-centred turn; common paired angular mean',extraAxialAveraging:!!c.axialAverageMm,axialAverageMm:c.axialAverageMm,
       profileReadout:'fixed transverse point; moving axial evaluation; no reconstructed image',scientificScope:'geometry and interpolation reference; not a 2D/3D FBP image SSP or commercial reconstruction'}};
 }
+// Playback keeps only the same directions shown by the full-turn candidate
+// renderer. It is a display record, not a complete audit for response/export.
+function compactAxialDiagramFrame(result){
+  const c=result.config,audit=result.weightAudit,V=c.viewSamples,half=V/2;
+  if(!audit)return null;
+  const base=Math.ceil(((c.feed?AR_TAU*result.zObject/c.feed:0)-Math.PI)/(AR_TAU/V)-1e-12);
+  const paired=!!audit.pairedSamples,points=paired?audit.pairedSamples:audit.samples;
+  let minView=Infinity,maxView=-Infinity,maxAbsZ=0;
+  for(const q of points){minView=Math.min(minView,q.view);maxView=Math.max(maxView,q.view);maxAbsZ=Math.max(maxAbsZ,Math.abs(q.z));}
+  const extent={minView,maxView,maxAbsZ};
+  if(!paired){
+    // Historical one-turn z-FFS draws its acquired-data audit directly. Keep
+    // that representation intact rather than inventing opposing pair roles.
+    return {weightAudit:audit,rebinnedWeightAudit:result.rebinnedWeightAudit,
+      extent,zObject:result.zObject,coordinateSystem:result.coordinateSystem,
+      displaySampling:{kind:'full-audit-fallback',stride:1,base,allSamples:points.length}};
+  }
+  let stride=Math.max(1,Math.ceil(V/72));
+  while(half%stride!==0)stride++;
+  const retained=points.filter(q=>((q.referenceView-base)%stride+stride)%stride===0);
+  const expandedKeys=new Set();
+  for(const q of points)for(const reverse of [false,true])expandedKeys.add(`${q.referenceView+(reverse?half:0)}:${reverse?1-q.direction:q.direction}:${q.view}:${q.focus??0}:${q.row}`);
+  const pairedSamples=retained.map(q=>({referenceView:q.referenceView,direction:q.direction,
+    view:q.view,row:q.row,focus:q.focus??0,z:q.z,weight:q.weight,
+    ...(q.referenceWeight===undefined?{}:{referenceWeight:q.referenceWeight})}));
+  return {weightAudit:{definition:'Sampled display weights only; not a complete response audit.',db:audit.db,
+      axialAverageMm:audit.axialAverageMm,centerValue:audit.centerValue,pairedSamples},
+    extent,zObject:result.zObject,coordinateSystem:result.coordinateSystem,
+    displaySampling:{kind:'full-turn',stride,base,allPairedSamples:points.length,allExpandedSamples:expandedKeys.size}};
+}
 async function computeAxialResponseSeries(input={},hooks={}){
   let c=axialResponseConfig(input);const requested=c.zExtent;let expansions=0;
   for(;;){
@@ -3803,9 +3833,11 @@ async function computeAxialResponseSeries(input={},hooks={}){
       for(let i=0;i<c.phaseCount;i++){
         if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
         const phase=c.phase+AR_TAU*i/c.phaseCount;
-        const r=withAxialDomain(await computeAxialResponseOnGrid({...c,phase},{...hooks,profileOnly:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)}),requested,expansions);
+        const r=withAxialDomain(await computeAxialResponseOnGrid({...c,phase},{...hooks,profileOnly:hooks.captureDiagramFrames?false:i>0||hooks.profileOnly,progress:v=>hooks.progress?.((i+v)/c.phaseCount)}),requested,expansions);
         if(r.geometryOnly)return r;
-        selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline,rawTailFraction:r.domainCheck.rawTailFraction});
+        if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
+        selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline,rawTailFraction:r.domainCheck.rawTailFraction,
+          ...(hooks.captureDiagramFrames?{diagramFrame:compactAxialDiagramFrame(r)}:{})});
         hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
       }
     }catch(error){
@@ -3816,6 +3848,7 @@ async function computeAxialResponseSeries(input={},hooks={}){
       await new Promise(resolve=>setTimeout(resolve,0));
       continue;
     }
+    if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
     const mean=Float64Array.from(selected.z,(_,j)=>profiles.reduce((s,p)=>s+p.profile[j],0)/profiles.length);
     return {...selected,profiles,mean,meanDifference:profiles.map(p=>Float64Array.from(p.profile,(v,j)=>v-mean[j]))};
   }
@@ -4031,6 +4064,7 @@ self.onmessage = async event => {
     try {
       const reconstruct = computeAxialResponseSeries;
       const result = await reconstruct(message.params, {
+        captureDiagramFrames: true,
         cancelled: () => cancelled,
         domainExpanded: domain => self.postMessage({type:'domain-expansion',...domain}),
         progress: value => self.postMessage({type:'progress',value,label:`Axial interpolation ${Math.min(message.params.phaseCount,Math.floor(value*message.params.phaseCount)+1)} / ${message.params.phaseCount} start angles (${Math.round(value*100)}%)`}),

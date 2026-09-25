@@ -499,4 +499,10 @@ footer p { margin: 0.2rem 0; }
 .position-canvas { max-width: 100%; overflow-x: auto; }
 .position-canvas canvas { width: 100%; height: auto; aspect-ratio: auto; display: block; }
 #position-stats { font-size: 18px; font-weight: 700; }
+.position-movie-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px; margin-top: 16px; border: 1px solid #d7e0e6; border-radius: 9px; }
+.position-phase-control { flex-basis: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-weight: 700; }
+.position-phase-control input { flex: 1; min-width: 180px; accent-color: #d71920; }
+#position-phase-value { color: #c31820; font-size: 1.2em; font-variant-numeric: tabular-nums; min-width: 75px; }
+#position-movie-status { color: #425a6a; }
+#position-status { min-height: 1.5em; }
 @media(max-width: 760px) { #position-preview { padding: 14px; } .position-plots { grid-template-columns: 1fr; } .position-canvas canvas { min-width: 560px; } }

@@ -107,7 +107,8 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
   const paired=!!audit.pairedSamples,samples=paired?SSPZAngles.expand(audit.pairedSamples,c):audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
-  const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
+  const frameExtent=r.diagramFrame?.extent;
+  const first=Math.min(base,frameExtent?.minView??Math.min(...samples.map(q=>q.view))),last=Math.max(base+c.viewSamples,frameExtent?.maxView??Math.max(...samples.map(q=>q.view)));
   const rebinned=paired||r.coordinateSystem==='rebinned-theta'||!!r.reference;
   const physical=!zoom&&!rebinned;
   const rowMin=rebinned||physical?0:Math.min(...samples.map(q=>q.row))-2;
@@ -130,7 +131,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
     const [z,scale]=geometryAt(v);
     for(const row of [0,rows-1])extent=Math.max(extent,Math.abs(z+scale*rowOffsets[row]-r.zObject));
   }
-  const zoomLimit=Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12;
+  const zoomLimit=Math.max(c.rowWidth,Math.ceil((frameExtent?.maxAbsZ??Math.max(...samples.map(q=>Math.abs(q.z))))*10)/10)*1.12;
   // Background curves describe geometry, not the support of selected weights.
   // Draw complete turns and clip them at the axes; never join folded endpoints.
   let minCentral=Infinity,maxCentral=-Infinity;
@@ -154,7 +155,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
     const reach=c.zFfsSourceOffsetMm*(1+(1+c.radius/c.sourceRadius)/c.zFfsMagnification);
     extent+=reach;minCentral-=reach;maxCentral+=reach;
   }
-  const xLimit=symmetricNiceAxis(zoom?zoomLimit:extent,3).xMax;
+  const xLimit=symmetricNiceAxis(options.sharedXLimit??(zoom?zoomLimit:extent),3).xMax;
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);

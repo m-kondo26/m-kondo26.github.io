@@ -1,3 +1,9 @@
+## Cached start-angle playback — 2026-09-25.3
+
+At the chosen radius, Prepare computes all 360 start angles and compact display audits. Playback and angle scrubbing then reuse those results: all native SSPz curves remain grey, the selected curve and angle are red, and the production unwrapped diagram switches in the same frame. Both axes stay fixed across the series. This compares separate starting conditions, not tube motion during one acquisition. Numerical view sampling, interpolation and thickness averaging are unchanged.
+
+Changing radius or another condition stops playback and preserves the previous plots, explicitly labelled as previous settings, until the new pair is ready. Display JSON identifies sampled diagram weights separately; complete weights remain available through the detailed selected-angle export.
+
 ## Current position-linked interface — 2026-09-25.2
 
 The public interface is fixed to cone geometry with RRI-equivalent row interpolation. Changing the radius (slider, numeric input or preset) recalculates one start angle with the production response function; its unwrapped diagram and SSPz share one result object and retain the result-screen drawing conventions. No reduced view count or substitute numerical model is used. Full 360-start-angle analysis remains an explicit calculation. Old results and exports are invalidated immediately when conditions change; superseded preview workers are terminated and responses are correlated by request id.

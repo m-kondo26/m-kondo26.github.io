@@ -3903,7 +3903,8 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
   const paired=!!audit.pairedSamples,samples=paired?SSPZAngles.expand(audit.pairedSamples,c):audit.samples,base=Math.ceil(((c.feed?2*Math.PI*r.zObject/c.feed:0)-Math.PI)/step-1e-12);
-  const first=Math.min(base,...samples.map(q=>q.view)),last=Math.max(base+c.viewSamples,...samples.map(q=>q.view));
+  const frameExtent=r.diagramFrame?.extent;
+  const first=Math.min(base,frameExtent?.minView??Math.min(...samples.map(q=>q.view))),last=Math.max(base+c.viewSamples,frameExtent?.maxView??Math.max(...samples.map(q=>q.view)));
   const rebinned=paired||r.coordinateSystem==='rebinned-theta'||!!r.reference;
   const physical=!zoom&&!rebinned;
   const rowMin=rebinned||physical?0:Math.min(...samples.map(q=>q.row))-2;
@@ -3926,7 +3927,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
     const [z,scale]=geometryAt(v);
     for(const row of [0,rows-1])extent=Math.max(extent,Math.abs(z+scale*rowOffsets[row]-r.zObject));
   }
-  const zoomLimit=Math.max(c.rowWidth,Math.ceil(Math.max(...samples.map(q=>Math.abs(q.z)))*10)/10)*1.12;
+  const zoomLimit=Math.max(c.rowWidth,Math.ceil((frameExtent?.maxAbsZ??Math.max(...samples.map(q=>Math.abs(q.z))))*10)/10)*1.12;
   // Background curves describe geometry, not the support of selected weights.
   // Draw complete turns and clip them at the axes; never join folded endpoints.
   let minCentral=Infinity,maxCentral=-Infinity;
@@ -3950,7 +3951,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
     const reach=c.zFfsSourceOffsetMm*(1+(1+c.radius/c.sourceRadius)/c.zFfsMagnification);
     extent+=reach;minCentral-=reach;maxCentral+=reach;
   }
-  const xLimit=symmetricNiceAxis(zoom?zoomLimit:extent,3).xMax;
+  const xLimit=symmetricNiceAxis(options.sharedXLimit??(zoom?zoomLimit:extent),3).xMax;
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
@@ -4249,7 +4250,7 @@ function initializeFdkUi(initial){
 function fdkToggleDownloads(on){syncZffsUi();for(const id of ['fdk-xlsx','fdk-csv','fdk-json','fdk-png','fdk-shape-png'])document.getElementById(id).disabled=!on||(id==='fdk-shape-png'&&!fdkShapeGroups);fdkWorkflowAvailability(on);}
 function runFdkSimulation(){
   stopPositionPreview();document.getElementById('fdk-panel').hidden=false;
-  if(!positionResult)clearPositionResult(fdkText('全開始角度を計算中です。完了後に基準角度の結果を表示します。','Computing all start angles. The base-angle result will appear on completion.'),'idle');
+  beginPositionSeries();
   const params={...readParams(),...readFdkParams()};
   for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=false;
   fdkRunParams=params;
@@ -4262,13 +4263,13 @@ function runFdkSimulation(){
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
   syncLanguageLinks(url.search);worker=createComputationWorker();
   const activeWorker=worker;
-  const fail=text=>{if(worker!==activeWorker)return;if(!positionResult)clearPositionResult(text,'error');setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('計算を完了できませんでした','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',fdkText('有効な応答なし','No valid response'),'error');releaseWorker();};
+  const fail=text=>{if(worker!==activeWorker)return;failPositionSeries(text);setBusy(false);fdkToggleDownloads(false);showError(text);status.textContent=fdkText('計算を完了できませんでした','Calculation could not be completed');document.getElementById('fdk-summary').textContent=text;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',fdkText('有効な応答なし','No valid response'),'error');releaseWorker();};
   worker.onmessage=({data:m})=>{
     if(worker!==activeWorker)return;
-    if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;}
+    if(m.type==='progress'){progress.value=m.value;status.textContent=m.label;positionSeriesProgress(fdkText(`360開始角度を準備中：${Math.floor(m.value*360)} / 360`,`Preparing start angles: ${Math.floor(m.value*360)} / 360`));}
     else if(m.type==='domain-expansion'){progress.value=0;status.textContent=fdkText(`裾を確認するため、計算範囲を±${m.extentMm.toFixed(2)} mmに広げて再計算しています。`,`Recomputing all angles over ±${m.extentMm.toFixed(2)} mm to check the response tails.`);document.getElementById('fdk-summary').textContent=status.textContent;}
     else if(m.type==='fdk-result'){
-      renderPositionPreview(m.result,'series');
+      preparePositionSeries(m.result);
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
         for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
@@ -4286,7 +4287,7 @@ function runFdkSimulation(){
     else if(m.type==='axial-animation-error'){failAxialMovie(m);}
     else if(m.type==='fdk-inspection'){if(m.requestId===fdkInspectionRequest)receiveGeometryInspection(m.result);}
     else if(m.type==='fdk-inspection-error'){if(m.requestId===fdkInspectionRequest){geometryPlayback.pending=false;stopGeometryPlayback();document.getElementById('geometry-play').disabled=true;document.getElementById('fdk-inspection-status').textContent=m.message;for(const canvas of [...loadingCanvasStatuses.keys()])drawCanvasStatus(canvas,'Axial interpolation',m.message,'error');}}
-    else if(m.type==='cancelled'){if(!positionResult)clearPositionResult(fdkText('計算を中止しました','Calculation cancelled'),'cancelled');setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
+    else if(m.type==='cancelled'){failPositionSeries(fdkText('計算を中止しました','Calculation cancelled'));setBusy(false);document.getElementById('fdk-summary').textContent=fdkText('計算を中止しました','Calculation cancelled');status.textContent=document.getElementById('fdk-summary').textContent;for(const c of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(c,'Axial interpolation',status.textContent,'cancelled');releaseWorker();}
     else if(m.type==='error'){
       let text=m.message;
       if(text.startsWith('FDK_COVERAGE'))text=fdkText('この条件では、点の投影または局所画像に必要な連続360°のデータが検出器範囲から外れます。ピッチまたは再構成範囲を小さくしてください。展開図・体軸方向モデルは引き続き選択できます。',text);
@@ -4404,6 +4405,7 @@ function cbaDrawSamples(canvas,r){
 // One real response at the current FOV position. Full 360-start-angle analysis
 // remains an explicit action; this worker/result never impersonates that series.
 let positionWorker=null,positionWorkerUrl=null,positionTimer=null,positionRequest=0,positionResult=null;
+const positionMovie={series:null,index:0,playing:false,timer:null,scenes:new Map(),background:null,axes:null,xLimit:null,valid:false};
 function stopPositionPreview(){
   clearTimeout(positionTimer);positionRequest++;
   positionWorker?.terminate();positionWorker=null;
@@ -4430,8 +4432,21 @@ function clearPositionResult(message,state='loading'){
     drawCanvasStatus(canvas,'',message,state);
   }
 }
+function holdPositionResult(message,state='loading'){
+  positionMovie.valid=false;stopPositionMovie();updatePositionMovieControls();
+  document.getElementById('position-json').disabled=true;
+  document.getElementById('position-movie-status').textContent=fdkText('条件を変更したため、360開始角度は再準備が必要です。','Settings changed. Prepare the 360 start angles again.');
+  if(!positionResult){clearPositionResult(message,state);return;}
+  document.getElementById('position-status').textContent=message+' '+fdkText(`前の条件の図を保持しています（r = ${positionResult.config.radius} mm）。`,`Keeping the previous plots (r = ${positionResult.config.radius} mm).`);
+  for(const canvas of positionCanvases()){canvas.dataset.renderState='stale';canvas.setAttribute('aria-busy',String(state==='loading'));}
+}
+function invalidatePositionMovie(){
+  stopPositionMovie();positionMovie.series=null;positionMovie.scenes.clear();positionMovie.background=null;positionMovie.valid=false;updatePositionMovieControls();
+  const prepare=document.getElementById('position-prepare');if(prepare)prepare.disabled=false;
+}
 function schedulePositionPreview(delay=220){
   stopPositionPreview();syncPositionControls();clearError();
+  invalidatePositionMovie();
   // Re-enable form controls before FormData is read. A radius chip or slider
   // can interrupt an ongoing full sweep without losing the other inputs.
   releaseWorker();if(runButton.disabled)setBusy(false);
@@ -4439,7 +4454,7 @@ function schedulePositionPreview(delay=220){
   fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;lastResult=null;
   document.getElementById('fdk-panel').hidden=true;
   document.getElementById('position-preview').hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
-  clearPositionResult(fdkText('評価位置の展開図とSSPzを更新中…','Updating the diagram and SSPz at this position…'));
+  holdPositionResult(fdkText('新しい条件を計算中…','Computing the new settings…'));
   status.textContent=fdkText('位置に連動して計算します。全360開始角度は計算ボタンで実行できます。','Position-linked calculation. Use Calculate for all 360 start angles.');
   if(Number(form.elements.namedItem('beamPitch').value)<=0){clearCanvasStatusAnimations();positionTimer=setTimeout(runSimulation,delay);return;}
   positionTimer=setTimeout(runPositionPreview,delay);
@@ -4447,7 +4462,7 @@ function schedulePositionPreview(delay=220){
 function runPositionPreview(){
   stopPositionPreview();syncPositionControls();
   if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){
-    clearPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;
+    holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;
   }
   const params=readParams(),requestId=positionRequest;
   const previewParams={...params,phase:params.phase};
@@ -4459,7 +4474,7 @@ function runPositionPreview(){
   const active=positionWorker=new Worker(positionWorkerUrl);
   const fail=message=>{
     if(active!==positionWorker||requestId!==positionRequest)return;
-    clearPositionResult(message,'error');stopPositionPreview();
+    holdPositionResult(message,'error');stopPositionPreview();
   };
   active.onerror=e=>fail(e.message);
   active.onmessage=({data:m})=>{
@@ -4475,23 +4490,37 @@ function runPositionPreview(){
 }
 function initializePositionPreview(){
   const section=document.createElement('section');section.id='position-preview';
-  section.innerHTML=`<h2>${fdkText('評価位置によって、データの並びとSSPzはどう変わる？','How do data geometry and SSPz change with FOV position?')}</h2>
-  <p>${fdkText('コーン幾何を固定し、回転中心からの距離だけを動かします。位置を変えると、同じ開始角度の展開図とSSPzを再計算します。','Keep cone geometry fixed and move the evaluation point away from isocentre. Both plots are recalculated at the same start angle when the position changes.')}</p>
+  section.innerHTML=`<h2>${fdkText('評価位置と開始角度で、データの並びとSSPzはどう変わる？','How do position and start angle affect data geometry and SSPz?')}</h2>
+  <p>${fdkText('評価位置を決めて、360開始角度を準備します。灰色の360本を残したまま、選択中のSSPzを赤く強調し、同じ開始角度の展開図と一緒に再生できます。','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('回転中心からの距離 r','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('中心へ戻す','Return to centre')}</button><span>${fdkText('基準開始角度','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('FOVの表示サイズではなく、FOV内の評価位置を変えます。取得ビュー数・補間方法・設定厚Tは現在の入力値を使います。展開図は横軸が体軸位置、縦軸が0～360°の補間対象方向です。','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
+  <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('360開始角度を準備','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('再生速度','Playback speed')} <select id="position-speed"><option value="400">${fdkText('ゆっくり','Slow')}</option><option value="150" selected>${fdkText('標準','Normal')}</option><option value="75">${fdkText('速い','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('表示中の開始角度','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
+  <p id="position-movie-status" aria-live="polite">${fdkText('最初に基準角度の1本を表示します。準備ボタンで全360本を計算します。','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
+  <p class="field-help">${fdkText('再生は、同じ評価位置で開始角度だけが異なる360条件の比較です。X線管が撮影中に回る動きではありません。準備後の角度変更では再計算しません。','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
-  <button type="button" id="position-json" class="secondary" disabled>${fdkText('この位置の応答・重み・条件をJSON保存','Save response, weights and conditions at this position')}</button><p class="field-help">${fdkText('ここでは1つの開始角度を計算します。全360開始角度の変動解析は、上の計算ボタンから実行できます。','This panel computes one start angle. Use the Calculate button above for the full 360-start-angle analysis.')}</p>`;
+  <button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
-  document.getElementById('position-json').onclick=()=>{if(positionResult)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_response.json`,JSON.stringify({scope:'single-start-angle position response',result:positionResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle response; diagramFrame contains display-sampled weights only',result:positionResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-prepare').onclick=()=>{
+    if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
+  };
+  document.getElementById('position-play').onclick=()=>{if(positionMovie.playing)stopPositionMovie();else if(positionMovie.valid&&positionMovie.series){stopAxialMovie();stopGeometryPlayback();positionMovie.playing=true;updatePositionMovieControls();schedulePositionMovie();}};
+  document.getElementById('position-phase').oninput=e=>{stopPositionMovie();renderPositionFrame(Number(e.target.value));};
+  document.getElementById('position-prev').onclick=()=>{stopPositionMovie();renderPositionFrame(positionMovie.index-1);};
+  document.getElementById('position-next').onclick=()=>{stopPositionMovie();renderPositionFrame(positionMovie.index+1);};
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPositionMovie();});
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduced.matches)document.getElementById('position-speed').value='400';
+  reduced.addEventListener('change',()=>{stopPositionMovie();if(reduced.matches)document.getElementById('position-speed').value='400';});
   runButton.textContent=fdkText('全360開始角度を計算する','Calculate all 360 start angles');
   resetButton.addEventListener('click',()=>schedulePositionPreview());
   syncPositionControls();
 }
 
 function renderPositionPreview(r,requestId='series'){
+  invalidatePositionMovie();
   const {profiles,mean,meanDifference,...singleResponse}=r;
   positionResult=singleResponse;
       for(const cv of positionCanvases())loadingCanvasStatuses.delete(cv);
@@ -4504,14 +4533,79 @@ function renderPositionPreview(r,requestId='series'){
       else fdkDrawProfile(profile,{...r,profiles:[r]},'');
       for(const cv of positionCanvases()){
         cv.removeAttribute('aria-busy');
+        delete cv.dataset.profileCount;delete cv.dataset.selectedColor;delete cv.dataset.profileSource;delete cv.dataset.xLimit;
+        cv.dataset.startIndex='0';cv.dataset.phase=String(r.config.phase);
         cv.dataset.radiusMm=String(r.config.radius);cv.dataset.responseRequest=String(requestId);
         cv.dataset.renderState=r.geometryOnly&&cv===profile?'unavailable':'ready';
       }
       document.getElementById('position-stats').textContent=r.geometryOnly?'':`FWHM ${r.fwhm.width.toFixed(2)} mm / FWTM ${r.fwtm.width.toFixed(2)} mm`;
       document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm：同じ位置・開始角度の展開図とSSPzです。`,`r = ${r.config.radius} mm: diagram and SSPz share this position and start angle.`);
       document.getElementById('position-json').disabled=false;
+      positionMovie.valid=true;
+      document.getElementById('position-phase-value').textContent=positionAngle(r.config.phase);
+      document.getElementById('position-phase').value=0;
+      document.getElementById('position-movie-status').textContent=r.geometryOnly?fdkText('取得応答がないため、展開図のみ表示します。','No acquired response; only the diagram is available.'):fdkText('基準角度の1本を表示中。360開始角度を準備すると、全曲線を残して再生できます。','Showing one base-angle profile. Prepare 360 start angles to play with every profile visible.');
+      updatePositionMovieControls();
       status.textContent=fdkText('評価位置の計算が完了しました。','Position calculation complete.');
 
+}
+function positionAngle(phase){return ((phase*180/Math.PI%360+360)%360).toFixed(1)+'°';}
+function updatePositionMovieControls(){
+  const m=positionMovie,ready=!!m.series&&m.valid,button=document.getElementById('position-play');if(!button)return;
+  for(const id of ['position-play','position-prev','position-next','position-phase'])document.getElementById(id).disabled=!ready;
+  button.textContent=m.playing?fdkText('Ⅱ 一時停止','Ⅱ Pause'):fdkText('▶ 開始角度を再生','▶ Play start angles');button.setAttribute('aria-pressed',String(m.playing));
+}
+function stopPositionMovie(){positionMovie.playing=false;clearTimeout(positionMovie.timer);positionMovie.timer=null;updatePositionMovieControls();}
+function schedulePositionMovie(){
+  if(!positionMovie.playing||!positionMovie.valid||document.hidden)return;
+  positionMovie.timer=setTimeout(()=>{if(!positionMovie.playing||!positionMovie.valid)return;renderPositionFrame(positionMovie.index+1);schedulePositionMovie();},Number(document.getElementById('position-speed').value));
+}
+function beginPositionSeries(){
+  invalidatePositionMovie();
+  document.getElementById('position-prepare').disabled=true;
+  holdPositionResult(fdkText('360開始角度を準備中…','Preparing 360 start angles…'));
+  document.getElementById('position-movie-status').textContent=fdkText('展開図とSSPzをまとめて準備します。完了後は計算待ちなしで角度を変更できます。','Preparing diagrams and SSPz together. Angle changes will require no calculation after completion.');
+}
+function positionSeriesProgress(message){document.getElementById('position-movie-status').textContent=message;}
+function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);}
+function preparePositionSeries(r){
+  document.getElementById('position-prepare').disabled=false;
+  if(r.geometryOnly||!r.profiles?.every(p=>p.diagramFrame)){renderPositionPreview(r,'series');return;}
+  const m=positionMovie;stopPositionMovie();m.series=r;m.index=0;m.valid=true;m.scenes.clear();
+  // Pass the same unrounded span to scene construction and axis painting.
+  // Re-rounding an already nice span can enlarge it and omit edge turns.
+  m.xLimit=Math.max(...r.profiles.map(p=>Math.max(r.config.rowWidth,Math.ceil(p.diagramFrame.extent.maxAbsZ*10)/10)*1.12));
+  const canvas=document.getElementById('position-profile');m.background=document.createElement('canvas');m.background.width=canvas.width;m.background.height=canvas.height;
+  const low=Math.min(0,Math.floor(Math.min(...r.profiles.map(p=>Math.min(...p.profile)))*10)/10);
+  m.axes=fdkAxes(m.background,r.z[0],r.z.at(-1),low,1.04,'z position (mm)','Normalized SSPz','',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
+  fdkDrawLines(m.axes,r.z,r.profiles.map(p=>p.profile),'#89949e');
+  const {ctx,b,y}=m.axes;ctx.save();ctx.strokeStyle='#9ba5ad';ctx.lineWidth=1;ctx.setLineDash([5,4]);for(const level of [.5,.1]){ctx.beginPath();ctx.moveTo(b.left,y(level));ctx.lineTo(b.right,y(level));ctx.stroke();}ctx.restore();
+  document.getElementById('position-phase').max=r.profiles.length-1;
+  renderPositionFrame(0);
+  positionSeriesProgress(fdkText(`${r.profiles.length}開始角度の準備が完了しました。灰色：全曲線／赤：表示中の開始角度。`,`${r.profiles.length} start angles ready. Grey: all profiles / red: displayed start angle.`));
+  updatePositionMovieControls();
+}
+function renderPositionFrame(index){
+  const m=positionMovie,r=m.series;if(!r||!m.valid)return;
+  index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
+  const p=r.profiles[index],frame=p.diagramFrame;
+  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  // Compact display coefficients never masquerade as a complete weight audit.
+  positionResult=selected;
+  if(!m.scenes.has(index)){
+    m.scenes.set(index,drawFdkCandidateDiagram({width:900,dataset:{}},{...selected,weightAudit:frame.weightAudit,rebinnedWeightAudit:frame.rebinnedWeightAudit},true,false,'all',true,{fullTurn:true,sharedXLimit:m.xLimit}));
+    while(m.scenes.size>8)m.scenes.delete(m.scenes.keys().next().value);
+  }
+  drawDiagram(document.getElementById('position-diagram'),m.scenes.get(index),'zoom',m.xLimit);
+  const canvas=document.getElementById('position-profile'),ctx=canvas.getContext('2d');ctx.drawImage(m.background,0,0);
+  const axes={...m.axes,ctx};fdkDrawLines(axes,r.z,[p.profile],'#d71920');
+  ctx.save();ctx.fillStyle='#d71920';ctx.font=`700 26px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(fdkText(`開始角度 ${positionAngle(p.phase)} · r = ${r.config.radius} mm`,`Start angle ${positionAngle(p.phase)} · r = ${r.config.radius} mm`),(axes.b.left+axes.b.right)/2,45);ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;ctx.fillText(fdkText(`灰色：全${r.profiles.length}本　赤：選択中`,`Grey: all ${r.profiles.length} profiles   Red: selected`),(axes.b.left+axes.b.right)/2,80);ctx.restore();
+  for(const cv of positionCanvases()){loadingCanvasStatuses.delete(cv);cv.removeAttribute('aria-busy');Object.assign(cv.dataset,{radiusMm:String(r.config.radius),startIndex:String(index),phase:String(p.phase),renderState:'ready',responseRequest:'cached-series',xLimit:String(m.xLimit)});}
+  Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
+  document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
+  document.getElementById('position-stats').textContent=`FWHM ${p.fwhm.width.toFixed(2)} mm / FWTM ${p.fwtm.width.toFixed(2)} mm`;
+  document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm ／ 開始角度 ${positionAngle(p.phase)}：展開図と赤いSSPzは同じ条件です。`,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram and red SSPz share the same settings.`);
+  document.getElementById('position-json').disabled=false;
 }
 
 // Browser defaults use the textbook-derived isocenter estimate. The numerical
@@ -4603,7 +4697,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.3 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
