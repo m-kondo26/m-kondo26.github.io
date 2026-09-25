@@ -407,8 +407,8 @@
   },
   "activeComparison": {
     "version": "2026-09-24.1",
-    "webBuild": "2026-09-25.7",
-    "urlVersion": 19,
+    "webBuild": "2026-09-25.8",
+    "urlVersion": 20,
     "defaultModel": "rri",
     "models": [
       "rri"
@@ -421,14 +421,14 @@
   },
   "positionPreview": {
     "lifecycle": "Debounced independent worker; superseded workers terminated; older full-sweep results invalidated",
-    "webBuild": "2026-09-25.7",
+    "webBuild": "2026-09-25.8",
     "computation": "Production computeAxialResponse with unchanged requested sampling, RRI and matched-rri support",
     "oldModels": "Parallel and merged retained only in historical numerical APIs",
     "display": "Both canvases and JSON use one response object; production result renderers",
     "phase": "Fixed base start angle from current inputs"
   },
   "positionPlayback": {
-    "webBuild": "2026-09-25.7",
+    "webBuild": "2026-09-25.8",
     "scope": "360 start-angle conditions at one fixed evaluation radius; not scan-time tube motion",
     "numericalSampling": "All acquired views and native profile z samples retained",
     "display": "All 360 grey profiles; selected red; fixed common axes; cached sampled diagram weights",
@@ -460,11 +460,16 @@
     "verification": "original-view temporal gates including z-FFS; raw-centre closure; exact pre-TSP SSP regression; UI unit-scaling/export checks",
     "currentUi": "Historical numeric API only; removed from SSPz display and exports in Web2026-09-25.5"
   },
+  "sspzVariation": {
+    "webBuild": "2026-09-25.8",
+    "display": "Persistent section after position preview; existing fixed-z mean difference and FWHM-midpoint-aligned shape density",
+    "lifecycle": "Explicit 360-start-angle calculation; visible guidance before calculation; stale plots retained and labelled on setting changes"
+  },
   "taguchiHfiTsp": {
     "developmentStatus": "under-development; validation incomplete; provisional results for development and verification only",
     "version": "2026-09-25.1",
-    "webBuild": "2026-09-25.7",
-    "urlVersion": 19,
+    "webBuild": "2026-09-25.8",
+    "urlVersion": 20,
     "method": "Taguchi-Aradate1998 Eq6 and rectangular-filter Appendix; original-time coefficient sum following Ichikawa2015 p376",
     "scope": "4 uniform rows; rotation centre; rectangular filter; independent additional calculation after SSPz",
     "candidateRule": "all equivalent rays on continuous helix; equal coefficient sharing for coincident z knots",

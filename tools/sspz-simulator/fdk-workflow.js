@@ -30,11 +30,16 @@ function initializeFdkWorkflow(panel){
   weights.querySelector('#candidate-display-start').onchange=updateCandidateDisplay;
   const profile=block('fdk-profile-step',fdkText('3　全360条件のSSPz','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('全360条件の重ね合わせ','Overlay of all 360 conditions');
-  const shape=block('fdk-shape-step',fdkText('4　SSPzの形状変動','4  SSPz shape variation'));
+  const shape=block('fdk-shape-step',fdkText('SSPzの平均からの差・形状変動','SSPz deviations from the mean and shape variation'));
+  shape.querySelector('h2').id='sspz-variation-title';
+  shape.insertAdjacentHTML('beforeend',`<p id="sspz-variation-status" role="status" aria-live="polite"></p><button type="button" id="sspz-variation-calculate" class="secondary">${fdkText('360開始角度を計算して変動図を表示','Calculate 360 start angles to show variation')}</button><p class="field-help">${fdkText('同じ評価位置の360本から平均を求めます。上の1開始角度だけのプレビューでは、平均からの変動は評価しません。','The mean uses 360 profiles at the same evaluation position. The single-start-angle preview above cannot show variation about that mean.')}</p>`);
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
+  const variation=document.createElement('section');variation.id='sspz-variation';variation.setAttribute('aria-labelledby','sspz-variation-title');variation.append(shape);panel.before(variation);
+  document.getElementById('sspz-variation-calculate').onclick=()=>document.getElementById('position-prepare').click();
+  updateSspzVariation('idle');
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('選択角度の再構成画像','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
-  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,shape,images);
+  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,images);
   initializeAxialMovie(weights);
   initializeGeometryPlayback(geometry,weights);
   geometry.querySelector('.geometry-role-grid').before(document.getElementById('fdk-paired-coordinate'));
@@ -46,6 +51,33 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
   for(const id of ['fdk-weights-rri','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('600 dpi PNG保存','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
+  }
+}
+function updateSspzVariation(state,result=null,message=''){
+  const section=document.getElementById('sspz-variation');if(!section)return;
+  section.hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
+  section.dataset.renderState=state;
+  if(state==='ready'&&result){
+    const c=result.config;
+    section.dataset.resultSettings=`r = ${c.radius} mm / ${c.rows} rows × ${c.rowWidth} mm / pitch ${c.beamPitch} / T = ${c.axialAverageMm??0} mm / ${c.viewSamples} views/turn / ${result.profiles.length} start angles`;
+    section.dataset.profileCount=String(result.profiles.length);
+  }
+  const prior=section.dataset.resultSettings;
+  const descriptions={
+    idle:fdkText('平均差・形状変動の図を表示するには、360開始角度を計算してください。','Calculate 360 start angles to display deviations from the mean and shape variation.'),
+    loading:fdkText('360開始角度のSSPzから平均差・形状変動を計算中です。','Calculating deviations and shape variation from 360 start-angle SSPz profiles.'),
+    ready:fdkText('同じ評価位置の全開始角度から求めた変動です。平均の求め方と位置合わせは、各図の説明をご覧ください。','Variation across all start angles at one position. Each plot explains its mean and alignment convention.'),
+    unavailable:fdkText('この条件ではSSPzが得られないため、平均差・形状変動を表示できません。','No SSPz response is available at these settings, so mean deviations and shape variation cannot be calculated.'),
+    error:fdkText('360開始角度の計算を完了できませんでした。','The 360-start-angle calculation did not complete.')
+  };
+  const held=prior&&state!=='ready'?fdkText('下の図は変更前の条件の結果です。現在の条件では再計算が必要です。','The plots below use the previous settings. Recalculate for the current settings.')+' '+prior:'';
+  document.getElementById('sspz-variation-status').textContent=[descriptions[state]??'',message,state==='ready'?prior:held].filter(Boolean).join(' ');
+  const button=document.getElementById('sspz-variation-calculate');button.disabled=state==='loading';
+  button.textContent=state==='ready'?fdkText('360開始角度を再計算','Recalculate 360 start angles'):fdkText('360開始角度を計算して変動図を表示','Calculate 360 start angles to show variation');
+  if(!prior){document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('fdk-shape-wrap').hidden=true;}
+  for(const canvas of section.querySelectorAll('canvas')){
+    canvas.dataset.renderState=prior?(state==='ready'?'ready':'stale'):state;
+    canvas.setAttribute('aria-busy',String(state==='loading'));
   }
 }
 function fdkWorkflowAvailability(on){

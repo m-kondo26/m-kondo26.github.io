@@ -1,3 +1,7 @@
+## Restore visible SSPz variation section — 2026-09-25.8
+
+The fixed-z mean-deviation plot and the FWHM-midpoint-aligned shape distribution now occupy a persistent section directly after the position preview. The single-angle preview cannot supply a 360-angle mean: a visible calculation action remains before the first sweep, and previous plots stay visible with their previous settings and a stale-result warning during edits and recalculation. Numerical response and shape processing are unchanged.
+
 ## Taguchi HFI TSP — under development, validation incomplete — 2026-09-25.7
 
 **Development preview only. TSP curves and metrics are provisional and are not ready for research conclusions or scanner performance evaluation. The UI, plot and CSV/JSON exports carry this status.**

@@ -4056,11 +4056,16 @@ function initializeFdkWorkflow(panel){
   weights.querySelector('#candidate-display-start').onchange=updateCandidateDisplay;
   const profile=block('fdk-profile-step',fdkText('3　全360条件のSSPz','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('全360条件の重ね合わせ','Overlay of all 360 conditions');
-  const shape=block('fdk-shape-step',fdkText('4　SSPzの形状変動','4  SSPz shape variation'));
+  const shape=block('fdk-shape-step',fdkText('SSPzの平均からの差・形状変動','SSPz deviations from the mean and shape variation'));
+  shape.querySelector('h2').id='sspz-variation-title';
+  shape.insertAdjacentHTML('beforeend',`<p id="sspz-variation-status" role="status" aria-live="polite"></p><button type="button" id="sspz-variation-calculate" class="secondary">${fdkText('360開始角度を計算して変動図を表示','Calculate 360 start angles to show variation')}</button><p class="field-help">${fdkText('同じ評価位置の360本から平均を求めます。上の1開始角度だけのプレビューでは、平均からの変動は評価しません。','The mean uses 360 profiles at the same evaluation position. The single-start-angle preview above cannot show variation about that mean.')}</p>`);
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
+  const variation=document.createElement('section');variation.id='sspz-variation';variation.setAttribute('aria-labelledby','sspz-variation-title');variation.append(shape);panel.before(variation);
+  document.getElementById('sspz-variation-calculate').onclick=()=>document.getElementById('position-prepare').click();
+  updateSspzVariation('idle');
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('選択角度の再構成画像','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
-  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,shape,images);
+  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,images);
   initializeAxialMovie(weights);
   initializeGeometryPlayback(geometry,weights);
   geometry.querySelector('.geometry-role-grid').before(document.getElementById('fdk-paired-coordinate'));
@@ -4072,6 +4077,33 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
   for(const id of ['fdk-weights-rri','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('600 dpi PNG保存','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
+  }
+}
+function updateSspzVariation(state,result=null,message=''){
+  const section=document.getElementById('sspz-variation');if(!section)return;
+  section.hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
+  section.dataset.renderState=state;
+  if(state==='ready'&&result){
+    const c=result.config;
+    section.dataset.resultSettings=`r = ${c.radius} mm / ${c.rows} rows × ${c.rowWidth} mm / pitch ${c.beamPitch} / T = ${c.axialAverageMm??0} mm / ${c.viewSamples} views/turn / ${result.profiles.length} start angles`;
+    section.dataset.profileCount=String(result.profiles.length);
+  }
+  const prior=section.dataset.resultSettings;
+  const descriptions={
+    idle:fdkText('平均差・形状変動の図を表示するには、360開始角度を計算してください。','Calculate 360 start angles to display deviations from the mean and shape variation.'),
+    loading:fdkText('360開始角度のSSPzから平均差・形状変動を計算中です。','Calculating deviations and shape variation from 360 start-angle SSPz profiles.'),
+    ready:fdkText('同じ評価位置の全開始角度から求めた変動です。平均の求め方と位置合わせは、各図の説明をご覧ください。','Variation across all start angles at one position. Each plot explains its mean and alignment convention.'),
+    unavailable:fdkText('この条件ではSSPzが得られないため、平均差・形状変動を表示できません。','No SSPz response is available at these settings, so mean deviations and shape variation cannot be calculated.'),
+    error:fdkText('360開始角度の計算を完了できませんでした。','The 360-start-angle calculation did not complete.')
+  };
+  const held=prior&&state!=='ready'?fdkText('下の図は変更前の条件の結果です。現在の条件では再計算が必要です。','The plots below use the previous settings. Recalculate for the current settings.')+' '+prior:'';
+  document.getElementById('sspz-variation-status').textContent=[descriptions[state]??'',message,state==='ready'?prior:held].filter(Boolean).join(' ');
+  const button=document.getElementById('sspz-variation-calculate');button.disabled=state==='loading';
+  button.textContent=state==='ready'?fdkText('360開始角度を再計算','Recalculate 360 start angles'):fdkText('360開始角度を計算して変動図を表示','Calculate 360 start angles to show variation');
+  if(!prior){document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('fdk-shape-wrap').hidden=true;}
+  for(const canvas of section.querySelectorAll('canvas')){
+    canvas.dataset.renderState=prior?(state==='ready'?'ready':'stale'):state;
+    canvas.setAttribute('aria-busy',String(state==='loading'));
   }
 }
 function fdkWorkflowAvailability(on){
@@ -4441,7 +4473,8 @@ function initializeFdkUi(initial){
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('条件を変更しました。再計算してください。','Settings changed. Recalculate.'),'idle');}
-    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.getElementById('sspz-variation').hidden=!on;
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の点応答はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
@@ -4488,8 +4521,8 @@ function runFdkSimulation(){
   releaseWorker();clearError();lastResult=null;fdkResult=null;fdkSelectedResult=null;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkShapeGroups=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('体軸補間応答を計算中…','Computing axial response…');document.getElementById('fdk-result-config').textContent='';
   for(const canvas of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(canvas,'Axial interpolation',fdkText('計算中','Calculating'));
-  document.getElementById('fdk-shape-wrap').hidden=true;document.getElementById('fdk-shape-summary').textContent='';
-  document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
+  if(!document.getElementById('sspz-variation').dataset.resultSettings){document.getElementById('fdk-shape-wrap').hidden=true;document.getElementById('fdk-shape-summary').textContent='';document.getElementById('fdk-difference-wrap').hidden=true;}
+  document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
   startedAt=performance.now();progress.value=0;
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
   syncLanguageLinks(url.search);worker=createComputationWorker();
@@ -4503,7 +4536,8 @@ function runFdkSimulation(){
       preparePositionSeries(m.result);
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
-        for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
+        document.getElementById('fdk-profile-step').hidden=true;
+        updateSspzVariation('unavailable');
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkRoleDiagrams(m.result);
@@ -4616,12 +4650,14 @@ function renderFdkResult(r){
   const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=true;
   if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('各SSPzから求めたFWHM','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('補間方法','Method')}</th><th>${fdkText('平均 (mm)','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('範囲 (mm)','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd<.001?'&lt; 0.001':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
   document.getElementById('fdk-shape-wrap').hidden=false;
+  let shapeError='';
   try {
     fdkShapeGroups=SSPZShapeDisplay.fromFdk(r);drawFdkShape(document.getElementById('fdk-shape'));
     document.getElementById('fdk-shape-summary').textContent=fdkShapeGroups.map(g=>`${g.name}: ${g.analysis.valid.length} / ${r.profiles.length}`).join(' · ')+fdkText(' 条件。濃さ：ビン内の割合。',' conditions. Intensity: fraction per bin.')+(r.profiles.length===1?fdkText('1条件では変動を評価できません。条件数を増やしてください。',' Variation cannot be assessed from one condition; increase the number of start angles.'):'');
-  }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-summary').textContent=error.message;}
+  }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-wrap').hidden=true;shapeError=fdkText('位置合わせ後の形状変動分布は表示できません：','The aligned shape distribution is unavailable: ')+error.message;}
   document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
   if(r.profiles.length>1)drawFdkDifference(document.getElementById('fdk-difference'),r);
+  updateSspzVariation('ready',r,shapeError);
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
@@ -4786,6 +4822,7 @@ function schedulePositionPreview(delay=220){
   fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkToggleDownloads(false);
   fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;lastResult=null;
   document.getElementById('fdk-panel').hidden=true;
+  updateSspzVariation('idle');
   document.getElementById('position-preview').hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
   holdPositionResult(fdkText('新しい条件を計算中…','Computing the new settings…'));
   status.textContent=fdkText('位置に連動して計算します。全360開始角度は計算ボタンで実行できます。','Position-linked calculation. Use Calculate for all 360 start angles.');
@@ -4833,6 +4870,7 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
+  document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
@@ -4895,13 +4933,14 @@ function schedulePositionMovie(){
   positionMovie.timer=setTimeout(()=>{if(!positionMovie.playing||!positionMovie.valid)return;renderPositionFrame(positionMovie.index+1);schedulePositionMovie();},Number(document.getElementById('position-speed').value));
 }
 function beginPositionSeries(){
+  updateSspzVariation('loading');
   invalidatePositionMovie();
   document.getElementById('position-prepare').disabled=true;
   holdPositionResult(fdkText('360開始角度を準備中…','Preparing 360 start angles…'));
   document.getElementById('position-movie-status').textContent=fdkText('展開図とSSPzをまとめて準備します。完了後は計算待ちなしで角度を変更できます。','Preparing diagrams and SSPz together. Angle changes will require no calculation after completion.');
 }
 function positionSeriesProgress(message){document.getElementById('position-movie-status').textContent=message;}
-function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);}
+function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);updateSspzVariation('error',null,message);}
 function preparePositionSeries(r){
   document.getElementById('position-prepare').disabled=false;
   if(r.geometryOnly||!r.profiles?.every(p=>p.diagramFrame)){renderPositionPreview(r,'series');return;}
@@ -5032,7 +5071,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.7 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.8 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -5174,7 +5213,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 19,
+    v: 20,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,

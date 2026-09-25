@@ -497,6 +497,14 @@ footer p { margin: 0.2rem 0; }
 .position-plots { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .position-plots .chart-card { min-width: 0; width: 100%; margin: 0; }
 .tsp-stats { font-weight: 700; font-variant-numeric: tabular-nums; }
+#sspz-variation { margin: 28px 0; padding: 24px; border: 1px solid #b8cbd5; border-radius: 12px; background: #f8fbfc; }
+#sspz-variation .workflow-block { margin: 0; padding: 0; border: 0; }
+#sspz-variation-status { padding: 12px 16px; background: #eaf2f6; border-radius: 6px; }
+#sspz-variation[data-render-state="idle"]:has(canvas[data-render-state="stale"]) #sspz-variation-status,
+#sspz-variation[data-render-state="loading"] #sspz-variation-status,
+#sspz-variation[data-render-state="error"] #sspz-variation-status,
+#sspz-variation[data-render-state="unavailable"] #sspz-variation-status { background: #fff4df; color: #65370e; }
+@media(max-width:760px) { #sspz-variation { padding: 14px; } }
 #taguchi-tsp { margin: 32px 0; padding: 26px; border: 1px solid #aac3cf; border-top: 4px solid #176b87; border-radius: 12px; background: #f8fbfc; }
 #taguchi-tsp h2 { margin: 0 0 16px; }
 #taguchi-tsp .eyebrow { margin: 0 0 6px; font-weight: 700; color: #176b87; }

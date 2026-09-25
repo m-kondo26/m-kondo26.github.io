@@ -49,6 +49,7 @@ function schedulePositionPreview(delay=220){
   fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkToggleDownloads(false);
   fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;lastResult=null;
   document.getElementById('fdk-panel').hidden=true;
+  updateSspzVariation('idle');
   document.getElementById('position-preview').hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
   holdPositionResult(fdkText('新しい条件を計算中…','Computing the new settings…'));
   status.textContent=fdkText('位置に連動して計算します。全360開始角度は計算ボタンで実行できます。','Position-linked calculation. Use Calculate for all 360 start angles.');
@@ -96,6 +97,7 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
+  document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
@@ -158,13 +160,14 @@ function schedulePositionMovie(){
   positionMovie.timer=setTimeout(()=>{if(!positionMovie.playing||!positionMovie.valid)return;renderPositionFrame(positionMovie.index+1);schedulePositionMovie();},Number(document.getElementById('position-speed').value));
 }
 function beginPositionSeries(){
+  updateSspzVariation('loading');
   invalidatePositionMovie();
   document.getElementById('position-prepare').disabled=true;
   holdPositionResult(fdkText('360開始角度を準備中…','Preparing 360 start angles…'));
   document.getElementById('position-movie-status').textContent=fdkText('展開図とSSPzをまとめて準備します。完了後は計算待ちなしで角度を変更できます。','Preparing diagrams and SSPz together. Angle changes will require no calculation after completion.');
 }
 function positionSeriesProgress(message){document.getElementById('position-movie-status').textContent=message;}
-function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);}
+function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);updateSspzVariation('error',null,message);}
 function preparePositionSeries(r){
   document.getElementById('position-prepare').disabled=false;
   if(r.geometryOnly||!r.profiles?.every(p=>p.diagramFrame)){renderPositionPreview(r,'series');return;}

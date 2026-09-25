@@ -4056,11 +4056,16 @@ function initializeFdkWorkflow(panel){
   weights.querySelector('#candidate-display-start').onchange=updateCandidateDisplay;
   const profile=block('fdk-profile-step',fdkText('','3  SSPz across all 360 conditions'));
   const overlay=document.getElementById('fdk-profile').closest('article');profile.append(overlay);overlay.querySelector('h3').textContent=fdkText('','Overlay of all 360 conditions');
-  const shape=block('fdk-shape-step',fdkText('','4  SSPz shape variation'));
+  const shape=block('fdk-shape-step',fdkText('','SSPz deviations from the mean and shape variation'));
+  shape.querySelector('h2').id='sspz-variation-title';
+  shape.insertAdjacentHTML('beforeend',`<p id="sspz-variation-status" role="status" aria-live="polite"></p><button type="button" id="sspz-variation-calculate" class="secondary">${fdkText('','Calculate 360 start angles to show variation')}</button><p class="field-help">${fdkText('','The mean uses 360 profiles at the same evaluation position. The single-start-angle preview above cannot show variation about that mean.')}</p>`);
   shape.append(document.getElementById('fdk-difference-wrap'),document.getElementById('fdk-shape-wrap'));
+  const variation=document.createElement('section');variation.id='sspz-variation';variation.setAttribute('aria-labelledby','sspz-variation-title');variation.append(shape);panel.before(variation);
+  document.getElementById('sspz-variation-calculate').onclick=()=>document.getElementById('position-prepare').click();
+  updateSspzVariation('idle');
   const images=document.createElement('details');images.className='reading-details';images.hidden=true;images.innerHTML=`<summary>${fdkText('','Reconstructed images at the selected angle')}</summary><div class="chart-grid two"></div>`;
   images.lastElementChild.append(document.getElementById('fdk-axial').closest('article'),document.getElementById('fdk-coronal').closest('article'));
-  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,shape,images);
+  const oldGrid=panel.querySelector('.chart-grid.two');oldGrid.replaceWith(geometry,weights,profile,images);
   initializeAxialMovie(weights);
   initializeGeometryPlayback(geometry,weights);
   geometry.querySelector('.geometry-role-grid').before(document.getElementById('fdk-paired-coordinate'));
@@ -4072,6 +4077,33 @@ function initializeFdkWorkflow(panel){
   document.getElementById('fdk-next').onclick=()=>selectFdkState(selectedStateIndex+1,true);
   for(const id of ['fdk-weights-rri','fdk-difference']){
     const b=document.createElement('button');b.type='button';b.className='secondary';b.dataset.fdkCanvas=id;b.disabled=true;b.textContent=fdkText('','Save 600-dpi PNG');b.onclick=()=>exportFdkWorkflowCanvas(id);document.getElementById(id).after(b);
+  }
+}
+function updateSspzVariation(state,result=null,message=''){
+  const section=document.getElementById('sspz-variation');if(!section)return;
+  section.hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
+  section.dataset.renderState=state;
+  if(state==='ready'&&result){
+    const c=result.config;
+    section.dataset.resultSettings=`r = ${c.radius} mm / ${c.rows} rows × ${c.rowWidth} mm / pitch ${c.beamPitch} / T = ${c.axialAverageMm??0} mm / ${c.viewSamples} views/turn / ${result.profiles.length} start angles`;
+    section.dataset.profileCount=String(result.profiles.length);
+  }
+  const prior=section.dataset.resultSettings;
+  const descriptions={
+    idle:fdkText('','Calculate 360 start angles to display deviations from the mean and shape variation.'),
+    loading:fdkText('','Calculating deviations and shape variation from 360 start-angle SSPz profiles.'),
+    ready:fdkText('','Variation across all start angles at one position. Each plot explains its mean and alignment convention.'),
+    unavailable:fdkText('','No SSPz response is available at these settings, so mean deviations and shape variation cannot be calculated.'),
+    error:fdkText('','The 360-start-angle calculation did not complete.')
+  };
+  const held=prior&&state!=='ready'?fdkText('','The plots below use the previous settings. Recalculate for the current settings.')+' '+prior:'';
+  document.getElementById('sspz-variation-status').textContent=[descriptions[state]??'',message,state==='ready'?prior:held].filter(Boolean).join(' ');
+  const button=document.getElementById('sspz-variation-calculate');button.disabled=state==='loading';
+  button.textContent=state==='ready'?fdkText('','Recalculate 360 start angles'):fdkText('','Calculate 360 start angles to show variation');
+  if(!prior){document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('fdk-shape-wrap').hidden=true;}
+  for(const canvas of section.querySelectorAll('canvas')){
+    canvas.dataset.renderState=prior?(state==='ready'?'ready':'stale'):state;
+    canvas.setAttribute('aria-busy',String(state==='loading'));
   }
 }
 function fdkWorkflowAvailability(on){
@@ -4441,7 +4473,8 @@ function initializeFdkUi(initial){
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'),'idle');}
-    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.getElementById('sspz-variation').hidden=!on;
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
@@ -4488,8 +4521,8 @@ function runFdkSimulation(){
   releaseWorker();clearError();lastResult=null;fdkResult=null;fdkSelectedResult=null;fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkShapeGroups=null;fdkToggleDownloads(false);setBusy(true);
   document.getElementById('fdk-summary').textContent=fdkText('','Computing axial response…');document.getElementById('fdk-result-config').textContent='';
   for(const canvas of document.querySelectorAll('#fdk-panel canvas'))drawCanvasStatus(canvas,'Axial interpolation',fdkText('','Calculating'));
-  document.getElementById('fdk-shape-wrap').hidden=true;document.getElementById('fdk-shape-summary').textContent='';
-  document.getElementById('fdk-difference-wrap').hidden=true;document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
+  if(!document.getElementById('sspz-variation').dataset.resultSettings){document.getElementById('fdk-shape-wrap').hidden=true;document.getElementById('fdk-shape-summary').textContent='';document.getElementById('fdk-difference-wrap').hidden=true;}
+  document.getElementById('cba-samples-wrap').hidden=true;document.getElementById('cba-comparison').hidden=true;
   startedAt=performance.now();progress.value=0;
   const url=paramsToUrl(params);try{history.replaceState(null,'',url);localStorage.setItem('sspz-unwrapped-params',JSON.stringify(params));}catch{}
   syncLanguageLinks(url.search);worker=createComputationWorker();
@@ -4503,7 +4536,8 @@ function runFdkSimulation(){
       preparePositionSeries(m.result);
       if(m.result.geometryOnly){
         fdkResult=m.result;fdkSelectedResult=m.result;selectedStateIndex=0;progress.value=1;setBusy(false);fdkToggleDownloads(false);
-        for(const id of ['fdk-profile-step','fdk-shape-step'])document.getElementById(id).hidden=true;
+        document.getElementById('fdk-profile-step').hidden=true;
+        updateSspzVariation('unavailable');
         document.getElementById('fdk-rri-weights-card').hidden=true;
         document.getElementById('fdk-primary-weight-title').textContent=fdkMethodName(m.result);
         drawFdkRoleDiagrams(m.result);
@@ -4616,12 +4650,14 @@ function renderFdkResult(r){
   const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=true;
   if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('','Method')}</th><th>${fdkText('','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd<.001?'&lt; 0.001':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
   document.getElementById('fdk-shape-wrap').hidden=false;
+  let shapeError='';
   try {
     fdkShapeGroups=SSPZShapeDisplay.fromFdk(r);drawFdkShape(document.getElementById('fdk-shape'));
     document.getElementById('fdk-shape-summary').textContent=fdkShapeGroups.map(g=>`${g.name}: ${g.analysis.valid.length} / ${r.profiles.length}`).join(' · ')+fdkText('',' conditions. Intensity: fraction per bin.')+(r.profiles.length===1?fdkText('',' Variation cannot be assessed from one condition; increase the number of start angles.'):'');
-  }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-summary').textContent=error.message;}
+  }catch(error){fdkShapeGroups=null;document.getElementById('fdk-shape-wrap').hidden=true;shapeError=fdkText('','The aligned shape distribution is unavailable: ')+error.message;}
   document.getElementById('fdk-difference-wrap').hidden=r.profiles.length===1;
   if(r.profiles.length>1)drawFdkDifference(document.getElementById('fdk-difference'),r);
+  updateSspzVariation('ready',r,shapeError);
 }
 function cbaDrawSamples(canvas,r){
   const audit=r.sampleAudit,limit=Math.ceil(Math.max(...audit.flatMap(q=>q.z.map(Math.abs)))*10)/10;
@@ -4786,6 +4822,7 @@ function schedulePositionPreview(delay=220){
   fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);fdkToggleDownloads(false);
   fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;lastResult=null;
   document.getElementById('fdk-panel').hidden=true;
+  updateSspzVariation('idle');
   document.getElementById('position-preview').hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
   holdPositionResult(fdkText('','Computing the new settings…'));
   status.textContent=fdkText('','Position-linked calculation. Use Calculate for all 360 start angles.');
@@ -4833,6 +4870,7 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label=''></canvas></div></article><article class="chart-card"><h3>${fdkText('','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label=''></canvas></div><p id="position-stats"></p><p>${fdkText('','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
+  document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
@@ -4895,13 +4933,14 @@ function schedulePositionMovie(){
   positionMovie.timer=setTimeout(()=>{if(!positionMovie.playing||!positionMovie.valid)return;renderPositionFrame(positionMovie.index+1);schedulePositionMovie();},Number(document.getElementById('position-speed').value));
 }
 function beginPositionSeries(){
+  updateSspzVariation('loading');
   invalidatePositionMovie();
   document.getElementById('position-prepare').disabled=true;
   holdPositionResult(fdkText('','Preparing 360 start angles…'));
   document.getElementById('position-movie-status').textContent=fdkText('','Preparing diagrams and SSPz together. Angle changes will require no calculation after completion.');
 }
 function positionSeriesProgress(message){document.getElementById('position-movie-status').textContent=message;}
-function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);}
+function failPositionSeries(message){document.getElementById('position-prepare').disabled=false;holdPositionResult(message,'error');positionSeriesProgress(message);updateSspzVariation('error',null,message);}
 function preparePositionSeries(r){
   document.getElementById('position-prepare').disabled=false;
   if(r.geometryOnly||!r.profiles?.every(p=>p.diagramFrame)){renderPositionPreview(r,'series');return;}
@@ -5032,7 +5071,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.7 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.8 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -5174,7 +5213,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 19,
+    v: 20,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,
