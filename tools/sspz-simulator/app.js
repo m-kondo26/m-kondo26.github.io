@@ -94,7 +94,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -214,7 +214,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 14,
+    v: 15,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,
@@ -474,6 +474,7 @@ function createComputationWorker() {
 }
 
 function runSimulation() {
+  stopPositionPreview();
   if (Number(form.elements.namedItem('beamPitch').value)>0) return runFdkSimulation();
   releaseWorker();
   clearError();
@@ -3394,7 +3395,7 @@ copyLinkButton.addEventListener("click", async () => {
 });
 form.addEventListener("input", () => {
   updateInputDecorations();
-  if (!runButton.disabled) status.textContent = "条件が変更されました。計算するを押してください。";
+  schedulePositionPreview();
 });
 inspectState?.addEventListener("input", () => requestStateInspection(Number(inspectState.value)));
 inspectPrev?.addEventListener("click", () => requestStateInspection(selectedStateIndex - 1, true));
@@ -3409,7 +3410,7 @@ metricSelect.addEventListener("change", updateSweepDisplay);
 document.querySelectorAll("[data-radius]").forEach(button => button.addEventListener("click", () => {
   form.elements.namedItem("radius").value = button.dataset.radius;
   updateInputDecorations();
-  status.textContent = "横断面内位置を変更しました。計算するを押してください。";
+  schedulePositionPreview();
 }));
 document.querySelectorAll("[data-canvas]").forEach(button => button.addEventListener("click", () => downloadCanvas(button.dataset.canvas)));
 downloadCsvButton.addEventListener("click", downloadSweepCsv);
@@ -3464,7 +3465,8 @@ if(initial!==DEFAULT_PARAMS && initial.channelApertureMm==null)initial.channelAp
 writeParams({ ...DEFAULT_PARAMS, ...initial, filterWidthMm:initial.sliceThicknessMm??DEFAULT_PARAMS.sliceThicknessMm, thicknessMapping:'configured-rectangular' });
 if (legacyUrlNote) {
   legacyUrlNote.hidden = !legacyInputMigrated;
-  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("両モデルに共通の面内有限開口を導入しました。旧条件は共通開口で再計算されるため、従来の体軸補間モデルと結果が異なります。設定厚Tは平均化幅として使用します。", "A shared finite transaxial aperture now applies to both models. Older settings are recalculated with this aperture and differ from the former axial-only response. Configured thickness T sets the averaging width.");
+  if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("面内有限開口を含むコーン幾何モデルで再計算します。旧版の体軸補間モデルの結果とは区別してください。設定厚Tは平均化幅として使用します。", "Recalculation uses cone geometry with a finite transaxial aperture. Keep results from the older axial model separate. Configured thickness T sets the averaging width.");
 }
 initializeFdkUi(initial);
-runSimulation();
+initializePositionPreview();
+schedulePositionPreview(0);

@@ -1,4 +1,4 @@
-<p class="lead">The transaxial detector aperture is the width over which one channel receives signal. Channel spacing is the distance between adjacent channel centres. The simulator uses both as shared acquisition settings when comparing candidate selection and axial interpolation.</p>
+<p class="lead">The transaxial detector aperture is the width over which one channel receives signal. Channel spacing is the distance between adjacent channel centres. With cone geometry and row interpolation fixed, the simulator includes both acquisition settings when examining position-dependent changes in candidate geometry and model SSPz.</p>
 
 <h2>Three detector dimensions</h2>
 <div class="table-scroll"><table>
@@ -19,11 +19,11 @@
 <h2>Where aperture enters the SSPz calculation</h2>
 <ol>
   <li>For a fixed point object, calculate the signal acquired by each view, channel and row, including the finite detector aperture and configured focal size.</li>
-  <li>Rebin the acquired data row by row, select candidates using the chosen method, and apply linear axial interpolation.</li>
+  <li>Apply fan-to-parallel rebinning row by row, then linearly interpolate between supported neighbouring axial rows within the acquisition interval.</li>
   <li>Average over angle and apply an axial rectangular average of width T, the configured slice thickness. Normalize the result for the displayed model SSPz.</li>
 </ol>
-<p>Aperture affects the acquired signal before interpolation. The object is an ideal unit-integral point, not a finite sphere. The two cone-geometry interpolation methods share the acquired signal. The parallel-beam approximation uses the same cell dimensions with a separate, explicitly nondivergent reference geometry.</p>
-<p>See <a href="methods.html?topic=axial&amp;lang=en">axial interpolation and model SSPz</a> for candidate selection and averaging, and <a href="methods.html?topic=focus&amp;lang=en">focal-blur calculation</a> for the finite source.</p>
+<p>Aperture affects the acquired signal before interpolation. The object is an ideal unit-integral point, not a finite sphere. Changing the evaluation position recalculates acquired signals and projected row positions for rays through that point. Keep aperture and channel spacing fixed when examining position dependence.</p>
+<p>See <a href="methods.html?topic=axial&amp;lang=en">axial interpolation and model SSPz</a> for candidate selection, averaging and the position preview, and <a href="methods.html?topic=focus&amp;lang=en">focal-blur calculation</a> for the finite source.</p>
 
 <h2>How this differs from a finer calculation grid</h2>
 <p>A smaller SSPz calculation step samples the calculated response more finely. It does not reduce the detector aperture or acquisition spacing. Changing channel spacing at fixed aperture also changes acquisition sampling.</p>
@@ -42,11 +42,12 @@
     <tr><th>A, B</th><td>Membership factors: 1 inside the aperture, 1/2 exactly on its boundary, and 0 outside</td></tr>
   </tbody>
 </table></div>
-<p>For axial object position z<sub>o</sub> and source position z<sub>s</sub>, w = R(z<sub>o</sub> − z<sub>s</sub>)/L. The parallel-reference cell signal is A<sub>j</sub>B<sub>k</sub>/(ad). An even transaxial channel grid places its centres symmetrically on either side of the axis.</p>
+<p>For axial object position z<sub>o</sub> and source position z<sub>s</sub>, w = R(z<sub>o</sub> − z<sub>s</sub>)/L. An even transaxial channel grid places its centres symmetrically on either side of the axis.</p>
+<p><strong>Historical model API note:</strong> the retained nondivergent reference defines its cell signal as A<sub>j</sub>B<sub>k</sub>/(ad). This reference is not a main-screen option.</p>
 
 <h2>Scope of the model</h2>
 <p>The response includes acquisition geometry, finite aperture, focal size, candidate selection, axial interpolation and averaging. It omits the transaxial ramp filter and transverse image backprojection, so it does not directly reproduce a scanner’s image-based SSPz. Changes introduced with finite aperture also involve channel sampling, readout and geometric projection amplitude.</p>
-<p>Detector-cell integrals, boundaries, gaps and equality of acquired samples between the methods have been checked against analytic values, numerical integration and implementation comparisons. These checks establish computational consistency; they do not validate a particular clinical scanner.</p>
+<p>Detector-cell integrals, boundaries and gaps have been checked against analytic values, numerical integration and implementation comparisons. These checks establish computational consistency; they do not validate a particular clinical scanner.</p>
 
 <h2>References</h2>
 <ul>

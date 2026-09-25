@@ -488,3 +488,15 @@ footer p { margin: 0.2rem 0; }
 .candidate-display-controls [hidden] { display: none; }
 .candidate-display-status { font-variant-numeric: tabular-nums; font-weight: 600; }
 .candidate-display-note { font-size: .9rem; line-height: 1.6; }
+/* Linked FOV position response. Preserve legible production plots on mobile. */
+#position-preview { margin: 24px 0; padding: 24px; border: 1px solid #cad8e0; border-radius: 14px; background: #fff; }
+#position-preview h2 { margin-top: 0; }
+.position-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 16px; background: #eef5f8; border-radius: 9px; }
+.position-controls label { font-weight: 700; }
+.position-controls input[type=range] { width: min(330px, 100%); accent-color: #187784; }
+.position-plots { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.position-plots .chart-card { min-width: 0; width: 100%; margin: 0; }
+.position-canvas { max-width: 100%; overflow-x: auto; }
+.position-canvas canvas { width: 100%; height: auto; aspect-ratio: auto; display: block; }
+#position-stats { font-size: 18px; font-weight: 700; }
+@media(max-width: 760px) { #position-preview { padding: 14px; } .position-plots { grid-template-columns: 1fr; } .position-canvas canvas { min-width: 560px; } }

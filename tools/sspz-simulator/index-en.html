@@ -14,8 +14,8 @@
   <meta property="og:description" content="A free, registration-free research and educational SSPz angular-longitudinal diagram simulator based on fan-beam 180LI acquisition geometry and assumed longitudinal weighting">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/index-en.html">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-25.1">
-  <link rel="stylesheet" href="model-choice.css?v=2026-09-25.1">
+  <link rel="stylesheet" href="styles.css?v=2026-09-25.2">
+  <link rel="stylesheet" href="model-choice.css?v=2026-09-25.2">
 </head>
 <body>
   <noscript>JavaScript is required to run this simulator.</noscript>
@@ -27,7 +27,7 @@
         <a class="language-link" href="index.html" data-language-target="index.html" lang="ja">Japanese</a>
       </div>
       <h1>CT Angular-Longitudinal Diagram and SSPz Geometry Reference</h1>
-      <p class="lead">Relate candidate geometry to model SSPz and compare how ray divergence changes candidate positions and weights.</p>
+      <p class="lead">Move the evaluation point within the FOV using cone geometry to link changes in data geometry, interpolation weights and SSPz.</p>
     </div>
     <div class="hero-badge" aria-label="Access and model scope">
       <strong>Free to use · No registration required</strong>
@@ -54,7 +54,7 @@
         </div>
       </div>
 
-      <p class="field-help" id="detector-model-guide">The models share row interpolation and acquisition-angle support, comparing candidate positions and weights with cone geometry and a nondivergent reference.<a href="methods.html?topic=aperture&amp;lang=en">Aperture and calculation method</a></p>
+      <p class="field-help" id="detector-model-guide">Keep cone geometry fixed and change the evaluation point to inspect candidate positions, weights and SSPz.<a href="methods.html?topic=aperture&amp;lang=en">Aperture and calculation method</a></p>
       <p class="field-help" id="detector-default-note">The default transaxial aperture and channel spacing of 0.58 mm are approximate isocenter values derived from the geometry in CT and MRI (Corona Publishing). Aperture width equals channel spacing in this idealized setting; these are not scanner specifications.</p>
       <form id="parameter-form" class="parameter-grid">
         <label>Number of detector rows <span class="symbol">N</span>
@@ -65,7 +65,7 @@
         </label>
         <label>Transaxial detector aperture width <span class="unit">mm</span>
           <input id="channelApertureMm" name="channelApertureMm" type="number" min="0.01" max="1" step="0.01" value="0.58">
-          <small class="field-help">At isocenter. The same acquisition aperture applies to both models.</small>
+          <small class="field-help">Acquired aperture width projected to isocentre.</small>
         </label>
         <label>Transaxial channel spacing <span class="unit">mm</span>
           <input id="channelWidth" name="channelWidth" type="number" min="0.05" max="1" step="0.01" value="0.58">
@@ -88,7 +88,7 @@
         </label>
         <label>Transaxial position: radial distance from isocenter <span class="unit">mm</span>
           <input id="radius" name="radius" type="number" min="0" max="250" step="1" value="100">
-          <small class="field-help">A radius of 250 mm is the geometric edge of a 500-mm-diameter field of view (FOV).</small>
+          <small class="field-help">Changing position automatically updates the diagram and SSPz. A radius of 250 mm is the geometric edge of a 500-mm FOV.</small>
         </label>
         <label>Configured slice thickness <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
@@ -496,10 +496,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-25.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-25.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-09-25.1"></script>
-  <script src="app-bundle-en.js?v=2026-09-25.1"></script>
+  <script src="worker-source-en.js?v=2026-09-25.2"></script>
+  <script src="app-bundle-en.js?v=2026-09-25.2"></script>
 </body>
 </html>

@@ -17,6 +17,7 @@ let cancelled = false;
 let activeContext = null;
 let fdkContext=null, fdkInspectionToken=0;
 let axialAnimationToken=0;
+let positionPreviewToken=0;
 const yieldToMessages = () => new Promise(resolve => setTimeout(resolve, 0));
 const OVERLAY_STATE_COUNT = 360;
 function overlaySampleIndices(length) {
@@ -108,8 +109,21 @@ function overlayTransferList(overlay) {
 
 self.onmessage = async event => {
   const message = event.data;
+  if(message.type==='position-preview'){
+    const token=++positionPreviewToken;
+    cancelled=false;
+    try{
+      const result=await computeAxialResponse({...message.params,computationModel:'fdk',axialRule:'rri',comparisonMode:'matched-rri'},
+        {cancelled:()=>cancelled||token!==positionPreviewToken});
+      if(!cancelled&&token===positionPreviewToken)self.postMessage({type:'position-preview-result',requestId:message.requestId,result});
+    }catch(error){
+      if(!cancelled&&token===positionPreviewToken)self.postMessage({type:'position-preview-error',requestId:message.requestId,message:error?.message??String(error)});
+    }
+    return;
+  }
   if (message.type === 'fdk-run') {
     cancelled = false;
+    positionPreviewToken++;
     fdkContext=null;fdkInspectionToken++;axialAnimationToken++;
     try {
       const reconstruct = computeAxialResponseSeries;
@@ -149,6 +163,7 @@ self.onmessage = async event => {
   }
   if (message.type === "cancel") {
     cancelled = true;
+    positionPreviewToken++;
     return;
   }
   if (message.type === "inspect-state") {
@@ -176,6 +191,7 @@ self.onmessage = async event => {
   }
   if (message.type !== "run") return;
   cancelled = false;
+  positionPreviewToken++;
   activeContext = null;
   try {
     const params = validateParams(message.params, { allowZeroPitch: true });

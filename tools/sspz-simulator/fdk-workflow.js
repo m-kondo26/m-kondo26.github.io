@@ -102,7 +102,7 @@ function renderFdkSelected(){
 }
 // Adapt the actual reconstruction audit to the established diagram renderer.
 // Only the scene data differ; palette, opacity, marker size and layout are shared.
-function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',capture=false){
+function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',capture=false,options={}){
   if(r.config.zFfsEnabled&&!r.weightAudit?.pairedSamples)return drawZffsPanel(canvas,r,zoom?3:2);
   const c=r.config,audit=r.weightAudit,step=2*Math.PI/c.viewSamples;
   if(!audit)return;
@@ -158,7 +158,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   const turnMin=c.feed?Math.ceil((-xLimit-maxCentral)/c.feed):0;
   const turnMax=c.feed?Math.floor((xLimit-minCentral)/c.feed):0;
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
-  const angleRange=zoom&&typeof candidateDisplayRange==='function'?candidateDisplayRange():null;
+  const angleRange=!options.fullTurn&&zoom&&typeof candidateDisplayRange==='function'?candidateDisplayRange():null;
   let stride=angleRange?1:Math.max(1,Math.ceil(c.viewSamples/72));
   if(paired)while((c.viewSamples/2)%stride!==0)stride++;
   const trace={id:'acquired',family:'direct',angles,axial,scales};

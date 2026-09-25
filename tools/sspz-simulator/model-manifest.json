@@ -407,17 +407,24 @@
   },
   "activeComparison": {
     "version": "2026-09-24.1",
-    "webBuild": "2026-09-24.1",
-    "urlVersion": 14,
+    "webBuild": "2026-09-25.2",
+    "urlVersion": 15,
     "defaultModel": "rri",
     "models": [
-      "rri",
-      "parallel"
+      "rri"
     ],
     "comparisonMode": "matched-rri",
     "interpolationRule": "rri",
-    "sourceSupport": "360 + 2 * fullFanAngleDeg in both models",
-    "scope": "geometry-controlled reduced axial response; no image reconstruction or dose-efficiency inference",
+    "sourceSupport": "360 + 2 * fullFanAngleDeg",
+    "scope": "Fixed cone geometry; compare FOV positions using linked single-start-angle diagram and SSPz. Full 360-start-angle analysis is explicit. No image reconstruction or isolated cone-angle claim.",
     "historicalEntries": "Other dated entries describe past implementations; activeComparison defines the main current UI."
+  },
+  "positionPreview": {
+    "lifecycle": "Debounced independent worker; superseded workers terminated; older full-sweep results invalidated",
+    "webBuild": "2026-09-25.2",
+    "computation": "Production computeAxialResponse with unchanged requested sampling, RRI and matched-rri support",
+    "oldModels": "Parallel and merged retained only in historical numerical APIs",
+    "display": "Both canvases and JSON use one response object; production result renderers",
+    "phase": "Fixed base start angle from current inputs"
   }
 }

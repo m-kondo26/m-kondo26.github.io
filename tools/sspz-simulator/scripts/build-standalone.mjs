@@ -20,7 +20,8 @@ const shapeDisplay=await readFile(new URL("../shape-display.js", import.meta.url
 const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'utf8');
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
-const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + mainApp;
+const positionUi=await readFile(new URL('../position-preview.js',import.meta.url),'utf8');
+const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
 const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${worker}\n`;
@@ -34,7 +35,7 @@ const englishCore = translateEnglishSource(core);
 const englishWorker = translateEnglishSource(worker);
 // FDK UI strings have explicit Japanese/English alternatives. Remove only
 // Japanese string literals in the English build; the English branch remains.
-const englishFdkUi=(modelChoice+'\n'+fdkUi)
+const englishFdkUi=(modelChoice+'\n'+fdkUi+'\n'+positionUi)
   .replace(/fdkText\(`[^`]*[ぁ-んァ-ヶ一-龠々〇][^`]*`,/g,'fdkText(``,')
   .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
 const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);

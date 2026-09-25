@@ -1,3 +1,8 @@
+## Current position-linked interface — 2026-09-25.2
+
+The public interface is fixed to cone geometry with RRI-equivalent row interpolation. Changing the radius (slider, numeric input or preset) recalculates one start angle with the production response function; its unwrapped diagram and SSPz share one result object and retain the result-screen drawing conventions. No reduced view count or substitute numerical model is used. Full 360-start-angle analysis remains an explicit calculation. Old results and exports are invalidated immediately when conditions change; superseded preview workers are terminated and responses are correlated by request id.
+
+Legacy parallel URLs/settings are mapped to cone geometry with a notice. The parallel and other historical numerical APIs remain for reproducibility; they are not selectable in the normal UI. The dated comparisons below describe earlier interfaces. Position-dependent SSPz reflects geometry, finite aperture/focus, rebinning, interpolation and thickness averaging; it does not isolate axial cone angle or simulate a reconstructed image volume.
 ## Current matched comparison — 2026-09-24.1
 
 The main UI now has two choices: cone geometry with RRI-equivalent row interpolation (①), and a nondivergent reference with **the same row interpolation and finite source-angle support** (②). Both use 360° + 2Φ, with Φ the declared full fan opening, the same input detector/focal sizes and rectangular T average. The reference retains helical table motion, finite aperture and centre-projected focal blur; it omits fan rebinning and fixes axial row spacing to d. This comparison does not isolate the axial cone angle alone. Keep z-FFS OFF in both for this comparison.

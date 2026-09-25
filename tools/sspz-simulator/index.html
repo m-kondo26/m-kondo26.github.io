@@ -14,8 +14,8 @@
   <meta property="og:description" content="無料・登録不要でブラウザから利用できる、ファンビーム180LI取得幾何と体軸方向重みによる研究・教育用SSPz展開図シミュレータ">
   <meta property="og:url" content="https://m-kondo26.github.io/tools/sspz-simulator/">
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230b1720'/%3E%3Cpath%20d='M12%2045c10-25%2030-25%2040%200'%20fill='none'%20stroke='%2343c2a1'%20stroke-width='6'/%3E%3Ccircle%20cx='32'%20cy='22'%20r='6'%20fill='%23f5b85c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=2026-09-25.1">
-  <link rel="stylesheet" href="model-choice.css?v=2026-09-25.1">
+  <link rel="stylesheet" href="styles.css?v=2026-09-25.2">
+  <link rel="stylesheet" href="model-choice.css?v=2026-09-25.2">
 </head>
 <body>
   <noscript>このシミュレータの実行にはJavaScriptが必要です。</noscript>
@@ -27,7 +27,7 @@
         <a class="language-link" href="index-en.html" data-language-target="index-en.html" lang="en">English</a>
       </div>
       <h1>CT展開図・SSPz幾何リファレンス</h1>
-      <p class="lead">展開図とモデルSSPzを対応させ、X線の発散が候補データの配置と重みに与える影響を比較します。</p>
+      <p class="lead">コーン幾何のもとでFOV内の評価位置を動かし、データの並び・補間重み・SSPzの変化を対応させます。</p>
     </div>
     <div class="hero-badge" aria-label="利用条件とモデルの位置づけ">
       <strong>無料・登録不要</strong>
@@ -54,7 +54,7 @@
         </div>
       </div>
 
-      <p class="field-help" id="detector-model-guide">列間補間・取得角度範囲を共通にし、コーン幾何と発散なしの基準で候補の位置・重みを比較します。<a href="methods.html?topic=aperture">開口幅と計算方法</a></p>
+      <p class="field-help" id="detector-model-guide">コーン幾何を固定し、評価位置を変えて候補の位置・重みとSSPzを調べます。<a href="methods.html?topic=aperture">開口幅と計算方法</a></p>
       <p class="field-help" id="detector-default-note">面内開口幅とチャネル間隔の既定値0.58 mmは、『CTとMRI』（コロナ社）の幾何情報に基づく回転中心換算の概算です。開口幅＝チャネル間隔とする理想設定で、実機の仕様値ではありません。</p>
       <form id="parameter-form" class="parameter-grid">
         <label>検出器列数 <span class="symbol">N</span>
@@ -65,7 +65,7 @@
         </label>
         <label>面内検出器開口幅 <span class="unit">mm</span>
           <input id="channelApertureMm" name="channelApertureMm" type="number" min="0.01" max="1" step="0.01" value="0.58">
-          <small class="field-help">回転中心換算。両モデルで共通の取得幅です。</small>
+          <small class="field-help">回転中心換算の取得幅です。</small>
         </label>
         <label>面内チャネル間隔 <span class="unit">mm</span>
           <input id="channelWidth" name="channelWidth" type="number" min="0.05" max="1" step="0.01" value="0.58">
@@ -88,7 +88,7 @@
         </label>
         <label>横断面内位置：回転中心からの距離 <span class="unit">mm</span>
           <input id="radius" name="radius" type="number" min="0" max="250" step="1" value="100">
-          <small class="field-help">250 mmは直径500 mmのFOV（撮影・再構成視野）の幾何学的辺縁です。</small>
+          <small class="field-help">位置を変更すると展開図とSSPzを自動更新します。250 mmは直径500 mmのFOVの幾何学的辺縁です。</small>
         </label>
         <label>設定スライス厚 <span class="symbol">T</span> <span class="unit">mm</span>
           <input id="sliceThicknessMm" name="sliceThicknessMm" type="number" min="0.1" max="20" step="0.1" value="1.0">
@@ -496,10 +496,10 @@
 
   <footer>
     <p>Models: axial interpolation responses with explicit acquisition geometry; no image reconstruction or scanner-specific prediction.</p>
-    <p id="version">Web build 2026-09-25.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1</p>
+    <p id="version">Web build 2026-09-25.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source.js?v=2026-09-25.1"></script>
-  <script src="app-bundle.js?v=2026-09-25.1"></script>
+  <script src="worker-source.js?v=2026-09-25.2"></script>
+  <script src="app-bundle.js?v=2026-09-25.2"></script>
 </body>
 </html>

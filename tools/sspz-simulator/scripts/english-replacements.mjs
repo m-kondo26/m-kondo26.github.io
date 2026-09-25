@@ -1,4 +1,8 @@
 const replacements = [
+  ['コーン幾何のもとでFOV内の評価位置を動かし、データの並び・補間重み・SSPzの変化を対応させます。', 'Move the evaluation point within the FOV using cone geometry to link changes in data geometry, interpolation weights and SSPz.'],
+  ['コーン幾何を固定し、評価位置を変えて候補の位置・重みとSSPzを調べます。', 'Keep cone geometry fixed and change the evaluation point to inspect candidate positions, weights and SSPz.'],
+  ['回転中心換算の取得幅です。', 'Acquired aperture width projected to isocentre.'],
+  ['位置を変更すると展開図とSSPzを自動更新します。250 mmは直径500 mmのFOVの幾何学的辺縁です。', 'Changing position automatically updates the diagram and SSPz. A radius of 250 mm is the geometric edge of a 500-mm FOV.'],
   ["焦点―検出器距離", "Source–detector distance"],
   ["有限焦点のぼけと、z-FFSの幾何に共通の距離です。", "Shared distance for finite-focal blur and z-FFS geometry."],
   ["体軸方向の実効焦点寸法", "Effective axial focal size"],
