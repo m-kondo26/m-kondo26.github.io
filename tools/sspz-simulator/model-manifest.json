@@ -79,7 +79,7 @@
     "scanner-specific redundancy or Parker weighting, cone-beam weighting, and backprojection weighting",
     "scanner-specific z filtering and backprojection",
     "iterative reconstruction, deep-learning reconstruction, and noise",
-    "scanner-image temporal sensitivity and motion response; reduced fixed-point TSP is implemented"
+    "scanner-image temporal sensitivity and motion response; separate central-axis HFI reference calculation is available"
   ],
   "literatureBackground": [
     {
@@ -407,8 +407,8 @@
   },
   "activeComparison": {
     "version": "2026-09-24.1",
-    "webBuild": "2026-09-25.4",
-    "urlVersion": 16,
+    "webBuild": "2026-09-25.5",
+    "urlVersion": 17,
     "defaultModel": "rri",
     "models": [
       "rri"
@@ -421,14 +421,14 @@
   },
   "positionPreview": {
     "lifecycle": "Debounced independent worker; superseded workers terminated; older full-sweep results invalidated",
-    "webBuild": "2026-09-25.4",
+    "webBuild": "2026-09-25.5",
     "computation": "Production computeAxialResponse with unchanged requested sampling, RRI and matched-rri support",
     "oldModels": "Parallel and merged retained only in historical numerical APIs",
     "display": "Both canvases and JSON use one response object; production result renderers",
     "phase": "Fixed base start angle from current inputs"
   },
   "positionPlayback": {
-    "webBuild": "2026-09-25.4",
+    "webBuild": "2026-09-25.5",
     "scope": "360 start-angle conditions at one fixed evaluation radius; not scan-time tube motion",
     "numericalSampling": "All acquired views and native profile z samples retained",
     "display": "All 360 grey profiles; selected red; fixed common axes; cached sampled diagram weights",
@@ -457,6 +457,21 @@
       "effect": "display time scaling only at fixed beam pitch; no spatial recalculation"
     },
     "scope": "linear reduced model point temporal impulse response; not full image or scanner temporal validation",
-    "verification": "original-view temporal gates including z-FFS; raw-centre closure; exact pre-TSP SSP regression; UI unit-scaling/export checks"
+    "verification": "original-view temporal gates including z-FFS; raw-centre closure; exact pre-TSP SSP regression; UI unit-scaling/export checks",
+    "currentUi": "Historical numeric API only; removed from SSPz display and exports in Web2026-09-25.5"
+  },
+  "taguchiHfiTsp": {
+    "version": "2026-09-25.1",
+    "webBuild": "2026-09-25.5",
+    "urlVersion": 17,
+    "method": "Taguchi-Aradate1998 Eq6 and rectangular-filter Appendix; original-time coefficient sum following Ichikawa2015 p376",
+    "scope": "4 uniform rows; rotation centre; rectangular filter; independent additional calculation after SSPz",
+    "candidateRule": "all equivalent rays on continuous helix; equal coefficient sharing for coincident z knots",
+    "filterWidth": "independent FW, not SSPz thickness T",
+    "temporalInput": "simultaneous row impulses; coefficients only, no stationary point signal",
+    "timeGrid": "7200 numerical curve evaluations per rotation, not acquisition view count",
+    "fig5Status": "p=.625 detailed shape difference unresolved; no fit to reported widths",
+    "controls": "independent row width/pitch/FW; shared rotation time; explicit copy and paper presets",
+    "exports": "separate CSV/JSON; old point temporal data removed from SSPz exports"
   }
 }

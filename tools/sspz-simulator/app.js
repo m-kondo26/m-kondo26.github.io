@@ -95,7 +95,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.5 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -194,6 +194,7 @@ function writeParams(params) {
   const rotationTime = rotationTimeFromSettings(params);
   if (rotationInput) rotationInput.value = Number.isFinite(rotationTime) ? rotationTime : "";
   updateInputDecorations();
+  if (typeof refreshTemporalDisplay === "function") refreshTemporalDisplay();
 }
 
 function updateInputDecorations() {
@@ -236,7 +237,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 16,
+    v: 17,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,

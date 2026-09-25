@@ -718,7 +718,7 @@ const replacements = [
   ["モデルSSPz", "Model SSPz"],
 ];
 
-replacements.unshift(["実機画像の時間感度と動体応答（モデル点TSPは表示）", "Scanner-image temporal sensitivity and motion response (model point TSP is displayed)"]);
+replacements.unshift(["実機画像の時間感度と動体応答（HFIの参照計算は後段に表示）", "Scanner-image temporal sensitivity and motion response (a separate HFI reference calculation follows)"]);
 
 replacements.unshift(["検出器列ごとの投影再配列と、同報で示されたRRI相当の線形補間を採用します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。", "Implements rowwise projection rebinning and the RRI-equivalent linear interpolation described in this paper. An explicit detector-edge extension normalizes weights over acquired rows. Images are averaged axially with a rectangular window of configured width T. These added definitions do not calibrate scanner slice thickness."]);
 

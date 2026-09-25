@@ -2876,6 +2876,236 @@ function axialAnimationGroups(c,view){
 }
 
 
+const SSPZTaguchi=(()=>{
+// Central-axis HFI coefficient response, independent of the SSPz point model.
+// Taguchi & Aradate (1998), Eq. (6) and Appendix A1–A5: integrate the
+// piecewise-linear interpolant through a rectangular axial filter.
+// Ichikawa et al. (2015), p.376: sum row coefficients at their original times.
+//
+// Scope: four uniform rows, gamma=0, a continuous helix and all equivalent
+// direct/complementary ray copies. This explicit candidate convention is NOT
+// a verified reproduction of Aquilion's acquisition selection: Fig.5(d)'s
+// detailed shape remains discrepant. Never replace this with a fitted curve.
+
+const TAGUCHI_TSP_VERSION = '2026-09-25.1';
+
+function finiteValue(value, fallback, name, lower, upper) {
+  const number = Number(value ?? fallback);
+  if (!Number.isFinite(number) || number < lower || number > upper) {
+    throw new RangeError(`${name} must be between ${lower} and ${upper}.`);
+  }
+  return number;
+}
+
+function configuration(input = {}) {
+  const rows = finiteValue(input.rows, 4, 'rows', 4, 4);
+  if (input.radius != null && Number(input.radius) !== 0) {
+    throw new RangeError('This HFI reference is defined only at radius = 0.');
+  }
+  const rowWidth = finiteValue(input.rowWidth, 2, 'rowWidth', 0.05, 20);
+  const beamPitch = finiteValue(input.beamPitch, 0.625, 'beamPitch', 0.05, 3);
+  const filterWidthMm = finiteValue(input.filterWidthMm, 2, 'filterWidthMm', 0, 40);
+  const rotationTime = finiteValue(input.rotationTime, 1, 'rotationTime', 0.05, 5);
+  const viewSamples = finiteValue(input.viewSamples, 7200, 'viewSamples', 16, 28800);
+  if (!Number.isInteger(viewSamples)) throw new RangeError('viewSamples must be an integer.');
+  return {
+    rows, rowWidth, beamPitch, filterWidthMm, rotationTime, viewSamples,
+    radius: 0, channelAngleRadians: 0, tableFeedPerRotationMm: rows * rowWidth * beamPitch,
+    rowPitch: rows * beamPitch, filterShape: 'rectangular',
+    temporalGridMeaning: 'numerical evaluation samples per rotation; not acquired view count',
+    candidateRule: 'all-equivalent-rays-on-continuous-helix',
+    coincidentRule: 'equal-average-of-coincident-acquisitions',
+  };
+}
+
+// Merge coincident z knots before interpolation. Equal averaging shares a
+// knot's coefficient across the ORIGINAL acquisitions, retaining their times.
+// Eq.(6) assumes distinct neighbors; this tie convention is stated explicitly.
+function mergedKnots(config, phaseTurns, halfCopies) {
+  const points = [];
+  const feed = config.tableFeedPerRotationMm;
+  const tolerance = 1e-10 * config.rowWidth;
+  for (let halfTurn = -halfCopies; halfTurn <= halfCopies; halfTurn += 1) {
+    for (let row = 0; row < config.rows; row += 1) {
+      const timeTurns = phaseTurns + halfTurn / 2;
+      points.push({
+        z: feed * timeTurns + (row + 0.5 - config.rows / 2) * config.rowWidth,
+        row, halfTurn, timeTurns,
+      });
+    }
+  }
+  points.sort((a, b) => a.z - b.z || a.timeTurns - b.timeTurns || a.row - b.row);
+  const knots = [];
+  for (const point of points) {
+    const previous = knots[knots.length - 1];
+    if (previous && Math.abs(point.z - previous.z) <= tolerance) previous.acquisitions.push(point);
+    else knots.push({z: point.z, acquisitions: [point]});
+  }
+  return knots;
+}
+
+// Integral of the cardinal, piecewise-linear basis centered at b, clipped to
+// the filter. This is the rectangular direct-filtering Appendix in one form.
+function basisAverage(a, b, c, filterWidth) {
+  if (filterWidth === 0) {
+    if (0 < a || 0 > c) return 0;
+    return 0 <= b ? (0 - a) / (b - a) : (c - 0) / (c - b);
+  }
+  const lower = -filterWidth / 2;
+  const upper = filterWidth / 2;
+  let integral = 0;
+  let left = Math.max(a, lower);
+  let right = Math.min(b, upper);
+  if (right > left) integral += (right - left) * ((left - a) + (right - a)) / (2 * (b - a));
+  left = Math.max(b, lower);
+  right = Math.min(c, upper);
+  if (right > left) integral += (right - left) * ((c - left) + (c - right)) / (2 * (c - b));
+  return integral / filterWidth;
+}
+
+function directRowBasis(config) {
+  const rowSpan = (config.rows - 1) * config.rowWidth;
+  // Every row at halfTurn=0 has both neighbors well inside this superset.
+  const copies = Math.ceil(2 * rowSpan / config.tableFeedPerRotationMm) + 3;
+  const knots = mergedKnots(config, 0, copies);
+  const basis = [];
+  for (let j = 1; j < knots.length - 1; j += 1) {
+    for (const acquisition of knots[j].acquisitions) {
+      if (acquisition.halfTurn === 0) basis.push({
+        row: acquisition.row, a: knots[j - 1].z, b: knots[j].z, c: knots[j + 1].z,
+        share: 1 / knots[j].acquisitions.length,
+      });
+    }
+  }
+  if (basis.length !== config.rows) throw new Error('HFI candidate enumeration lost a detector row.');
+  return basis.sort((a, b) => a.row - b.row);
+}
+
+// Exposed for audit/teaching: one oriented-ray family after rectangular HFI.
+// Nonzero coefficients sum to one; temporal coefficients are not normalized
+// per acquisition time or multiplied by a stationary-object detector signal.
+function taguchiHfiWeightsAtPhase(input = {}, phaseTurns = 0) {
+  const config = configuration(input);
+  if (!Number.isFinite(phaseTurns)) throw new RangeError('phaseTurns must be finite.');
+  const feed = config.tableFeedPerRotationMm;
+  const span = config.filterWidthMm / 2 + (config.rows - 1) * config.rowWidth / 2;
+  const copies = Math.ceil(2 * (span / feed + Math.abs(phaseTurns))) + 4;
+  const knots = mergedKnots(config, phaseTurns, copies);
+  const records = [];
+  for (let j = 1; j < knots.length - 1; j += 1) {
+    const coefficient = basisAverage(knots[j - 1].z, knots[j].z, knots[j + 1].z, config.filterWidthMm);
+    if (!(coefficient > 0)) continue;
+    const weight = coefficient / knots[j].acquisitions.length;
+    for (const acquisition of knots[j].acquisitions) records.push({
+      row: acquisition.row, halfTurn: acquisition.halfTurn,
+      timeTurns: acquisition.timeTurns, zMm: acquisition.z, weight,
+      coincidentAcquisitions: knots[j].acquisitions.length,
+    });
+  }
+  records.sort((a, b) => a.timeTurns - b.timeTurns || a.row - b.row);
+  return {config, records, sum: records.reduce((sum, record) => sum + record.weight, 0)};
+}
+
+function thresholdWidth(times, values, fraction) {
+  const epsilon = 1e-12;
+  let first = -1;
+  let last = -1;
+  let intervals = 0;
+  let within = false;
+  let thresholdPlateau = false;
+  for (let i = 0; i < values.length; i += 1) {
+    const above = values[i] >= fraction - epsilon;
+    if (above) {
+      if (first < 0) first = i;
+      last = i;
+      if (!within) intervals += 1;
+    }
+    if (i > 0 && Math.abs(values[i] - fraction) <= epsilon && Math.abs(values[i - 1] - fraction) <= epsilon) {
+      thresholdPlateau = true;
+    }
+    within = above;
+  }
+  if (first < 0 || first === 0 || last === values.length - 1) return {width: null, envelopeWidth: null, intervals, reason: 'unbounded-or-missing-crossing'};
+  const crossing = (a, b) => {
+    const slope = values[b] - values[a];
+    if (Math.abs(slope) < epsilon) return (times[a] + times[b]) / 2;
+    return times[a] + (times[b] - times[a]) * (fraction - values[a]) / slope;
+  };
+  const lower = crossing(first - 1, first);
+  const upper = crossing(last, last + 1);
+  const reason = intervals > 1 ? 'disconnected-threshold-intervals'
+    : thresholdPlateau ? 'plateau-at-threshold' : null;
+  return {width: reason ? null : upper - lower, envelopeWidth: upper - lower, lower, upper, intervals, reason};
+}
+
+function computeTaguchiTsp(input = {}) {
+  const config = configuration(input);
+  const basis = directRowBasis(config);
+  const feed = config.tableFeedPerRotationMm;
+  const width = config.filterWidthMm;
+  const maxZ = Math.max(...basis.map(row => Math.max(Math.abs(row.a), Math.abs(row.c))));
+  const supportTurns = (maxZ + width / 2) / feed;
+  // Preserve the full helix. +/- one rotation was Ichikawa's example grid,
+  // not a universal acquisition boundary for arbitrary pitch/filter width.
+  const halfSamples = Math.ceil(supportTurns * config.viewSamples) + 2;
+  const timeTurns = new Float64Array(2 * halfSamples + 1);
+  const raw = new Float64Array(timeTurns.length);
+  let peak = 0;
+  for (let i = 0; i < raw.length; i += 1) {
+    const time = (i - halfSamples) / config.viewSamples;
+    timeTurns[i] = time;
+    const shift = feed * time;
+    for (const row of basis) raw[i] += row.share * basisAverage(row.a + shift, row.b + shift, row.c + shift, width);
+    peak = Math.max(peak, raw[i]);
+  }
+  if (!(peak > 0)) throw new Error('HFI produced no positive coefficients.');
+  const profile = Float64Array.from(raw, value => value / peak);
+  const fwhm = thresholdWidth(timeTurns, profile, 0.5);
+  const fwtm = thresholdWidth(timeTurns, profile, 0.1);
+  let rawArea = 0;
+  for (let i = 1; i < raw.length; i += 1) rawArea += (raw[i - 1] + raw[i]) / (2 * config.viewSamples);
+  const equivalentWidthTurns = rawArea / peak;
+  const msPerTurn = 1000 * config.rotationTime;
+  const weights = taguchiHfiWeightsAtPhase(config, 0.137);
+  return {
+    version: TAGUCHI_TSP_VERSION, method: 'taguchi-hfi-central-axis-reference',
+    config, timeTurns, raw, profile,
+    metrics: {
+      fwhmTurns: fwhm.width, fwtmTurns: fwtm.width, equivalentWidthTurns,
+      fwhmMs: fwhm.width == null ? null : fwhm.width * msPerTurn,
+      fwtmMs: fwtm.width == null ? null : fwtm.width * msPerTurn,
+      equivalentWidthMs: equivalentWidthTurns * msPerTurn,
+      fwhmIntervals: fwhm.intervals, fwtmIntervals: fwtm.intervals,
+      fwhmReason: fwhm.reason, fwtmReason: fwtm.reason,
+      fwhmEnvelopeTurns: fwhm.envelopeWidth, fwtmEnvelopeTurns: fwtm.envelopeWidth,
+      widthDefinition: 'interpolated threshold crossings; null for disconnected intervals or a plateau at the threshold; enclosing extent retained separately',
+      equivalentWidthDefinition: 'trapezoidal integral of peak-normalized continuous-time coefficient curve',
+    },
+    audit: {
+      rawPeak: peak, rawAreaTurns: rawArea, expectedRawAreaTurns: 0.5,
+      rawAreaErrorTurns: rawArea - 0.5,
+      sampleStepTurns: 1 / config.viewSamples, supportTurns,
+      endpointRaw: [raw[0], raw[raw.length - 1]],
+      partitionAtPhase0137: weights.sum,
+      directRowBasis: basis,
+    },
+    provenance: {
+      primaryMethod: 'Taguchi K, Aradate H. Medical Physics 25 (1998) 550-561. Eq.(6), Appendix A1-A5.',
+      primaryMethodDoi: '10.1118/1.598230',
+      temporalAggregation: 'Ichikawa et al. Physica Medica 31 (2015) 374-381, p.376 steps 1-5.',
+      temporalAggregationDoi: '10.1016/j.ejmp.2015.02.012',
+      timeOrigin: 'tube central plane crosses reconstructed z=0 at t/Trot=0',
+      input: 'simultaneous unit temporal signal to every row; interpolation coefficients only',
+      scope: 'central channel at rotation center; rectangular HFI on a continuous helix; no object point-signal factor, FBP, cone correction, or scanner measurement',
+      acquisitionSelection: config.candidateRule,
+      coincidentData: 'Equal-average coincident z knots, dividing their weight among distinct original acquisition times. This is an explicit implementation convention.',
+      fig5Reproduction: 'not-established: the all-equivalent-ray convention differs from the detailed shape of Ichikawa Fig.5(d); no fit to published widths',
+    },
+  };
+}
+
+return {computeTaguchiTsp};})();
+
 // Presentation/export only: does not alter the acquisition or response model.
 globalThis.SSPZShape = (() => {
   function analyze(overlay, key, step = 0.01) {
@@ -3878,7 +4108,7 @@ function renderFdkSelected(){
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('','RRI: linear row interpolation');
   drawFdkRoleDiagrams(r);
   fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
-  renderDetailedTemporal();
+
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
   pairNote.textContent=fdkText('','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
@@ -4097,7 +4327,7 @@ function fdkCsvRows(r){return [
   ['# focalSizeMm',r.config.focalSizeMm??0],
   ['# focalSourceDetectorMm',r.config.focalSourceDetectorMm??1070],
   ['# focal_model_metadata',JSON.stringify(r.model.focalBlur??{})],
-  ['# configuration',JSON.stringify(temporalExport(r).config)],
+  ['# configuration',JSON.stringify(spatialExport(r).config)],
   ['# axial_domain_check',JSON.stringify(r.domainCheck??{})],
   ['# focal_model','uniform effective axial source integrated over acquired detector cells before interpolation; unit total source weight'],
   ['# focal_reference','CT and MRI Fig.6.6; target-angle dependence not modelled'],
@@ -4211,7 +4441,7 @@ function initializeFdkUi(initial){
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
     const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'),'idle');}
-    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
     for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
     const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
     if(viewHelp)viewHelp.textContent=on?fdkText('','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
@@ -4223,10 +4453,10 @@ function initializeFdkUi(initial){
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',()=>{modeChanged();if(document.getElementById('position-preview'))schedulePositionPreview();});modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='fdk';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
-  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:temporalExport(fdkResult).config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:temporalExport(fdkSelectedResult),directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:spatialExport(fdkResult).config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:spatialExport(fdkSelectedResult),directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],['axial_domain_check',JSON.stringify(r.domainCheck??{})],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(temporalExport(r).config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],['axial_domain_check',JSON.stringify(r.domainCheck??{})],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(spatialExport(r).config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
@@ -4382,7 +4612,7 @@ function renderFdkResult(r){
   const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('','All 360 conditions are complete. Preparing the selected-angle view.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} rows / ${c.viewSamples} views/turn / ${r.profiles.length} start angles`;
   fdkDrawProfile(document.getElementById('fdk-profile'),r);
-  renderDetailedTemporal();
+
   const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=true;
   if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('','Method')}</th><th>${fdkText('','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd<.001?'&lt; 0.001':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
   document.getElementById('fdk-shape-wrap').hidden=false;
@@ -4404,89 +4634,105 @@ function cbaDrawSamples(canvas,r){
   }});ctx.restore();ctx.textAlign='center';ctx.fillStyle='#000';ctx.font=`${22*s}px Arial`;ctx.fillText('Blue outline: RRI / red fill: CBA',(a.b.left+a.b.right)/2,49*s);
 }
 
-// Time uses original acquired-view indices, never rebinned or folded angles.
-// Scaling the time axis is a display operation and does not rerun the model.
-const temporalPlots=new WeakMap();
+// Independent HFI calculation. Only an explicit copy action copies geometry
+// settings; the cone-model SSPz and its start-angle playback remain separate.
+let taguchiResult=null,taguchiResultValid=false,taguchiRunId=0;
 function temporalUnit(){return document.getElementById('tsp-time-unit')?.value==='turns'?'turns':'ms';}
-function temporalScale(){return temporalUnit()==='turns'?1:1000*readRotationTime();}
-function temporalSamples(result){return result?.profiles?.length?result.profiles:[result];}
-function temporalAvailable(t){return !!t&&t.sum>0&&t.timeTurns?.length>0;}
-function initializeTemporalUi(){
-  const article=document.createElement('article');article.id='position-tsp-card';article.className='chart-card';
-  article.innerHTML=`<h3>${fdkText('','Model TSP at the same evaluation point')}</h3>
-  <p>${fdkText('','Shows how much data from each acquisition time contribute to the response at this point. The start angle matches SSPz.')}</p>
-  <div class="tsp-controls"><label for="tsp-time-unit">${fdkText('','Time-axis unit')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label><span id="tsp-rotation-label"></span></div>
-  <div class="position-canvas"><canvas id="position-tsp" width="1000" height="610" role="img" aria-label=''></canvas></div>
-  <p id="position-tsp-stats" class="tsp-stats"></p>
-  <p class="field-help">${fdkText('','Time zero is acquisition of the reference view. Negative times precede it; different turns are not folded onto one time. Change rotation time in the settings above.')}</p>
-  <button type="button" id="position-tsp-csv" class="secondary" disabled>${fdkText('','Save the displayed TSP as CSV')}</button>
-  <details class="reading-details"><summary>${fdkText('','How SSPz, TSP and temporal widths relate')}</summary>
-  <table><thead><tr><th>${fdkText('','Response')}</th><th>${fdkText('','What is measured')}</th></tr></thead><tbody><tr><th>SSPz</th><td>${fdkText('','Sum acquired-data contributions at each axial position to show how the point response spreads along z.')}</td></tr><tr><th>TSP</th><td>${fdkText('','Fix the evaluation point and sum row/channel contributions by original acquisition time to show temporal sensitivity.')}</td></tr></tbody></table>
-  <p>${fdkText('','TSP is the central-plane response when the amplitude of the same point changes with acquisition time, normalized to a peak of one. Equivalent width Teq is the view interval times total contribution divided by peak contribution. The 90% contribution interval spans cumulative 5% to 95%. Neither is directly a scanner temporal-resolution specification.')}</p>
-  <p>${fdkText('','Contributions are traced back to original acquired views; SSPz is not converted to time using table speed. This model omits transaxial filtering and backprojection.')} <a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('','Method')}</a></p></details>`;
-  const ssp=document.getElementById('position-profile').closest('article'),stack=document.createElement('div');stack.className='position-response-stack';ssp.before(stack);stack.append(ssp,article);
+function taguchiInput(id){const e=document.getElementById(id);return e&&e.value!==''&&e.checkValidity()?Number(e.value):NaN;}
+function taguchiSettings(){return {rows:4,rowWidth:taguchiInput('taguchi-row-width'),beamPitch:taguchiInput('taguchi-pitch'),filterWidthMm:taguchiInput('taguchi-filter-width'),rotationTime:readRotationTime(),viewSamples:7200};}
+function initializeTaguchiUi(){
+  const section=document.createElement('section');section.id='taguchi-tsp';section.setAttribute('aria-labelledby','taguchi-title');
+  section.innerHTML=`<p class="eyebrow">${fdkText('','Additional calculation')}</p><h2 id="taguchi-title">${fdkText('','TSP reference calculation based on Taguchi et al.’s HFI')}</h2>
+  <p>${fdkText('','This section calculates temporal sensitivity from helical filter interpolation (HFI) weights. It uses a different calculation method from the SSPz above.')}</p>
+  <p class="taguchi-scope"><strong>${fdkText('','Scope: four rows at isocentre (r = 0 mm)')}</strong><br>${fdkText('','Resample between adjacent direct and complementary data, apply a rectangular filter of width FW, and sum interpolation weights by original acquisition time.')}</p>
+  <p class="taguchi-verification-note">${fdkText('','Comparison status: a curve-shape difference remains for Ichikawa Fig. 5(d), p = 0.625. No parameters have been fitted to the published values.')}</p>
+  <div class="taguchi-preset-row"><label for="taguchi-preset">${fdkText('','Paper comparison settings')} <select id="taguchi-preset"><option value="custom">${fdkText('','Custom settings')}</option><option value="0.625">Ichikawa Fig. 5(d): p = 0.625</option><option value="1">Ichikawa Fig. 5(e): p = 1.0</option><option value="1.5">Ichikawa Fig. 5(f): p = 1.5</option></select></label><button type="button" id="taguchi-copy" class="secondary">${fdkText('','Copy row width and pitch from above')}</button></div>
+  <div class="taguchi-inputs">
+  <label>${fdkText('','Row width at isocentre d (mm)')}<input id="taguchi-row-width" type="number" min="0.1" max="10" step="0.1" value="1" required></label>
+  <label>${fdkText('','Beam pitch p')}<input id="taguchi-pitch" type="number" min="0.1" max="2" step="0.001" value="0.875" required></label>
+  <label>${fdkText('','HFI filter width FW (mm)')}<input id="taguchi-filter-width" type="number" min="0.1" max="20" step="0.1" value="1" required></label>
+  <label>${fdkText('','Rotation time (s/rot)')}<input id="taguchi-rotation" type="number" min="0.05" max="5" step="0.05" value="0.5" required></label></div>
+  <p class="field-help">${fdkText('','p is table travel per rotation divided by (4 × d). FW is independent of thickness T above. Rotation time is shared with the settings above.')}</p>
+  <p class="field-help">${fdkText('','The radius r, start-angle playback and focal size above are not used. Paper settings use d = 2 mm, FW = 2 mm and a 1 s rotation.')}</p>
+  <div class="action-row"><button type="button" id="taguchi-calculate">${fdkText('','Calculate the HFI TSP')}</button><label for="tsp-time-unit">${fdkText('','Time axis')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label></div>
+  <p id="taguchi-status" role="status" aria-live="polite"></p>
+  <div class="position-canvas"><canvas id="taguchi-tsp-plot" width="1100" height="660" role="img" aria-label=''></canvas></div>
+  <p id="taguchi-result-settings"></p><p id="taguchi-tsp-stats" class="tsp-stats"></p><p id="taguchi-reference-note" class="field-help"></p>
+  <div class="action-row"><button type="button" id="taguchi-csv" class="secondary" disabled>${fdkText('','Save HFI TSP as CSV')}</button><button type="button" id="taguchi-json" class="secondary" disabled>${fdkText('','Save HFI TSP and settings as JSON')}</button></div>
+  <details class="reading-details"><summary>${fdkText('','Method and comparison with the paper')}</summary><p>${fdkText('','Linear interpolation coefficients are integrated over FW using Eq. (6) and the rectangular-filter appendix of Taguchi and Aradate (1998). No fixed-point detector signal is multiplied into these weights. Time zero is the central time of the target plane.')}</p>
+  <p>${fdkText('','The theoretical time-sampling interval is 1/7200 of a rotation, independent of the acquired view count above. Curves are normalized to a peak of one. FWHM and FWTM use the half-maximum and 10% crossings; Teq is area divided by peak. Widths are not assigned when crossings are ambiguous.')}</p>
+  <p>${fdkText('','The reference comparison is the HFI setting in Ichikawa et al. (2015), Fig. 5(d–f). This does not reproduce reconstructed scanner images or off-centre TSPs.')} <a href="${fdkText('methods.html?topic=axial#taguchi-hfi-tsp','methods.html?topic=axial&lang=en#taguchi-hfi-tsp')}">${fdkText('','Equations and checks')}</a></p>
+  <p><a href="https://doi.org/10.1118/1.598230">Taguchi &amp; Aradate (1998)</a> · <a href="https://doi.org/10.1016/j.ejmp.2015.02.012">Ichikawa et al. (2015)</a></p></details>`;
+  document.getElementById('fdk-panel').after(section);
+  for(const id of ['taguchi-row-width','taguchi-pitch','taguchi-filter-width'])document.getElementById(id).addEventListener('input',()=>{document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();});
+  document.getElementById('taguchi-preset').onchange=e=>{if(e.target.value==='custom')return;document.getElementById('taguchi-row-width').value='2';document.getElementById('taguchi-filter-width').value='2';document.getElementById('taguchi-pitch').value=e.target.value;setTaguchiRotation('1');invalidateTaguchiResult();};
+  document.getElementById('taguchi-copy').onclick=copyTaguchiSettings;
+  document.getElementById('taguchi-calculate').onclick=runTaguchiCalculation;
+  document.getElementById('taguchi-rotation').oninput=e=>setTaguchiRotation(e.target.value);
   document.getElementById('tsp-time-unit').onchange=refreshTemporalDisplay;
-  document.getElementById('position-tsp-csv').onclick=downloadPositionTsp;
-  const detailed=document.createElement('article');detailed.className='chart-card';detailed.innerHTML=`<h3>${fdkText('','Model TSP across 360 conditions: selected start angle in red')}</h3><div class="position-canvas"><canvas id="fdk-tsp" width="1000" height="610" role="img" aria-label=''></canvas></div><p id="fdk-tsp-stats" class="tsp-stats"></p><p>${fdkText('','Time units match the TSP above. Each curve represents a different start angle at the same evaluation point.')}</p>`;
-  document.getElementById('fdk-profile-step').append(detailed);
+  document.getElementById('taguchi-csv').onclick=downloadTaguchiCsv;
+  document.getElementById('taguchi-json').onclick=()=>{const r=taguchiExport();if(r)downloadBlob('Taguchi_HFI_TSP.json',JSON.stringify(r,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  const width=Number(form.elements.namedItem('rowWidth').value),pitch=Number(form.elements.namedItem('beamPitch').value);
+  if(width>=.1&&width<=10){document.getElementById('taguchi-row-width').value=String(width);document.getElementById('taguchi-filter-width').value=String(width);}
+  if(pitch>=.1&&pitch<=2)document.getElementById('taguchi-pitch').value=String(pitch);
+  refreshTemporalDisplay();drawCanvasStatus(document.getElementById('taguchi-tsp-plot'),'HFI TSP',fdkText('','Choose settings and run the additional calculation.'),'idle');
+  document.getElementById('taguchi-status').textContent=fdkText('','This calculation runs independently of SSPz.');
 }
-function temporalStroke(axes,t,scale,color,alpha=1,width=3.5){
-  const {ctx,b,x,y}=axes;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  ctx.strokeStyle=color;ctx.globalAlpha=alpha;ctx.lineWidth=width;
-  strokeNativeProfile(ctx,Float64Array.from(t.timeTurns,v=>v*scale),t.profile,x,y);ctx.restore();
+function setTaguchiRotation(value){form.elements.namedItem('rotationTime').value=value;persistTemporalSettings();refreshTemporalDisplay();}
+function copyTaguchiSettings(){
+  document.getElementById('taguchi-row-width').value=form.elements.namedItem('rowWidth').value;document.getElementById('taguchi-pitch').value=form.elements.namedItem('beamPitch').value;
+  document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();refreshTemporalDisplay();
+  document.getElementById('taguchi-status').textContent=fdkText('','Row width and pitch copied. Calculation remains at isocentre with four rows. Check FW, then calculate.');
 }
-function drawTemporalResponse(canvas,result,index=0){
-  if(!canvas||!result)return false;
-  const profiles=temporalSamples(result),selected=profiles[Math.min(index,profiles.length-1)],t=selected.temporalResponse;
-  const stats=document.getElementById(canvas.id+'-stats'),scale=temporalScale(),units=temporalUnit(),rotation=readRotationTime();
-  if(!Number.isFinite(rotation)){
-    if(canvas.dataset.temporalSource!=='original-acquired-view')drawCanvasStatus(canvas,'TSP',fdkText('','Enter a valid rotation time.'),'unavailable');
-    canvas.dataset.renderState='invalid-time';if(stats)stats.textContent=fdkText('','Enter a rotation time from 0.05 to 5 s. Any previous plot is retained.');return false;
-  }
-  if(!temporalAvailable(t)){
-    drawCanvasStatus(canvas,'TSP',fdkText('','No response at this evaluation point; TSP is undefined.'),'unavailable');
-    if(stats)stats.textContent='';delete canvas.dataset.temporalSource;return false;
-  }
-  let cached=temporalPlots.get(canvas);
-  if(!cached||cached.result!==result||cached.scale!==scale||cached.units!==units||cached.width!==canvas.width){
-    const valid=profiles.map(p=>p.temporalResponse).filter(temporalAvailable);
-    const bound=Math.max(1e-6,...valid.map(q=>Math.max(Math.abs(q.timeTurns[0]),Math.abs(q.timeTurns.at(-1)))))*scale;
-    const limit=symmetricNiceAxis(bound,3).xMax,background=document.createElement('canvas');background.width=canvas.width;background.height=canvas.height;
-    const axes=fdkAxes(background,-limit,limit,0,1.04,units==='ms'?'Acquisition time (ms)':'Acquisition time / Trot','Normalized model TSP','',[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
-    if(profiles.length>1)for(const q of valid)temporalStroke(axes,q,scale,'#89949e',.13,1.1);
-    cached={result,scale,units,width:canvas.width,background,axes,validCount:valid.length,limit};temporalPlots.set(canvas,cached);
-  }
-  const ctx=canvas.getContext('2d');ctx.drawImage(cached.background,0,0);const axes={...cached.axes,ctx};temporalStroke(axes,t,scale,'#d71920');
-  const phase=selected.phase??result.config.phase;
-  ctx.save();ctx.fillStyle='#d71920';ctx.textAlign='center';ctx.font=`700 25px ${FIGURE_FONT}`;ctx.fillText(fdkText(``,`Start angle ${positionAngle(phase)} · r = ${result.config.radius} mm`),(axes.b.left+axes.b.right)/2,43);
-  ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;ctx.fillText(profiles.length>1?fdkText(``,`Grey: valid ${cached.validCount}/${profiles.length}   Red: selected`):fdkText('','Original acquisition-time contributions / peak 1'),(axes.b.left+axes.b.right)/2,78);ctx.restore();
-  loadingCanvasStatuses.delete(canvas);canvas.removeAttribute('aria-busy');Object.assign(canvas.dataset,{renderState:'ready',temporalSource:'original-acquired-view',startIndex:String(index),phase:String(phase),radiusMm:String(result.config.radius),rotationTime:String(rotation),timeUnit:units,timeAxisLimit:String(cached.limit),profileCount:String(profiles.length),closureError:String(t.closureError),rawSum:String(t.sum)});
-  const unit=units==='ms'?'ms':'Trot',fmtT=value=>Number.isFinite(value)?(value*scale).toFixed(units==='ms'?1:3):'—';
-  if(stats)stats.textContent=fdkText(``,`Equivalent width Teq ${fmtT(t.equivalentWidthTurns)} ${unit} / 90% contribution interval ${fmtT(t.coverage90?.widthTurns)} ${unit}`);
-  return true;
+function taguchiDownloads(enabled){for(const id of ['taguchi-csv','taguchi-json'])document.getElementById(id).disabled=!enabled;}
+function invalidateTaguchiResult(){
+  taguchiRunId++;taguchiResultValid=false;taguchiDownloads(false);document.getElementById('taguchi-calculate').disabled=false;
+  document.getElementById('taguchi-tsp-plot').dataset.renderState=taguchiResult?'stale':'idle';
+  document.getElementById('taguchi-status').textContent=taguchiResult?fdkText('','Settings changed. The previous curve is retained; calculate again to update.'):fdkText('','Check settings and run the additional calculation.');
 }
-function renderPositionTemporal(){
-  const result=positionMovie.series??positionResult;if(!result)return;
-  const ready=drawTemporalResponse(document.getElementById('position-tsp'),result,positionMovie.series?positionMovie.index:0);
-  document.getElementById('position-tsp-csv').disabled=!ready||!positionMovie.valid;
-  if(!positionMovie.valid)document.getElementById('position-tsp').dataset.renderState='stale';
-  const rotation=readRotationTime();document.getElementById('tsp-rotation-label').textContent=Number.isFinite(rotation)?fdkText(``,`Rotation time ${rotation} s/rot`):fdkText('','Check rotation time');
-  if(!Number.isFinite(rotation))document.getElementById('position-json').disabled=true;
+async function runTaguchiCalculation(){
+  const config=taguchiSettings();
+  if(Object.values(config).some(v=>!Number.isFinite(v))){invalidateTaguchiResult();document.getElementById('taguchi-status').textContent=fdkText('','Check the ranges for row width, pitch, FW and rotation time.');return;}
+  const run=++taguchiRunId;taguchiResultValid=false;taguchiDownloads(false);document.getElementById('taguchi-calculate').disabled=true;
+  document.getElementById('taguchi-status').textContent=fdkText('','Calculating the theoretical TSP from HFI weights…');
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try{const r=await SSPZTaguchi.computeTaguchiTsp(config);if(run!==taguchiRunId)return;taguchiResult=r;taguchiResultValid=true;renderTaguchiTsp();if(Number.isFinite(readRotationTime()))document.getElementById('taguchi-status').textContent=fdkText('','Additional calculation complete: HFI reference at isocentre.');}
+  catch(error){if(run!==taguchiRunId)return;invalidateTaguchiResult();document.getElementById('taguchi-status').textContent=fdkText('','Additional calculation failed. Check the input settings.')+' '+error.message;}
+  finally{if(run===taguchiRunId)document.getElementById('taguchi-calculate').disabled=false;}
 }
-function renderDetailedTemporal(){if(fdkResult)drawTemporalResponse(document.getElementById('fdk-tsp'),fdkResult,selectedStateIndex);}
-function refreshTemporalDisplay(){
-  renderPositionTemporal();renderDetailedTemporal();
-  if(positionResult)document.getElementById('position-json').disabled=!positionMovie.valid||!Number.isFinite(readRotationTime());
+function renderTaguchiTsp(){
+  if(!taguchiResult)return;
+  const r=taguchiResult,rotation=readRotationTime(),canvas=document.getElementById('taguchi-tsp-plot');
+  if(!Number.isFinite(rotation)){canvas.dataset.renderState='invalid-time';taguchiDownloads(false);document.getElementById('taguchi-status').textContent=fdkText('','Enter a rotation time from 0.05 to 5 s. The previous plot is retained.');return;}
+  if(canvas.dataset.renderState==='invalid-time')document.getElementById('taguchi-status').textContent=taguchiResultValid?fdkText('','Rotation time updated. Showing the calculated HFI curve.'):fdkText('','Settings changed. The previous curve is retained; calculate again to update.');
+  const units=temporalUnit(),scale=units==='ms'?1000*rotation:1,bound=Math.max(Math.abs(r.timeTurns[0]),Math.abs(r.timeTurns.at(-1)))*scale,limit=symmetricNiceAxis(bound,3).xMax;
+  const axes=fdkAxes(canvas,-limit,limit,0,1.04,units==='ms'?'Relative acquisition time (ms)':'Relative acquisition time / Trot','Normalized HFI TSP','',[0,.2,.4,.6,.8,1],100,null,v=>v.toFixed(1));
+  const {ctx,b,x,y}=axes;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();ctx.strokeStyle='#176b87';ctx.lineWidth=3.2;strokeNativeProfile(ctx,Float64Array.from(r.timeTurns,t=>t*scale),r.profile,x,y);
+  ctx.strokeStyle='#a9b4bd';ctx.lineWidth=1;ctx.setLineDash([5,5]);for(const h of [.5,.1]){ctx.beginPath();ctx.moveTo(b.left,y(h));ctx.lineTo(b.right,y(h));ctx.stroke();}ctx.restore();
+  ctx.save();ctx.fillStyle='#174157';ctx.font=`700 24px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(`Taguchi HFI · p = ${r.config.beamPitch} · FW = ${r.config.filterWidthMm} mm`,(b.left+b.right)/2,45);ctx.restore();
+  loadingCanvasStatuses.delete(canvas);Object.assign(canvas.dataset,{renderState:taguchiResultValid?'ready':'stale',method:'taguchi-hfi',radiusMm:'0',rows:'4',rotationTime:String(rotation),timeUnit:units,timeAxisLimit:String(limit)});
+  const unit=units==='ms'?'ms':'Trot',fmt=v=>Number.isFinite(v)?(v*scale).toFixed(units==='ms'?1:4):fdkText('','undefined');
+  document.getElementById('taguchi-tsp-stats').textContent=`FWHM ${fmt(r.metrics.fwhmTurns)} ${unit} ／ FWTM ${fmt(r.metrics.fwtmTurns)} ${unit} ／ Teq ${fmt(r.metrics.equivalentWidthTurns)} ${unit}`;
+  document.getElementById('taguchi-result-settings').textContent=fdkText(``,`Displayed settings: 4 rows, r = 0 mm / d = ${r.config.rowWidth} mm / p = ${r.config.beamPitch} / FW = ${r.config.filterWidthMm} mm / ${rotation} s/rot`);
+  const ref={.625:[1531,1710],1:[1001,1284],1.5:[501,791]}[r.config.beamPitch];
+  document.getElementById('taguchi-reference-note').textContent=ref&&Math.abs(r.config.filterWidthMm/r.config.rowWidth-1)<1e-10?fdkText(``,`Reference: at the same FW/d ratio and 1 s rotation, Ichikawa reports measured FWHM ${ref[0]} ms and FWTM ${ref[1]} ms. These measured values are not exact theoretical targets.`):'';
+  taguchiDownloads(taguchiResultValid);
 }
-function temporalExport(result){
-  const rotationTime=readRotationTime(),t=result.temporalResponse;
-  return {...result,config:{...result.config,rotationTime:Number.isFinite(rotationTime)?rotationTime:null},timeDisplay:{rotationTimeSeconds:Number.isFinite(rotationTime)?rotationTime:null,unit:temporalUnit(),origin:'original acquired reference view 0'},
-    ...(t?{temporalResponse:{...t,timeMs:Number.isFinite(rotationTime)?Float64Array.from(t.timeTurns,v=>v*rotationTime*1000):null}}:{})};
+function refreshTemporalDisplay(){const e=document.getElementById('taguchi-rotation');if(!e)return;e.value=form.elements.namedItem('rotationTime').value;renderTaguchiTsp();}
+function taguchiExport(){
+  const rotationTime=readRotationTime();if(!taguchiResultValid||!taguchiResult||!Number.isFinite(rotationTime))return null;
+  const r=taguchiResult,metrics={...r.metrics};for(const [key,v] of Object.entries(r.metrics))if(key.endsWith('Turns'))metrics[key.slice(0,-5)+'Ms']=Number.isFinite(v)?v*rotationTime*1000:null;
+  return {...r,scope:'Taguchi HFI theoretical TSP; four rows at isocentre; independent from cone-model SSPz',config:{...r.config,rotationTime},metrics,timeMs:Float64Array.from(r.timeTurns,t=>t*rotationTime*1000)};
 }
-function downloadPositionTsp(){
-  const r=positionResult,t=r?.temporalResponse,rotation=readRotationTime();if(!positionMovie.valid||!temporalAvailable(t)||!Number.isFinite(rotation))return;
-  const rows=[['# scope','model point temporal impulse response at fixed evaluation point; original acquired-view contributions'],['# radius_mm',r.config.radius],['# phase_rad',r.config.phase],['# rotation_time_s',rotation],['# raw_sum',t.sum],['# raw_sspz_center',t.centerValue],['# closure_error',t.closureError],['# equivalent_width_ms',t.equivalentWidthTurns*rotation*1000],['# cumulative_5_to_95_width_ms',t.coverage90?.widthTurns*rotation*1000],['original_view','time_turns','time_ms','raw_contribution','normalized_peak_1'],...Array.from(t.timeTurns,(time,i)=>[t.viewIndices[i],time,time*rotation*1000,t.raw[i],t.profile[i]])];
-  downloadBlob(`Model_TSP_r${r.config.radius}mm_angle${positionAngle(r.config.phase).replace('°','')}_rot${rotation}s.csv`,'\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n'),'text/csv');
+function downloadTaguchiCsv(){
+  const r=taguchiExport();if(!r)return;
+  const rows=[['# method','Taguchi HFI theoretical TSP'],['# config',JSON.stringify(r.config)],['# provenance',JSON.stringify(r.provenance)],['# metrics',JSON.stringify(r.metrics)],['time_turns','time_ms','summed_interpolation_weight','normalized_peak_1'],...Array.from(r.timeTurns,(t,i)=>[t,r.timeMs[i],r.raw[i],r.profile[i]])];
+  downloadBlob(`Taguchi_HFI_TSP_p${r.config.beamPitch}_FW${r.config.filterWidthMm}mm.csv`,'\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n'),'text/csv');
+}
+function spatialExport(result){
+  if(!result)return result;const {temporalResponse,temporalResponseUnavailable,...spatial}=result;
+  if(spatial.config)spatial.config={...spatial.config,rotationTime:Number.isFinite(readRotationTime())?readRotationTime():null};
+  if(spatial.profiles)spatial.profiles=spatial.profiles.map(spatialExport);if(spatial.reference)spatial.reference=spatialExport(spatial.reference);return spatial;
 }
 
 // One real response at the current FOV position. Full 360-start-angle analysis
@@ -4522,7 +4768,6 @@ function clearPositionResult(message,state='loading'){
 function holdPositionResult(message,state='loading'){
   positionMovie.valid=false;stopPositionMovie();updatePositionMovieControls();
   document.getElementById('position-json').disabled=true;
-  const tspSave=document.getElementById('position-tsp-csv');if(tspSave)tspSave.disabled=true;
   document.getElementById('position-movie-status').textContent=fdkText('','Settings changed. Prepare the 360 start angles again.');
   if(!positionResult){clearPositionResult(message,state);return;}
   document.getElementById('position-status').textContent=message+' '+fdkText(``,`Keeping the previous plots (r = ${positionResult.config.radius} mm).`);
@@ -4578,8 +4823,8 @@ function runPositionPreview(){
 }
 function initializePositionPreview(){
   const section=document.createElement('section');section.id='position-preview';
-  section.innerHTML=`<h2>${fdkText('','How do position and start angle affect geometry, SSPz and TSP?')}</h2>
-  <p>${fdkText('','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz and TSP in red, together with its matching unwrapped diagram.')}</p>
+  section.innerHTML=`<h2>${fdkText('','How do position and start angle affect geometry and SSPz?')}</h2>
+  <p>${fdkText('','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('','Return to centre')}</button><span>${fdkText('','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
   <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('','Playback speed')} <select id="position-speed"><option value="400">${fdkText('','Slow')}</option><option value="150" selected>${fdkText('','Normal')}</option><option value="75">${fdkText('','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
@@ -4588,11 +4833,11 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label=''></canvas></div></article><article class="chart-card"><h3>${fdkText('','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label=''></canvas></div><p id="position-stats"></p><p>${fdkText('','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
-  initializeTemporalUi();
+  initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
-  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle SSPz and model point TSP; diagramFrame contains display-sampled weights only',result:temporalExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle SSPz; diagramFrame contains display-sampled weights only',result:spatialExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
     if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('','Check the input ranges.'),'error');return;}runSimulation();
   };
@@ -4628,10 +4873,9 @@ function renderPositionPreview(r,requestId='series'){
         cv.dataset.renderState=r.geometryOnly&&cv===profile?'unavailable':'ready';
       }
       document.getElementById('position-stats').textContent=r.geometryOnly?'':`FWHM ${r.fwhm.width.toFixed(2)} mm / FWTM ${r.fwtm.width.toFixed(2)} mm`;
-      document.getElementById('position-status').textContent=fdkText(``,`r = ${r.config.radius} mm: diagram, SSPz and TSP share this position and start angle.`);
+      document.getElementById('position-status').textContent=fdkText(``,`r = ${r.config.radius} mm: diagram and SSPz share this position and start angle.`);
       document.getElementById('position-json').disabled=false;
       positionMovie.valid=true;
-      renderPositionTemporal();
       document.getElementById('position-phase-value').textContent=positionAngle(r.config.phase);
       document.getElementById('position-phase').value=0;
       document.getElementById('position-movie-status').textContent=r.geometryOnly?fdkText('','No acquired response; only the diagram is available.'):fdkText('','Showing one base-angle profile. Prepare 360 start angles to play with every profile visible.');
@@ -4679,7 +4923,7 @@ function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
   index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
   const p=r.profiles[index],frame=p.diagramFrame;
-  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,temporalResponse:p.temporalResponse,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
   // Compact display coefficients never masquerade as a complete weight audit.
   positionResult=selected;
   if(!m.scenes.has(index)){
@@ -4694,9 +4938,8 @@ function renderPositionFrame(index){
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
   document.getElementById('position-stats').textContent=`FWHM ${p.fwhm.width.toFixed(2)} mm / FWTM ${p.fwtm.width.toFixed(2)} mm`;
-  document.getElementById('position-status').textContent=fdkText(``,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram, red SSPz and red TSP share the same settings.`);
+  document.getElementById('position-status').textContent=fdkText(``,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram and red SSPz share the same settings.`);
   document.getElementById('position-json').disabled=false;
-  renderPositionTemporal();
 }
 
 // Browser defaults use the textbook-derived isocenter estimate. The numerical
@@ -4789,7 +5032,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.5 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4888,6 +5131,7 @@ function writeParams(params) {
   const rotationTime = rotationTimeFromSettings(params);
   if (rotationInput) rotationInput.value = Number.isFinite(rotationTime) ? rotationTime : "";
   updateInputDecorations();
+  if (typeof refreshTemporalDisplay === "function") refreshTemporalDisplay();
 }
 
 function updateInputDecorations() {
@@ -4930,7 +5174,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 16,
+    v: 17,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,

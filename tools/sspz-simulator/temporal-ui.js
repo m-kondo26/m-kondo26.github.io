@@ -1,84 +1,100 @@
-// Time uses original acquired-view indices, never rebinned or folded angles.
-// Scaling the time axis is a display operation and does not rerun the model.
-const temporalPlots=new WeakMap();
+// Independent HFI calculation. Only an explicit copy action copies geometry
+// settings; the cone-model SSPz and its start-angle playback remain separate.
+let taguchiResult=null,taguchiResultValid=false,taguchiRunId=0;
 function temporalUnit(){return document.getElementById('tsp-time-unit')?.value==='turns'?'turns':'ms';}
-function temporalScale(){return temporalUnit()==='turns'?1:1000*readRotationTime();}
-function temporalSamples(result){return result?.profiles?.length?result.profiles:[result];}
-function temporalAvailable(t){return !!t&&t.sum>0&&t.timeTurns?.length>0;}
-function initializeTemporalUi(){
-  const article=document.createElement('article');article.id='position-tsp-card';article.className='chart-card';
-  article.innerHTML=`<h3>${fdkText('同じ評価位置のモデルTSP','Model TSP at the same evaluation point')}</h3>
-  <p>${fdkText('各取得時刻のデータが、この点の応答にどれだけ寄与するかを示します。SSPzと同じ開始角度に連動します。','Shows how much data from each acquisition time contribute to the response at this point. The start angle matches SSPz.')}</p>
-  <div class="tsp-controls"><label for="tsp-time-unit">${fdkText('時間軸の単位','Time-axis unit')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label><span id="tsp-rotation-label"></span></div>
-  <div class="position-canvas"><canvas id="position-tsp" width="1000" height="610" role="img" aria-label="${fdkText('元の取得時刻に対するモデルTSP','Model TSP versus original acquisition time')}"></canvas></div>
-  <p id="position-tsp-stats" class="tsp-stats"></p>
-  <p class="field-help">${fdkText('時間の原点は基準ビューの取得時刻です。負の時刻はその前の取得を表し、異なる回転を同じ時刻へ折り返しません。回転時間は上の条件欄で変更できます。','Time zero is acquisition of the reference view. Negative times precede it; different turns are not folded onto one time. Change rotation time in the settings above.')}</p>
-  <button type="button" id="position-tsp-csv" class="secondary" disabled>${fdkText('表示中のTSPをCSV保存','Save the displayed TSP as CSV')}</button>
-  <details class="reading-details"><summary>${fdkText('SSPzとTSPの関係・幅の読み方','How SSPz, TSP and temporal widths relate')}</summary>
-  <table><thead><tr><th>${fdkText('応答','Response')}</th><th>${fdkText('集計の見方','What is measured')}</th></tr></thead><tbody><tr><th>SSPz</th><td>${fdkText('各体軸位置で取得データの寄与を足し、点対象への応答がz方向にどう広がるかを見る。','Sum acquired-data contributions at each axial position to show how the point response spreads along z.')}</td></tr><tr><th>TSP</th><td>${fdkText('評価点を固定し、列・チャネルの寄与を元の取得時刻ごとに足して、時間方向の感度を見る。','Fix the evaluation point and sum row/channel contributions by original acquisition time to show temporal sensitivity.')}</td></tr></tbody></table>
-  <p>${fdkText('TSPは同じ点対象の強さを取得時刻ごとに変えた場合の、中心断面の応答です。最大値を1に正規化します。等価幅Teqは1ビューの時間間隔×寄与の総和÷最大寄与、寄与90%区間は累積寄与5%から95%までの幅です。どちらも実機の時間分解能を直接表す値ではありません。','TSP is the central-plane response when the amplitude of the same point changes with acquisition time, normalized to a peak of one. Equivalent width Teq is the view interval times total contribution divided by peak contribution. The 90% contribution interval spans cumulative 5% to 95%. Neither is directly a scanner temporal-resolution specification.')}</p>
-  <p>${fdkText('SSPzを寝台速度で時間へ置き換える計算ではなく、元の取得ビューへ寄与を戻して集計します。本モデルは面内フィルタ・逆投影を含みません。','Contributions are traced back to original acquired views; SSPz is not converted to time using table speed. This model omits transaxial filtering and backprojection.')} <a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法','Method')}</a></p></details>`;
-  const ssp=document.getElementById('position-profile').closest('article'),stack=document.createElement('div');stack.className='position-response-stack';ssp.before(stack);stack.append(ssp,article);
+function taguchiInput(id){const e=document.getElementById(id);return e&&e.value!==''&&e.checkValidity()?Number(e.value):NaN;}
+function taguchiSettings(){return {rows:4,rowWidth:taguchiInput('taguchi-row-width'),beamPitch:taguchiInput('taguchi-pitch'),filterWidthMm:taguchiInput('taguchi-filter-width'),rotationTime:readRotationTime(),viewSamples:7200};}
+function initializeTaguchiUi(){
+  const section=document.createElement('section');section.id='taguchi-tsp';section.setAttribute('aria-labelledby','taguchi-title');
+  section.innerHTML=`<p class="eyebrow">${fdkText('追加計算','Additional calculation')}</p><h2 id="taguchi-title">${fdkText('TaguchiらのHFIに基づくTSP参照計算','TSP reference calculation based on Taguchi et al.’s HFI')}</h2>
+  <p>${fdkText('ここからは、ヘリカルフィルタ補間（HFI）の重みを用いて時間感度を追加計算します。上のSSPzとは計算方法が異なります。','This section calculates temporal sensitivity from helical filter interpolation (HFI) weights. It uses a different calculation method from the SSPz above.')}</p>
+  <p class="taguchi-scope"><strong>${fdkText('計算対象：4列・回転中心（r = 0 mm）','Scope: four rows at isocentre (r = 0 mm)')}</strong><br>${fdkText('実データと対向データの隣接2点から再サンプリングし、幅FWの矩形フィルタを適用します。補間重みを元の取得時刻ごとに合計します。','Resample between adjacent direct and complementary data, apply a rectangular filter of width FW, and sum interpolation weights by original acquisition time.')}</p>
+  <p class="taguchi-verification-note">${fdkText('照合状況：市川論文Fig.5(d)、p = 0.625では曲線形状に差が残っています。論文値に合わせる調整はしていません。','Comparison status: a curve-shape difference remains for Ichikawa Fig. 5(d), p = 0.625. No parameters have been fitted to the published values.')}</p>
+  <div class="taguchi-preset-row"><label for="taguchi-preset">${fdkText('論文の比較条件','Paper comparison settings')} <select id="taguchi-preset"><option value="custom">${fdkText('任意の条件','Custom settings')}</option><option value="0.625">Ichikawa Fig. 5(d): p = 0.625</option><option value="1">Ichikawa Fig. 5(e): p = 1.0</option><option value="1.5">Ichikawa Fig. 5(f): p = 1.5</option></select></label><button type="button" id="taguchi-copy" class="secondary">${fdkText('上の列幅・ピッチをコピー','Copy row width and pitch from above')}</button></div>
+  <div class="taguchi-inputs">
+  <label>${fdkText('回転中心換算の列幅 d (mm)','Row width at isocentre d (mm)')}<input id="taguchi-row-width" type="number" min="0.1" max="10" step="0.1" value="1" required></label>
+  <label>${fdkText('ビームピッチ p','Beam pitch p')}<input id="taguchi-pitch" type="number" min="0.1" max="2" step="0.001" value="0.875" required></label>
+  <label>${fdkText('HFIフィルタ幅 FW (mm)','HFI filter width FW (mm)')}<input id="taguchi-filter-width" type="number" min="0.1" max="20" step="0.1" value="1" required></label>
+  <label>${fdkText('回転時間 (s/rot)','Rotation time (s/rot)')}<input id="taguchi-rotation" type="number" min="0.05" max="5" step="0.05" value="0.5" required></label></div>
+  <p class="field-help">${fdkText('pは1回転の寝台移動量 ÷（4 × d）。FWは上の設定厚Tとは独立です。回転時間は上の条件欄と共通です。','p is table travel per rotation divided by (4 × d). FW is independent of thickness T above. Rotation time is shared with the settings above.')}</p>
+  <p class="field-help">${fdkText('上の評価位置r・開始角度の再生・焦点サイズは使いません。論文条件は d = 2 mm、FW = 2 mm、回転時間1 sです。','The radius r, start-angle playback and focal size above are not used. Paper settings use d = 2 mm, FW = 2 mm and a 1 s rotation.')}</p>
+  <div class="action-row"><button type="button" id="taguchi-calculate">${fdkText('HFIでTSPを追加計算','Calculate the HFI TSP')}</button><label for="tsp-time-unit">${fdkText('時間軸','Time axis')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label></div>
+  <p id="taguchi-status" role="status" aria-live="polite"></p>
+  <div class="position-canvas"><canvas id="taguchi-tsp-plot" width="1100" height="660" role="img" aria-label="${fdkText('Taguchi HFIによる回転中心の理論TSP','Isocentre theoretical TSP using Taguchi HFI')}"></canvas></div>
+  <p id="taguchi-result-settings"></p><p id="taguchi-tsp-stats" class="tsp-stats"></p><p id="taguchi-reference-note" class="field-help"></p>
+  <div class="action-row"><button type="button" id="taguchi-csv" class="secondary" disabled>${fdkText('HFI TSPをCSV保存','Save HFI TSP as CSV')}</button><button type="button" id="taguchi-json" class="secondary" disabled>${fdkText('HFI TSP・条件をJSON保存','Save HFI TSP and settings as JSON')}</button></div>
+  <details class="reading-details"><summary>${fdkText('計算方法と論文との照合','Method and comparison with the paper')}</summary><p>${fdkText('Taguchi・Aradate（1998）の式(6)と付録の矩形フィルタに基づき、線形補間の係数をFW内で積分します。固定点対象の検出器信号は掛けません。時間0は目的断面に対する中央時刻です。','Linear interpolation coefficients are integrated over FW using Eq. (6) and the rectangular-filter appendix of Taguchi and Aradate (1998). No fixed-point detector signal is multiplied into these weights. Time zero is the central time of the target plane.')}</p>
+  <p>${fdkText('計算刻みは回転時間の1/7200です。理論曲線を評価する刻みであり、上の取得ビュー数とは別です。表示は最大値1。FWHM・FWTMは半値・10%値の交点間の幅、Teqは面積÷最大値です。交点が一意でない場合は幅を確定しません。','The theoretical time-sampling interval is 1/7200 of a rotation, independent of the acquired view count above. Curves are normalized to a peak of one. FWHM and FWTM use the half-maximum and 10% crossings; Teq is area divided by peak. Widths are not assigned when crossings are ambiguous.')}</p>
+  <p>${fdkText('比較対象は市川ら（2015）Fig.5(d–f)のHFI条件です。実機の再構成画像や周辺位置のTSPを再現したものではありません。','The reference comparison is the HFI setting in Ichikawa et al. (2015), Fig. 5(d–f). This does not reproduce reconstructed scanner images or off-centre TSPs.')} <a href="${fdkText('methods.html?topic=axial#taguchi-hfi-tsp','methods.html?topic=axial&lang=en#taguchi-hfi-tsp')}">${fdkText('計算式・確認結果','Equations and checks')}</a></p>
+  <p><a href="https://doi.org/10.1118/1.598230">Taguchi &amp; Aradate (1998)</a> · <a href="https://doi.org/10.1016/j.ejmp.2015.02.012">Ichikawa et al. (2015)</a></p></details>`;
+  document.getElementById('fdk-panel').after(section);
+  for(const id of ['taguchi-row-width','taguchi-pitch','taguchi-filter-width'])document.getElementById(id).addEventListener('input',()=>{document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();});
+  document.getElementById('taguchi-preset').onchange=e=>{if(e.target.value==='custom')return;document.getElementById('taguchi-row-width').value='2';document.getElementById('taguchi-filter-width').value='2';document.getElementById('taguchi-pitch').value=e.target.value;setTaguchiRotation('1');invalidateTaguchiResult();};
+  document.getElementById('taguchi-copy').onclick=copyTaguchiSettings;
+  document.getElementById('taguchi-calculate').onclick=runTaguchiCalculation;
+  document.getElementById('taguchi-rotation').oninput=e=>setTaguchiRotation(e.target.value);
   document.getElementById('tsp-time-unit').onchange=refreshTemporalDisplay;
-  document.getElementById('position-tsp-csv').onclick=downloadPositionTsp;
-  const detailed=document.createElement('article');detailed.className='chart-card';detailed.innerHTML=`<h3>${fdkText('全360条件のモデルTSP：赤は選択中の開始角度','Model TSP across 360 conditions: selected start angle in red')}</h3><div class="position-canvas"><canvas id="fdk-tsp" width="1000" height="610" role="img" aria-label="${fdkText('全開始角度のモデルTSP','Model TSP for all start angles')}"></canvas></div><p id="fdk-tsp-stats" class="tsp-stats"></p><p>${fdkText('時間軸の単位は上のTSPと共通です。各曲線は同じ評価点で開始角度を変えた計算結果です。','Time units match the TSP above. Each curve represents a different start angle at the same evaluation point.')}</p>`;
-  document.getElementById('fdk-profile-step').append(detailed);
+  document.getElementById('taguchi-csv').onclick=downloadTaguchiCsv;
+  document.getElementById('taguchi-json').onclick=()=>{const r=taguchiExport();if(r)downloadBlob('Taguchi_HFI_TSP.json',JSON.stringify(r,(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  const width=Number(form.elements.namedItem('rowWidth').value),pitch=Number(form.elements.namedItem('beamPitch').value);
+  if(width>=.1&&width<=10){document.getElementById('taguchi-row-width').value=String(width);document.getElementById('taguchi-filter-width').value=String(width);}
+  if(pitch>=.1&&pitch<=2)document.getElementById('taguchi-pitch').value=String(pitch);
+  refreshTemporalDisplay();drawCanvasStatus(document.getElementById('taguchi-tsp-plot'),'HFI TSP',fdkText('条件を選び、追加計算を実行してください。','Choose settings and run the additional calculation.'),'idle');
+  document.getElementById('taguchi-status').textContent=fdkText('SSPzの計算とは独立して実行します。','This calculation runs independently of SSPz.');
 }
-function temporalStroke(axes,t,scale,color,alpha=1,width=3.5){
-  const {ctx,b,x,y}=axes;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  ctx.strokeStyle=color;ctx.globalAlpha=alpha;ctx.lineWidth=width;
-  strokeNativeProfile(ctx,Float64Array.from(t.timeTurns,v=>v*scale),t.profile,x,y);ctx.restore();
+function setTaguchiRotation(value){form.elements.namedItem('rotationTime').value=value;persistTemporalSettings();refreshTemporalDisplay();}
+function copyTaguchiSettings(){
+  document.getElementById('taguchi-row-width').value=form.elements.namedItem('rowWidth').value;document.getElementById('taguchi-pitch').value=form.elements.namedItem('beamPitch').value;
+  document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();refreshTemporalDisplay();
+  document.getElementById('taguchi-status').textContent=fdkText('列幅とピッチをコピーしました。4列・回転中心で計算します。FWを確認して追加計算してください。','Row width and pitch copied. Calculation remains at isocentre with four rows. Check FW, then calculate.');
 }
-function drawTemporalResponse(canvas,result,index=0){
-  if(!canvas||!result)return false;
-  const profiles=temporalSamples(result),selected=profiles[Math.min(index,profiles.length-1)],t=selected.temporalResponse;
-  const stats=document.getElementById(canvas.id+'-stats'),scale=temporalScale(),units=temporalUnit(),rotation=readRotationTime();
-  if(!Number.isFinite(rotation)){
-    if(canvas.dataset.temporalSource!=='original-acquired-view')drawCanvasStatus(canvas,'TSP',fdkText('回転時間を入力してください。','Enter a valid rotation time.'),'unavailable');
-    canvas.dataset.renderState='invalid-time';if(stats)stats.textContent=fdkText('回転時間を0.05～5秒で入力してください。以前の図がある場合は保持しています。','Enter a rotation time from 0.05 to 5 s. Any previous plot is retained.');return false;
-  }
-  if(!temporalAvailable(t)){
-    drawCanvasStatus(canvas,'TSP',fdkText('この評価点の応答がないため、TSPを定義できません。','No response at this evaluation point; TSP is undefined.'),'unavailable');
-    if(stats)stats.textContent='';delete canvas.dataset.temporalSource;return false;
-  }
-  let cached=temporalPlots.get(canvas);
-  if(!cached||cached.result!==result||cached.scale!==scale||cached.units!==units||cached.width!==canvas.width){
-    const valid=profiles.map(p=>p.temporalResponse).filter(temporalAvailable);
-    const bound=Math.max(1e-6,...valid.map(q=>Math.max(Math.abs(q.timeTurns[0]),Math.abs(q.timeTurns.at(-1)))))*scale;
-    const limit=symmetricNiceAxis(bound,3).xMax,background=document.createElement('canvas');background.width=canvas.width;background.height=canvas.height;
-    const axes=fdkAxes(background,-limit,limit,0,1.04,units==='ms'?'Acquisition time (ms)':'Acquisition time / Trot','Normalized model TSP','',[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
-    if(profiles.length>1)for(const q of valid)temporalStroke(axes,q,scale,'#89949e',.13,1.1);
-    cached={result,scale,units,width:canvas.width,background,axes,validCount:valid.length,limit};temporalPlots.set(canvas,cached);
-  }
-  const ctx=canvas.getContext('2d');ctx.drawImage(cached.background,0,0);const axes={...cached.axes,ctx};temporalStroke(axes,t,scale,'#d71920');
-  const phase=selected.phase??result.config.phase;
-  ctx.save();ctx.fillStyle='#d71920';ctx.textAlign='center';ctx.font=`700 25px ${FIGURE_FONT}`;ctx.fillText(fdkText(`開始角度 ${positionAngle(phase)} · r = ${result.config.radius} mm`,`Start angle ${positionAngle(phase)} · r = ${result.config.radius} mm`),(axes.b.left+axes.b.right)/2,43);
-  ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;ctx.fillText(profiles.length>1?fdkText(`灰色：有効${cached.validCount}/${profiles.length}本　赤：選択中`,`Grey: valid ${cached.validCount}/${profiles.length}   Red: selected`):fdkText('元の取得時刻ごとの寄与／最大値1','Original acquisition-time contributions / peak 1'),(axes.b.left+axes.b.right)/2,78);ctx.restore();
-  loadingCanvasStatuses.delete(canvas);canvas.removeAttribute('aria-busy');Object.assign(canvas.dataset,{renderState:'ready',temporalSource:'original-acquired-view',startIndex:String(index),phase:String(phase),radiusMm:String(result.config.radius),rotationTime:String(rotation),timeUnit:units,timeAxisLimit:String(cached.limit),profileCount:String(profiles.length),closureError:String(t.closureError),rawSum:String(t.sum)});
-  const unit=units==='ms'?'ms':'Trot',fmtT=value=>Number.isFinite(value)?(value*scale).toFixed(units==='ms'?1:3):'—';
-  if(stats)stats.textContent=fdkText(`等価幅 Teq ${fmtT(t.equivalentWidthTurns)} ${unit} ／ 寄与90%区間 ${fmtT(t.coverage90?.widthTurns)} ${unit}`,`Equivalent width Teq ${fmtT(t.equivalentWidthTurns)} ${unit} / 90% contribution interval ${fmtT(t.coverage90?.widthTurns)} ${unit}`);
-  return true;
+function taguchiDownloads(enabled){for(const id of ['taguchi-csv','taguchi-json'])document.getElementById(id).disabled=!enabled;}
+function invalidateTaguchiResult(){
+  taguchiRunId++;taguchiResultValid=false;taguchiDownloads(false);document.getElementById('taguchi-calculate').disabled=false;
+  document.getElementById('taguchi-tsp-plot').dataset.renderState=taguchiResult?'stale':'idle';
+  document.getElementById('taguchi-status').textContent=taguchiResult?fdkText('条件を変更しました。前の条件の曲線を保持しています。追加計算で更新してください。','Settings changed. The previous curve is retained; calculate again to update.'):fdkText('条件を確認して追加計算してください。','Check settings and run the additional calculation.');
 }
-function renderPositionTemporal(){
-  const result=positionMovie.series??positionResult;if(!result)return;
-  const ready=drawTemporalResponse(document.getElementById('position-tsp'),result,positionMovie.series?positionMovie.index:0);
-  document.getElementById('position-tsp-csv').disabled=!ready||!positionMovie.valid;
-  if(!positionMovie.valid)document.getElementById('position-tsp').dataset.renderState='stale';
-  const rotation=readRotationTime();document.getElementById('tsp-rotation-label').textContent=Number.isFinite(rotation)?fdkText(`回転時間 ${rotation} s/rot`,`Rotation time ${rotation} s/rot`):fdkText('回転時間を確認してください','Check rotation time');
-  if(!Number.isFinite(rotation))document.getElementById('position-json').disabled=true;
+async function runTaguchiCalculation(){
+  const config=taguchiSettings();
+  if(Object.values(config).some(v=>!Number.isFinite(v))){invalidateTaguchiResult();document.getElementById('taguchi-status').textContent=fdkText('列幅・ピッチ・FW・回転時間の入力範囲を確認してください。','Check the ranges for row width, pitch, FW and rotation time.');return;}
+  const run=++taguchiRunId;taguchiResultValid=false;taguchiDownloads(false);document.getElementById('taguchi-calculate').disabled=true;
+  document.getElementById('taguchi-status').textContent=fdkText('HFIの重みから理論TSPを計算中…','Calculating the theoretical TSP from HFI weights…');
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try{const r=await SSPZTaguchi.computeTaguchiTsp(config);if(run!==taguchiRunId)return;taguchiResult=r;taguchiResultValid=true;renderTaguchiTsp();if(Number.isFinite(readRotationTime()))document.getElementById('taguchi-status').textContent=fdkText('追加計算が完了しました。回転中心のHFI参照計算です。','Additional calculation complete: HFI reference at isocentre.');}
+  catch(error){if(run!==taguchiRunId)return;invalidateTaguchiResult();document.getElementById('taguchi-status').textContent=fdkText('追加計算を完了できませんでした。入力条件を確認してください。','Additional calculation failed. Check the input settings.')+' '+error.message;}
+  finally{if(run===taguchiRunId)document.getElementById('taguchi-calculate').disabled=false;}
 }
-function renderDetailedTemporal(){if(fdkResult)drawTemporalResponse(document.getElementById('fdk-tsp'),fdkResult,selectedStateIndex);}
-function refreshTemporalDisplay(){
-  renderPositionTemporal();renderDetailedTemporal();
-  if(positionResult)document.getElementById('position-json').disabled=!positionMovie.valid||!Number.isFinite(readRotationTime());
+function renderTaguchiTsp(){
+  if(!taguchiResult)return;
+  const r=taguchiResult,rotation=readRotationTime(),canvas=document.getElementById('taguchi-tsp-plot');
+  if(!Number.isFinite(rotation)){canvas.dataset.renderState='invalid-time';taguchiDownloads(false);document.getElementById('taguchi-status').textContent=fdkText('回転時間を0.05～5秒で入力してください。前の図を保持しています。','Enter a rotation time from 0.05 to 5 s. The previous plot is retained.');return;}
+  if(canvas.dataset.renderState==='invalid-time')document.getElementById('taguchi-status').textContent=taguchiResultValid?fdkText('回転時間を反映しました。計算済みのHFI曲線を表示しています。','Rotation time updated. Showing the calculated HFI curve.'):fdkText('条件を変更しました。前の条件の曲線を保持しています。追加計算で更新してください。','Settings changed. The previous curve is retained; calculate again to update.');
+  const units=temporalUnit(),scale=units==='ms'?1000*rotation:1,bound=Math.max(Math.abs(r.timeTurns[0]),Math.abs(r.timeTurns.at(-1)))*scale,limit=symmetricNiceAxis(bound,3).xMax;
+  const axes=fdkAxes(canvas,-limit,limit,0,1.04,units==='ms'?'Relative acquisition time (ms)':'Relative acquisition time / Trot','Normalized HFI TSP','',[0,.2,.4,.6,.8,1],100,null,v=>v.toFixed(1));
+  const {ctx,b,x,y}=axes;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();ctx.strokeStyle='#176b87';ctx.lineWidth=3.2;strokeNativeProfile(ctx,Float64Array.from(r.timeTurns,t=>t*scale),r.profile,x,y);
+  ctx.strokeStyle='#a9b4bd';ctx.lineWidth=1;ctx.setLineDash([5,5]);for(const h of [.5,.1]){ctx.beginPath();ctx.moveTo(b.left,y(h));ctx.lineTo(b.right,y(h));ctx.stroke();}ctx.restore();
+  ctx.save();ctx.fillStyle='#174157';ctx.font=`700 24px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(`Taguchi HFI · p = ${r.config.beamPitch} · FW = ${r.config.filterWidthMm} mm`,(b.left+b.right)/2,45);ctx.restore();
+  loadingCanvasStatuses.delete(canvas);Object.assign(canvas.dataset,{renderState:taguchiResultValid?'ready':'stale',method:'taguchi-hfi',radiusMm:'0',rows:'4',rotationTime:String(rotation),timeUnit:units,timeAxisLimit:String(limit)});
+  const unit=units==='ms'?'ms':'Trot',fmt=v=>Number.isFinite(v)?(v*scale).toFixed(units==='ms'?1:4):fdkText('未定義','undefined');
+  document.getElementById('taguchi-tsp-stats').textContent=`FWHM ${fmt(r.metrics.fwhmTurns)} ${unit} ／ FWTM ${fmt(r.metrics.fwtmTurns)} ${unit} ／ Teq ${fmt(r.metrics.equivalentWidthTurns)} ${unit}`;
+  document.getElementById('taguchi-result-settings').textContent=fdkText(`表示条件：4列・r = 0 mm ／ d = ${r.config.rowWidth} mm ／ p = ${r.config.beamPitch} ／ FW = ${r.config.filterWidthMm} mm ／ ${rotation} s/rot`,`Displayed settings: 4 rows, r = 0 mm / d = ${r.config.rowWidth} mm / p = ${r.config.beamPitch} / FW = ${r.config.filterWidthMm} mm / ${rotation} s/rot`);
+  const ref={.625:[1531,1710],1:[1001,1284],1.5:[501,791]}[r.config.beamPitch];
+  document.getElementById('taguchi-reference-note').textContent=ref&&Math.abs(r.config.filterWidthMm/r.config.rowWidth-1)<1e-10?fdkText(`参考：同じFW/d比・回転時間1 sでの市川論文の実測値はFWHM ${ref[0]} ms、FWTM ${ref[1]} msです。実測値は理論計算の厳密な正解値ではありません。`,`Reference: at the same FW/d ratio and 1 s rotation, Ichikawa reports measured FWHM ${ref[0]} ms and FWTM ${ref[1]} ms. These measured values are not exact theoretical targets.`):'';
+  taguchiDownloads(taguchiResultValid);
 }
-function temporalExport(result){
-  const rotationTime=readRotationTime(),t=result.temporalResponse;
-  return {...result,config:{...result.config,rotationTime:Number.isFinite(rotationTime)?rotationTime:null},timeDisplay:{rotationTimeSeconds:Number.isFinite(rotationTime)?rotationTime:null,unit:temporalUnit(),origin:'original acquired reference view 0'},
-    ...(t?{temporalResponse:{...t,timeMs:Number.isFinite(rotationTime)?Float64Array.from(t.timeTurns,v=>v*rotationTime*1000):null}}:{})};
+function refreshTemporalDisplay(){const e=document.getElementById('taguchi-rotation');if(!e)return;e.value=form.elements.namedItem('rotationTime').value;renderTaguchiTsp();}
+function taguchiExport(){
+  const rotationTime=readRotationTime();if(!taguchiResultValid||!taguchiResult||!Number.isFinite(rotationTime))return null;
+  const r=taguchiResult,metrics={...r.metrics};for(const [key,v] of Object.entries(r.metrics))if(key.endsWith('Turns'))metrics[key.slice(0,-5)+'Ms']=Number.isFinite(v)?v*rotationTime*1000:null;
+  return {...r,scope:'Taguchi HFI theoretical TSP; four rows at isocentre; independent from cone-model SSPz',config:{...r.config,rotationTime},metrics,timeMs:Float64Array.from(r.timeTurns,t=>t*rotationTime*1000)};
 }
-function downloadPositionTsp(){
-  const r=positionResult,t=r?.temporalResponse,rotation=readRotationTime();if(!positionMovie.valid||!temporalAvailable(t)||!Number.isFinite(rotation))return;
-  const rows=[['# scope','model point temporal impulse response at fixed evaluation point; original acquired-view contributions'],['# radius_mm',r.config.radius],['# phase_rad',r.config.phase],['# rotation_time_s',rotation],['# raw_sum',t.sum],['# raw_sspz_center',t.centerValue],['# closure_error',t.closureError],['# equivalent_width_ms',t.equivalentWidthTurns*rotation*1000],['# cumulative_5_to_95_width_ms',t.coverage90?.widthTurns*rotation*1000],['original_view','time_turns','time_ms','raw_contribution','normalized_peak_1'],...Array.from(t.timeTurns,(time,i)=>[t.viewIndices[i],time,time*rotation*1000,t.raw[i],t.profile[i]])];
-  downloadBlob(`Model_TSP_r${r.config.radius}mm_angle${positionAngle(r.config.phase).replace('°','')}_rot${rotation}s.csv`,'\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n'),'text/csv');
+function downloadTaguchiCsv(){
+  const r=taguchiExport();if(!r)return;
+  const rows=[['# method','Taguchi HFI theoretical TSP'],['# config',JSON.stringify(r.config)],['# provenance',JSON.stringify(r.provenance)],['# metrics',JSON.stringify(r.metrics)],['time_turns','time_ms','summed_interpolation_weight','normalized_peak_1'],...Array.from(r.timeTurns,(t,i)=>[t,r.timeMs[i],r.raw[i],r.profile[i]])];
+  downloadBlob(`Taguchi_HFI_TSP_p${r.config.beamPitch}_FW${r.config.filterWidthMm}mm.csv`,'\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n'),'text/csv');
+}
+function spatialExport(result){
+  if(!result)return result;const {temporalResponse,temporalResponseUnavailable,...spatial}=result;
+  if(spatial.config)spatial.config={...spatial.config,rotationTime:Number.isFinite(readRotationTime())?readRotationTime():null};
+  if(spatial.profiles)spatial.profiles=spatial.profiles.map(spatialExport);if(spatial.reference)spatial.reference=spatialExport(spatial.reference);return spatial;
 }

@@ -17,7 +17,7 @@ const values={rows:4,rowWidth:1,channelWidth:.58,channelApertureMm:.58,focalSize
   beamPitch:.875,rotationTime:.5,sourceRadius:600,radius:100,sliceThicknessMm:1,filterWidthMm:1,filterSamples:129,
   profileMode:'taguchi-filter',reconstructionPath:DEFAULT_PARAMS.reconstructionPath,viewSamples:360,zSamples:801};
 const fields=new Map(Object.entries(values).map(([name,value])=>[name,{name,value:String(value),disabled:false}]));
-const handlers=new Map(),storage=new Map();let temporalRefreshes=0,spatialRequests=0,decorations=0,languageSearch='',lastUrl=null;
+const handlers=new Map(),storage=new Map();let temporalRefreshes=0,spatialRequests=0,decorations=0,languageSearch='',lastUrl=null,displayedRotation=.5;
 const form={elements:{namedItem:name=>fields.get(name)},addEventListener:(event,callback)=>handlers.set(event,callback)};
 const location={href:'http://127.0.0.1/index.html',search:'',pathname:'/index.html'};
 const context={DEFAULT_PARAMS,RECONSTRUCTION_PATHS,form,window:{location},URL,URLSearchParams,
@@ -26,7 +26,7 @@ const context={DEFAULT_PARAMS,RECONSTRUCTION_PATHS,form,window:{location},URL,UR
   readFdkParams:()=>({phase:.37,axialRule:'rri'}),writeFdkUrl:(url)=>url.searchParams.set('model','rri'),
   fdkParamsFromUrl:()=>({phase:.37,axialRule:'rri'}),
   reconstructionPathUrlValue:()=> '180li',reconstructionPathFromUrl:()=>DEFAULT_PARAMS.reconstructionPath,
-  updateInputDecorations:()=>decorations++,refreshTemporalDisplay:()=>temporalRefreshes++,
+  updateInputDecorations:()=>decorations++,refreshTemporalDisplay:()=>{temporalRefreshes++;displayedRotation=fields.get('rotationTime').value===''?null:Number(fields.get('rotationTime').value);},
   schedulePositionPreview:()=>spatialRequests++,syncLanguageLinks:search=>languageSearch=search,
   history:{replaceState:(_state,_title,url)=>{lastUrl=url;}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
@@ -93,6 +93,11 @@ assert.equal(loadStored({...DEFAULT_PARAMS}).rotationTime,.5);
 const invalid=loadStored({...DEFAULT_PARAMS,rotationTime:null});assert.ok(Number.isNaN(invalid.rotationTime));
 api.writeParams(invalid);assert.equal(rotation.value,'');assert.ok(Number.isNaN(api.readRotationTime()));
 api.writeParams({...DEFAULT_PARAMS,rotationTimeSec:.75});assert.equal(Number(rotation.value),.75);
-api.writeParams(api.defaults);assert.equal(Number(rotation.value),.5);checks++;
+assert.equal(displayedRotation,.75);
+const refreshesBeforeReset=temporalRefreshes,spatialBeforeReset=spatialRequests;
+api.writeParams(api.defaults);assert.equal(Number(rotation.value),.5);
+assert.equal(temporalRefreshes,refreshesBeforeReset+1,'Reset must refresh the cached temporal axis after writing the shared rotation time');
+assert.equal(displayedRotation,.5,'The displayed temporal time scale must follow reset, matching subsequent exports');
+assert.equal(spatialRequests,spatialBeforeReset,'Writing rotation metadata must not initiate spatial recalculation');checks++;
 
 console.log(`PASS: rotation input ${checks} groups; restored control, temporal-only edits, disabled-form persistence, URL aliases, invalid values and storage/reset`);

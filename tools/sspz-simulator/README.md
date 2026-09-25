@@ -1,4 +1,12 @@
-## Model point TSP and rotation time — 2026-09-25.4
+## Separate Taguchi HFI TSP reference calculation — 2026-09-25.5
+
+The fixed-point temporal plot has been removed from the cone-model SSPz preview and detailed results. An independent additional-calculation section follows the SSPz results. It uses rectangular HFI interpolation coefficients based on Taguchi & Aradate (1998), Eq. (6) and Appendix, aggregated by original acquisition time following Ichikawa et al. (2015), p.376. It does not multiply the coefficients by the stationary point-object signal.
+
+Scope: four uniform rows, rotation centre, a continuous helix. Direct/complementary candidates include equivalent rays across turns; coincident axial samples share a coefficient equally while retaining original acquisition times. FW is independent from the preceding SSPz thickness T. Dedicated column-width/pitch/FW controls and Fig.5(d–f) presets are provided; upper radius, focal size, view count and angle playback do not affect this calculation. Rotation time is shared and rescales cached time axes/widths only. Exports are separate; cone-model SSPz JSON omits the historical point-temporal payload.
+
+Validation boundary: the rectangular interpolation integral is independently checked against explicit Eq.(6) resampling, coefficient partition and numerical convergence. This is not full scanner reconstruction. In particular, the shape of Ichikawa Fig.5(d), p=0.625, has NOT been reproduced; the difference is shown prominently. No filter width or sampling count is tuned to fit the reported measured widths. See the method page and numerical tests for details. The old point-temporal operator remains in the numerical API for historical tests only.
+
+## Historical: model point TSP — 2026-09-25.4 (removed from UI in .5)
 
 The SSPz result is followed by a model point TSP at the same location/start angle, both in the quick preview and detailed 360-angle results. All cached TSPs form a grey background; the selected condition is red and follows phase playback. Rotation time is restored as seconds/turn (default 0.5, range 0.05–5), with ms or t/Trot display. URL v16 stores rt, supports older rotationTime/rotationTimeSec aliases and preserves saved settings. Time-only edits rescale cached axes and widths without recalculating spatial responses.
 

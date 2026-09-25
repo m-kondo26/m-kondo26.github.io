@@ -2,19 +2,16 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-// Exercise the production temporal painters/exporters with a recording Canvas.
-// Numeric impulse/gate validation belongs to axial-temporal-response.mjs.
-// Axes are identity mappings here so every native time/profile sample is visible
-// in the recorded path; the real strokeNativeProfile performs the drawing.
+// Production independent-HFI UI and export lifecycle. Numerical validation is
+// separate; the labelled curves below stand in for already calculated data.
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function sourceFunction(name){
-  const start=new RegExp(`^function ${name}\\(`,'m').exec(app);
-  assert.ok(start,`${name} must remain available`);
+  const start=new RegExp(`^function ${name}\\(`,'m').exec(app);assert.ok(start,name);
   const next=/^function /gm;next.lastIndex=start.index+start[0].length;
-  const end=next.exec(app);
-  return app.slice(start.index,end?.index??app.length).trim();
+  return app.slice(start.index,next.exec(app)?.index??app.length).trim();
 }
-const elements=new Map(),created=[],downloads=[],axesCalls=[];
+const elements=new Map(),downloads=[],axesCalls=[],coreCalls=[],insertions=[];
+let persistCalls=0;
 class Context {
   constructor(canvas){this.canvas=canvas;this.events=[];this.stack=[];this.state={strokeStyle:'#000',fillStyle:'#000',globalAlpha:1,lineWidth:1};}
   save(){this.stack.push({...this.state});}
@@ -25,144 +22,157 @@ class Context {
   rect(){}
   clip(){}
   stroke(){this.events.push({kind:'stroke',...this.state,path:this.path.map(p=>({...p}))});}
-  drawImage(source){this.events.push({kind:'image',source});}
   fillText(text,x,y){this.events.push({kind:'text',text,x,y,...this.state});}
   setLineDash(){}
 }
 for(const key of ['strokeStyle','fillStyle','globalAlpha','lineWidth','font','textAlign'])Object.defineProperty(Context.prototype,key,{get(){return this.state[key];},set(value){this.state[key]=value;}});
 class Element {
-  constructor(tag='div',id=''){this.tag=tag;this.id=id;this.dataset={};this.width=1000;this.height=610;this.value='';this.disabled=false;this.textContent='';this.attributes={};}
+  constructor(tag='div',id=''){this.tag=tag;this.dataset={};this.width=1100;this.height=660;this.value='';this.disabled=false;this.textContent='';this.attributes={};this.listeners=new Map();if(id)this.id=id;}
+  set id(value){this._id=value;elements.set(value,this);}
+  get id(){return this._id;}
+  set innerHTML(value){
+    this.html=value;
+    for(const match of value.matchAll(/<(\w+)[^>]*\bid="([^"]+)"[^>]*>/g)){
+      const child=new Element(match[1],match[2]);child.disabled=/\bdisabled\b/.test(match[0]);
+      for(const key of ['value','width','height','min','max','step']){const attr=match[0].match(new RegExp(`\\b${key}="([^"]+)"`));if(attr)child[key]=attr[1];}
+    }
+  }
   getContext(){return this.ctx??=new Context(this);}
   removeAttribute(key){delete this.attributes[key];}
   setAttribute(key,value){this.attributes[key]=value;}
+  addEventListener(type,handler){const callbacks=this.listeners.get(type)??[];callbacks.push(handler);this.listeners.set(type,callbacks);}
+  after(child){insertions.push({after:this.id,child:child.id});}
+  checkValidity(){const n=Number(this.value);return this.value!==''&&Number.isFinite(n)&&(this.min==null||n>=Number(this.min))&&(this.max==null||n<=Number(this.max));}
 }
-const el=id=>{if(!elements.has(id))elements.set(id,new Element(['position-tsp','fdk-tsp'].includes(id)?'canvas':'div',id));return elements.get(id);};
-const rotationField={value:'.5'};
-el('tsp-time-unit').value='ms';
+const make=(id,tag='div')=>elements.get(id)??new Element(tag,id),el=id=>elements.get(id);
+const fields=new Map(Object.entries({rowWidth:1,beamPitch:.875,rotationTime:.5,rows:80,radius:123,phase:1.23,sliceThicknessMm:5,focalSizeMm:1.2,viewSamples:360}).map(([id,value])=>{const e=make(id,'input');e.value=String(value);return [id,e];}));
+make('fdk-panel');const ssp=make('position-profile','canvas'),sspSave=make('position-json');sspSave.disabled=false;
+const nativeTimes=Float64Array.of(-1.2,-.7,-.2,.3,.8,1.3),nativeProfile=Float64Array.of(0,.2,1,0,.35,0);
+function response(config){return {version:'ui-fixture',method:'taguchi-hfi-central-axis-reference',config:{...config,radius:0},timeTurns:nativeTimes.slice(),raw:Float64Array.from(nativeProfile,v=>v*2),profile:nativeProfile.slice(),metrics:{fwhmTurns:.4,fwtmTurns:1.2,equivalentWidthTurns:.6,fwhmMs:.4*config.rotationTime*1000,fwtmMs:1.2*config.rotationTime*1000,equivalentWidthMs:.6*config.rotationTime*1000,fwhmIntervals:1,fwtmIntervals:1},provenance:{input:'interpolation coefficients only',fig5Reproduction:'not-established'},audit:{fixture:true}};}
+let coreImplementation=config=>response(config);
 const runtime=vm.createContext({
-  document:{getElementById:el,createElement:tag=>{const out=new Element(tag);created.push(out);return out;}},
-  form:{elements:{namedItem:name=>name==='rotationTime'?rotationField:null}},
-  fdkText:(_ja,en)=>en,FIGURE_FONT:'Arial',loadingCanvasStatuses:new Map(),
-  positionAngle:phase=>((phase*180/Math.PI%360+360)%360).toFixed(1)+'°',
-  positionMovie:{series:null,index:0,valid:true},positionResult:null,fdkResult:null,selectedStateIndex:0,
+  document:{getElementById:el,createElement:tag=>new Element(tag)},
+  form:{elements:{namedItem:name=>fields.get(name)}},fdkText:(_ja,en)=>en,FIGURE_FONT:'Arial',loadingCanvasStatuses:new Map(),setTimeout,
+  persistTemporalSettings:()=>persistCalls++,
+  runSimulation:()=>assert.fail('HFI must not start the SSP simulation'),
+  schedulePositionPreview:()=>assert.fail('HFI must not schedule an SSP preview'),
+  Worker:class{constructor(){assert.fail('HFI must not create an SSP worker');}},
+  SSPZTaguchi:{computeTaguchiTsp:config=>{coreCalls.push({...config});return coreImplementation(config);}},
   symmetricNiceAxis:bound=>({xMax:bound}),
-  fdkAxes:(canvas,xMin,xMax,yMin,yMax,xLabel,yLabel)=>{
-    axesCalls.push({canvas,xMin,xMax,yMin,yMax,xLabel,yLabel});
-    return {ctx:canvas.getContext('2d'),b:{left:0,right:1000,top:0,bottom:610},x:v=>v,y:v=>v};
-  },
+  fdkAxes:(canvas,xMin,xMax,yMin,yMax,xLabel,yLabel)=>{axesCalls.push({canvas,xMin,xMax,yMin,yMax,xLabel,yLabel});return {ctx:canvas.getContext('2d'),b:{left:0,right:1100,top:0,bottom:660},x:v=>v,y:v=>v};},
   drawCanvasStatus:(canvas,title,message,state)=>{canvas.getContext('2d').events.push({kind:'status',title,message,state});canvas.dataset.renderState=state;},
   csvEscape:value=>{const s=String(value??'');return /[",\r\n]/.test(s)?'"'+s.replaceAll('"','""')+'"':s;},
   downloadBlob:(filename,body,mime)=>downloads.push({filename,body,mime}),
 });
-vm.runInContext(['parseRotationTime','readRotationTime','strokeNativeProfile'].map(sourceFunction).join('\n')+'\n'+readFileSync(new URL('../temporal-ui.js',import.meta.url),'utf8'),runtime);
-const run=code=>vm.runInContext(code,runtime);
-const color='#d71920',grey='#89949e';
-function response(index=0){
-  const profile=Float64Array.of(0,.2+index/1800,1,0,.35,0);
-  const raw=Float64Array.from(profile,v=>v*2),sum=raw.reduce((a,b)=>a+b,0);
-  return {timeTurns:Float64Array.of(-1.2,-.7,-.2,.3,.8,1.3),viewIndices:Int32Array.of(-12,-7,-2,3,8,13),raw,profile,sum,centerValue:sum,closureError:0,equivalentWidthTurns:.4,coverage90:{widthTurns:1.2}};
-}
-const single={config:{radius:123,phase:.37,rotationTime:.5},temporalResponse:response()};
-const series={config:{...single.config},profiles:Array.from({length:360},(_,index)=>({phase:.37+index*Math.PI/180,temporalResponse:response(index)}))};
-runtime.single=single;runtime.series=series;
-const canvas=el('position-tsp'),detailed=el('fdk-tsp');
-const lastStroke=(cv,strokeColor=color)=>cv.getContext('2d').events.filter(e=>e.kind==='stroke'&&e.strokeStyle===strokeColor).at(-1);
-const coords=stroke=>stroke.path.filter(p=>p.op==='M'||p.op==='L').map(p=>[p.x,p.y]);
-const expected=(t,scale)=>Array.from(t.timeTurns,(time,i)=>[time*scale,t.profile[i]]);
+vm.runInContext(['parseRotationTime','readRotationTime','strokeNativeProfile'].map(sourceFunction).join('\n')+'\n'+readFileSync(new URL('../temporal-ui.js',import.meta.url),'utf8')+'\nglobalThis.uiState={get result(){return taguchiResult;},get valid(){return taguchiResultValid;}};',runtime);
+const run=code=>vm.runInContext(code,runtime),plain=value=>JSON.parse(JSON.stringify(value));
+async function fire(id,event='click',value){const element=el(id);assert.ok(element,id);if(value!==undefined)element.value=String(value);const e={target:element};await element[`on${event}`]?.(e);for(const callback of element.listeners.get(event)??[])await callback(e);}
+const plot=()=>el('taguchi-tsp-plot'),lastCurve=()=>plot().getContext('2d').events.filter(e=>e.kind==='stroke'&&e.strokeStyle==='#176b87').at(-1);
+const coordinates=stroke=>stroke.path.filter(p=>p.op==='M'||p.op==='L').map(p=>[p.x,p.y]);
+const expected=scale=>Array.from(nativeTimes,(t,i)=>[t*scale,nativeProfile[i]]);
 let checks=0;
 
-// Native signed acquisition times (including >1 turn and zero gaps) survive.
-assert.equal(run('drawTemporalResponse(document.getElementById("position-tsp"),single)'),true);
-assert.deepEqual(coords(lastStroke(canvas)),expected(single.temporalResponse,500));
-assert.equal(lastStroke(canvas).path.length,single.temporalResponse.timeTurns.length);
-assert.equal(canvas.dataset.temporalSource,'original-acquired-view');
-assert.match(el('position-tsp-stats').textContent,/200\.0 ms.*600\.0 ms/);
-assert.equal(axesCalls.at(-1).xLabel,'Acquisition time (ms)');
-checks++;
+// Separate explicit calculation after full SSP results, without stacked TSP.
+// FW must not be silently copied from the unrelated SSP thickness.
+run('initializeTaguchiUi()');el('tsp-time-unit').value='ms';
+assert.deepEqual(insertions,[{after:'fdk-panel',child:'taguchi-tsp'}]);
+for(const id of ['position-tsp','position-tsp-card','fdk-tsp'])assert.equal(el(id),undefined);
+assert.equal(coreCalls.length,0);assert.equal(plot().dataset.renderState,'idle');
+assert.equal(el('taguchi-filter-width').value,'1');assert.equal(fields.get('sliceThicknessMm').value,'5');
+assert.equal(el('taguchi-csv').disabled,true);assert.equal(el('taguchi-json').disabled,true);checks++;
 
-// Scaling time never modifies either the normalized shape or core data.
-const rawBefore=Array.from(single.temporalResponse.raw),shapeBefore=Array.from(single.temporalResponse.profile);
-rotationField.value='1';
-run('drawTemporalResponse(document.getElementById("position-tsp"),single)');
-assert.deepEqual(coords(lastStroke(canvas)),expected(single.temporalResponse,1000));
-assert.match(el('position-tsp-stats').textContent,/400\.0 ms.*1200\.0 ms/);
-assert.deepEqual(Array.from(single.temporalResponse.raw),rawBefore);
-assert.deepEqual(Array.from(single.temporalResponse.profile),shapeBefore);
-el('tsp-time-unit').value='turns';
-run('drawTemporalResponse(document.getElementById("position-tsp"),single)');
-assert.deepEqual(coords(lastStroke(canvas)),expected(single.temporalResponse,1));
-assert.match(el('position-tsp-stats').textContent,/0\.400 Trot.*1\.200 Trot/);
-assert.equal(axesCalls.at(-1).xLabel,'Acquisition time / Trot');
-checks++;
+await fire('taguchi-calculate');
+assert.equal(coreCalls.length,1);
+assert.deepEqual(coreCalls[0],{rows:4,rowWidth:1,beamPitch:.875,filterWidthMm:1,rotationTime:.5,viewSamples:7200});
+assert.equal(plot().dataset.radiusMm,'0');assert.equal(plot().dataset.rows,'4');assert.equal(plot().dataset.renderState,'ready');
+assert.deepEqual(coordinates(lastCurve()),expected(500));
+assert.match(el('taguchi-tsp-stats').textContent,/FWHM 200\.0 ms.*FWTM 600\.0 ms.*Teq 300\.0 ms/);
+assert.equal(ssp.getContext('2d').events.length,0);assert.equal(sspSave.disabled,false);checks++;
 
-// One shared 360-curve background is reused across selections. Both views
-// paint their selected curve last, above grey curves, at the native samples.
-el('tsp-time-unit').value='ms';rotationField.value='.5';
-run('drawTemporalResponse(document.getElementById("position-tsp"),series,0)');
-const background=canvas.getContext('2d').events.filter(e=>e.kind==='image').at(-1).source;
-assert.equal(background.getContext('2d').events.filter(e=>e.kind==='stroke'&&e.strokeStyle===grey).length,360);
-const createdBefore=created.length,backgroundEvents=background.getContext('2d').events.length;
-run('drawTemporalResponse(document.getElementById("position-tsp"),series,207)');
-assert.equal(created.length,createdBefore,'Selecting an angle must reuse the existing 360-curve background');
-assert.equal(background.getContext('2d').events.length,backgroundEvents);
-assert.equal(canvas.getContext('2d').events.filter(e=>e.kind==='image').at(-1).source,background);
-assert.deepEqual(coords(lastStroke(canvas)),expected(series.profiles[207].temporalResponse,500));
-assert.equal(canvas.dataset.startIndex,'207');
-assert.equal(Number(canvas.dataset.phase),series.profiles[207].phase);
-assert.equal(canvas.dataset.profileCount,'360');
-const recent=canvas.getContext('2d').events.slice(-4);
-assert.equal(recent[0].kind,'image');assert.equal(recent[1].strokeStyle,color);
-runtime.fdkResult=series;runtime.selectedStateIndex=59;
-run('renderDetailedTemporal()');
-assert.deepEqual(coords(lastStroke(detailed)),expected(series.profiles[59].temporalResponse,500));
-assert.equal(detailed.dataset.startIndex,'59');
-checks++;
+// Radius, phase, focal size and acquired-view count are not HFI arguments.
+// The explicit copy action copies row width/pitch, retaining independent FW.
+for(const [id,value] of Object.entries({radius:240,phase:4.1,rows:320,rowWidth:3,beamPitch:1.5,sliceThicknessMm:8,viewSamples:1440,focalSizeMm:2}))fields.get(id).value=String(value);
+const priorCurve=lastCurve();run('refreshTemporalDisplay()');
+assert.equal(coreCalls.length,1);assert.deepEqual(coordinates(lastCurve()),coordinates(priorCurve));
+assert.deepEqual(plain(run('taguchiSettings()')),coreCalls[0]);
+await fire('taguchi-copy');
+assert.equal(el('taguchi-row-width').value,'3');assert.equal(el('taguchi-pitch').value,'1.5');assert.equal(el('taguchi-filter-width').value,'1');
+assert.equal(runtime.uiState.valid,false);assert.equal(plot().dataset.renderState,'stale');
+assert.equal(el('taguchi-csv').disabled,true);assert.equal(coreCalls.length,1);checks++;
 
-// A centre with zero response cannot acquire a normalized TSP or an export.
-runtime.positionResult={...single,temporalResponse:{...response(),sum:0,centerValue:0}};
-runtime.positionMovie.series=null;runtime.positionMovie.valid=true;
-run('renderPositionTemporal()');
-assert.equal(canvas.dataset.renderState,'unavailable');
-assert.equal(canvas.dataset.temporalSource,undefined);
-assert.equal(el('position-tsp-csv').disabled,true);
-assert.equal(el('position-tsp-stats').textContent,'');
-const exportCount=downloads.length;run('downloadPositionTsp()');assert.equal(downloads.length,exportCount);
-checks++;
+// A FW edit holds the drawing but blocks export until explicit recomputation.
+await fire('taguchi-calculate');const rendered=plot().getContext('2d').events.length;
+await fire('taguchi-filter-width','input',2);
+assert.equal(plot().getContext('2d').events.length,rendered);assert.equal(plot().dataset.renderState,'stale');
+assert.equal(run('taguchiExport()'),null);const downloadsBefore=downloads.length;
+await fire('taguchi-csv');await fire('taguchi-json');assert.equal(downloads.length,downloadsBefore);
+assert.equal(coreCalls.length,2);await fire('taguchi-calculate');assert.equal(coreCalls.length,3);
+assert.equal(coreCalls.at(-1).filterWidthMm,2);assert.equal(el('taguchi-csv').disabled,false);checks++;
 
-// Invalid rotation input retains the last valid pixels and disables exports;
-// correcting it recovers through a display update, without any worker call.
-runtime.positionResult=single;runtime.fdkResult=null;rotationField.value='.5';
-run('refreshTemporalDisplay()');
-const paintedBefore=canvas.getContext('2d').events.length;
-rotationField.value='';run('refreshTemporalDisplay()');
-assert.equal(canvas.getContext('2d').events.length,paintedBefore,'Invalid time input must retain the valid curve');
-assert.equal(canvas.dataset.renderState,'invalid-time');
-assert.equal(el('position-tsp-csv').disabled,true);assert.equal(el('position-json').disabled,true);
-run('downloadPositionTsp()');assert.equal(downloads.length,exportCount);
-rotationField.value='1';run('refreshTemporalDisplay()');
-assert.equal(canvas.dataset.renderState,'ready');
-assert.equal(el('position-tsp-csv').disabled,false);assert.equal(el('position-json').disabled,false);
-assert.deepEqual(coords(lastStroke(canvas)),expected(single.temporalResponse,1000));
-checks++;
+// Shared rotation rescales only axes/widths. Invalid time retains the previous
+// plot and disables HFI exports, never the otherwise valid SSP download.
+const cachedResult=runtime.uiState.result,rawBefore=Array.from(cachedResult.raw),profilesBefore=Array.from(cachedResult.profile);
+await fire('taguchi-rotation','input',1);
+assert.equal(fields.get('rotationTime').value,'1');assert.equal(persistCalls,1);assert.equal(coreCalls.length,3);
+assert.deepEqual(coordinates(lastCurve()),expected(1000));
+assert.match(el('taguchi-tsp-stats').textContent,/FWHM 400\.0 ms.*FWTM 1200\.0 ms.*Teq 600\.0 ms/);
+assert.equal(cachedResult.config.rotationTime,.5);assert.deepEqual(Array.from(cachedResult.raw),rawBefore);assert.deepEqual(Array.from(cachedResult.profile),profilesBefore);
+await fire('tsp-time-unit','change','turns');assert.deepEqual(coordinates(lastCurve()),expected(1));
+assert.match(el('taguchi-tsp-stats').textContent,/FWHM 0\.4000 Trot.*FWTM 1\.2000 Trot.*Teq 0\.6000 Trot/);
+const lastPaintCount=plot().getContext('2d').events.length;fields.get('rotationTime').value='';run('refreshTemporalDisplay()');
+assert.equal(el('taguchi-rotation').value,'');assert.equal(plot().dataset.renderState,'invalid-time');
+assert.equal(plot().getContext('2d').events.length,lastPaintCount);assert.equal(el('taguchi-json').disabled,true);assert.equal(run('taguchiExport()'),null);assert.equal(sspSave.disabled,false);
+fields.get('rotationTime').value='1';run('refreshTemporalDisplay()');assert.equal(el('taguchi-json').disabled,false);assert.equal(coreCalls.length,3);
+assert.equal(plot().dataset.renderState,'ready');assert.match(el('taguchi-status').textContent,/Rotation time updated/);
+assert.doesNotMatch(el('taguchi-status').textContent,/Enter a rotation time/);checks++;
 
-// CSV and JSON identify the currently displayed phase and ORIGINAL views.
-const selected={...single,config:{...single.config,phase:series.profiles[207].phase},temporalResponse:series.profiles[207].temporalResponse};
-runtime.positionResult=selected;el('tsp-time-unit').value='turns';
-run('downloadPositionTsp()');
-const csv=downloads.at(-1);assert.equal(csv.mime,'text/csv');
-assert.match(csv.filename,/angle228\.2_rot1s\.csv$/);
-assert.ok(csv.body.includes('# phase_rad,'+selected.config.phase));
-assert.ok(csv.body.includes('# rotation_time_s,1'));
-assert.ok(csv.body.includes('original_view,time_turns,time_ms,raw_contribution,normalized_peak_1'));
-const lines=csv.body.trimStart().split('\r\n'),first=lines.findIndex(line=>line.startsWith('original_view,'));
-assert.deepEqual(lines.slice(first+1).map(line=>line.split(',').map(Number)),Array.from(selected.temporalResponse.timeTurns,(time,i)=>[selected.temporalResponse.viewIndices[i],time,time*1000,selected.temporalResponse.raw[i],selected.temporalResponse.profile[i]]));
-const exported=run('temporalExport(positionResult)');
-assert.equal(exported.timeDisplay.rotationTimeSeconds,1);assert.equal(exported.timeDisplay.unit,'turns');
-assert.equal(exported.timeDisplay.origin,'original acquired reference view 0');
-assert.deepEqual(Array.from(exported.temporalResponse.timeMs),Array.from(selected.temporalResponse.timeTurns,v=>v*1000));
-assert.equal(exported.config.phase,selected.config.phase);
-assert.equal(exported.config.rotationTime,1,'Export config must agree with the current displayed time axis');
-assert.equal(selected.config.rotationTime,.5,'Export must not mutate the original cached calculation');
-checks++;
+// Export all native coefficients, internal zeros and signed times with the
+// current time conversion; never overwrite the cached calculation settings.
+const exported=run('taguchiExport()');
+assert.equal(exported.config.rotationTime,1);assert.equal(exported.metrics.fwhmMs,400);assert.equal(exported.metrics.fwtmMs,1200);assert.equal(exported.metrics.equivalentWidthMs,600);
+assert.deepEqual(Array.from(exported.timeMs),Array.from(nativeTimes,t=>1000*t));assert.deepEqual(Array.from(exported.raw),rawBefore);
+assert.equal(exported.provenance.input,'interpolation coefficients only');assert.equal(cachedResult.config.rotationTime,.5);
+await fire('taguchi-json');const json=JSON.parse(downloads.at(-1).body);assert.equal(json.config.rotationTime,1);assert.deepEqual(json.timeMs,Array.from(exported.timeMs));
+await fire('taguchi-csv');const csv=downloads.at(-1);assert.match(csv.filename,/Taguchi_HFI_TSP/);
+const lines=csv.body.replace(/^\uFEFF/,'').trim().split(/\r?\n/),header=lines.indexOf('time_turns,time_ms,summed_interpolation_weight,normalized_peak_1');assert.ok(header>=0);
+assert.deepEqual(lines.slice(header+1).map(line=>line.split(',').map(Number)),Array.from(nativeTimes,(t,i)=>[t,1000*t,rawBefore[i],profilesBefore[i]]));checks++;
 
-console.log(`PASS: temporal UI ${checks} groups; native signed times, scaling, cached 360 overlays, selected red, unavailable centre, invalid input retention, CSV/JSON provenance`);
+// SSP exports strip obsolete temporal fields, retain native spatial arrays,
+// and represent invalid time as null instead of blocking the SSP download.
+runtime.oldSpatial={config:{radius:123,phase:2,rotationTime:.5},z:Float64Array.of(-1,0,1),raw:Float64Array.of(0,2,0),temporalResponse:{old:true},temporalResponseUnavailable:'old',profiles:[{phase:2,raw:Float64Array.of(0,2,0),temporalResponse:{old:true}}]};
+fields.get('rotationTime').value='';const spatial=run('spatialExport(oldSpatial)');
+assert.equal(spatial.config.rotationTime,null);assert.equal(spatial.config.radius,123);assert.equal(spatial.raw,runtime.oldSpatial.raw);
+assert.equal(Object.hasOwn(spatial,'temporalResponse'),false);assert.equal(Object.hasOwn(spatial,'temporalResponseUnavailable'),false);assert.equal(Object.hasOwn(spatial.profiles[0],'temporalResponse'),false);
+assert.equal(runtime.oldSpatial.temporalResponse.old,true);assert.equal(runtime.oldSpatial.config.rotationTime,.5);assert.equal(sspSave.disabled,false);checks++;
+
+// Invalid independent inputs never invoke the core or disable spatial output.
+fields.get('rotationTime').value='.5';await fire('taguchi-pitch','input',0);const callsBeforeInvalid=coreCalls.length;
+await fire('taguchi-calculate');assert.equal(coreCalls.length,callsBeforeInvalid);assert.equal(runtime.uiState.valid,false);assert.match(el('taguchi-status').textContent,/ranges/);assert.equal(sspSave.disabled,false);
+assert.equal(ssp.getContext('2d').events.length,0);checks++;
+
+// A superseded pending run cannot restore stale data or re-enable downloads.
+await fire('taguchi-pitch','input',1);let resolvePending;
+coreImplementation=config=>new Promise(resolve=>{resolvePending=()=>resolve(response(config));});
+const pending=fire('taguchi-calculate');
+while(!resolvePending)await new Promise(resolve=>setTimeout(resolve,1));
+await fire('taguchi-filter-width','input',3);const heldResult=runtime.uiState.result;resolvePending();await pending;
+assert.equal(runtime.uiState.result,heldResult);assert.equal(runtime.uiState.valid,false);assert.equal(plot().dataset.renderState,'stale');assert.equal(el('taguchi-json').disabled,true);assert.equal(el('taguchi-calculate').disabled,false);checks++;
+
+// Recovering a valid time must also restore a stale-result warning when FW has
+// changed; time recovery alone must never revalidate that older calculation.
+fields.get('rotationTime').value='';run('refreshTemporalDisplay()');assert.equal(plot().dataset.renderState,'invalid-time');
+fields.get('rotationTime').value='1';run('refreshTemporalDisplay()');
+assert.equal(plot().dataset.renderState,'stale');assert.match(el('taguchi-status').textContent,/Settings changed.*previous curve.*calculate again/);
+assert.equal(runtime.uiState.valid,false);assert.equal(el('taguchi-json').disabled,true);checks++;
+
+// A valid run finishing after time was cleared may retain its native result,
+// but completion must not overwrite the invalid-time status with success.
+resolvePending=null;const invalidTimeRun=fire('taguchi-calculate');
+while(!resolvePending)await new Promise(resolve=>setTimeout(resolve,1));
+fields.get('rotationTime').value='';run('refreshTemporalDisplay()');resolvePending();await invalidTimeRun;
+assert.equal(plot().dataset.renderState,'invalid-time');assert.match(el('taguchi-status').textContent,/Enter a rotation time/);
+assert.equal(el('taguchi-json').disabled,true);assert.equal(el('taguchi-calculate').disabled,false);
+fields.get('rotationTime').value='1';run('refreshTemporalDisplay()');assert.equal(plot().dataset.renderState,'ready');
+assert.match(el('taguchi-status').textContent,/Rotation time updated/);assert.equal(el('taguchi-json').disabled,false);checks++;
+
+console.log(`PASS: independent Taguchi UI ${checks} groups; explicit HFI lifecycle, SSP separation, stale holds, shared time scaling, native-coefficient CSV/JSON and superseded results`);

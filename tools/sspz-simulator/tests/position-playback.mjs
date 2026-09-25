@@ -65,7 +65,7 @@ const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Bl
   setTimeout:(callback,delay)=>{const id=++nextTimer;timers.set(id,{callback,delay});return id;},
   clearTimeout:id=>timers.delete(id),fdkText:(_ja,en)=>en,readParams,paramsToUrl:()=>({search:'?fixture=1'}),
   syncLanguageLinks(){},updateInputDecorations(){},clearError(){},releaseWorker(){},
-  initializeTemporalUi(){},renderPositionTemporal(){},temporalExport:result=>result,
+  initializeTaguchiUi(){},spatialExport:result=>result,
   setBusy:busy=>{runButton.disabled=busy;},fdkToggleDownloads(){},clearCanvasStatusAnimations(){},
   stopAxialMovie(){},stopGeometryPlayback(){},runSimulation:()=>{calculations++;},
   fdkInspectionRequest:0,fdkInspectionTimer:null,fdkResult:null,fdkSelectedResult:null,fdkShapeGroups:null,lastResult:null,
