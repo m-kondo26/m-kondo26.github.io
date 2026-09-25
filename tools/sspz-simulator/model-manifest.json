@@ -79,7 +79,7 @@
     "scanner-specific redundancy or Parker weighting, cone-beam weighting, and backprojection weighting",
     "scanner-specific z filtering and backprojection",
     "iterative reconstruction, deep-learning reconstruction, and noise",
-    "temporal sensitivity profile and motion response"
+    "scanner-image temporal sensitivity and motion response; reduced fixed-point TSP is implemented"
   ],
   "literatureBackground": [
     {
@@ -407,8 +407,8 @@
   },
   "activeComparison": {
     "version": "2026-09-24.1",
-    "webBuild": "2026-09-25.3",
-    "urlVersion": 15,
+    "webBuild": "2026-09-25.4",
+    "urlVersion": 16,
     "defaultModel": "rri",
     "models": [
       "rri"
@@ -421,18 +421,42 @@
   },
   "positionPreview": {
     "lifecycle": "Debounced independent worker; superseded workers terminated; older full-sweep results invalidated",
-    "webBuild": "2026-09-25.3",
+    "webBuild": "2026-09-25.4",
     "computation": "Production computeAxialResponse with unchanged requested sampling, RRI and matched-rri support",
     "oldModels": "Parallel and merged retained only in historical numerical APIs",
     "display": "Both canvases and JSON use one response object; production result renderers",
     "phase": "Fixed base start angle from current inputs"
   },
   "positionPlayback": {
-    "webBuild": "2026-09-25.3",
+    "webBuild": "2026-09-25.4",
     "scope": "360 start-angle conditions at one fixed evaluation radius; not scan-time tube motion",
     "numericalSampling": "All acquired views and native profile z samples retained",
     "display": "All 360 grey profiles; selected red; fixed common axes; cached sampled diagram weights",
     "invalidation": "Setting changes stop playback and retain explicitly labelled previous plots until atomic replacement",
     "export": "Sampled display audit is diagramFrame, distinct from complete selected-angle weightAudit"
+  },
+  "pointTemporalResponse": {
+    "version": "2026-09-25.1",
+    "webBuild": "2026-09-25.4",
+    "urlVersion": 16,
+    "definition": "y(zObject;g)=sum_v K_v*g_v; K_v sums original physical-view/channel point signal times combined rebinning, row, T and angular coefficients",
+    "rawMeaning": "mass per actual acquired view; sum equals pre-normalization SSPz centre response",
+    "time": "view/V * rotationTime; signed, unfolded, physical original exposures",
+    "normalization": "peak 1, independent of SSPz minmax setting",
+    "metrics": [
+      "uniform-view-bin equivalent width (sum/peak)/V times rotationTime",
+      "discrete cumulative 5%-95% contribution interval"
+    ],
+    "rotationTime": {
+      "input": "rotationTime seconds; URL rt",
+      "default": 0.5,
+      "range": [
+        0.05,
+        5
+      ],
+      "effect": "display time scaling only at fixed beam pitch; no spatial recalculation"
+    },
+    "scope": "linear reduced model point temporal impulse response; not full image or scanner temporal validation",
+    "verification": "original-view temporal gates including z-FFS; raw-centre closure; exact pre-TSP SSP regression; UI unit-scaling/export checks"
   }
 }

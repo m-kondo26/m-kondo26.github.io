@@ -20,7 +20,7 @@ const shapeDisplay=await readFile(new URL("../shape-display.js", import.meta.url
 const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'utf8');
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
-const positionUi=await readFile(new URL('../position-preview.js',import.meta.url),'utf8');
+const positionUi=(await readFile(new URL('../temporal-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../position-preview.js',import.meta.url),'utf8'));
 const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 

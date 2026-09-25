@@ -496,6 +496,9 @@ footer p { margin: 0.2rem 0; }
 .position-controls input[type=range] { width: min(330px, 100%); accent-color: #187784; }
 .position-plots { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .position-plots .chart-card { min-width: 0; width: 100%; margin: 0; }
+.position-response-stack { display: grid; gap: 20px; min-width: 0; }
+.tsp-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 15px; padding: 10px 0; font-size: .92rem; }
+.tsp-stats { font-weight: 700; font-variant-numeric: tabular-nums; }
 .position-canvas { max-width: 100%; overflow-x: auto; }
 .position-canvas canvas { width: 100%; height: auto; aspect-ratio: auto; display: block; }
 #position-stats { font-size: 18px; font-weight: 700; }

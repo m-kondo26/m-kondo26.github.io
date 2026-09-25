@@ -3878,6 +3878,7 @@ function renderFdkSelected(){
   document.querySelector('#fdk-rri-weights-card h3').textContent=fdkText('RRI：列間の線形補間','RRI: linear row interpolation');
   drawFdkRoleDiagrams(r);
   fdkDrawProfile(document.getElementById('fdk-profile'),fdkResult);
+  renderDetailedTemporal();
   const pairNote=document.getElementById('fdk-paired-coordinate');
   pairNote.hidden=!r.weightAudit?.pairedSamples;
   pairNote.textContent=fdkText('実線：実データ側。破線：対向側。補間対象の全周0～360°を表示し、各方向の両側の候補を同じ高さに示します。対向側自身の再配列角は±180°異なります。縦軸はX線管角度ではなく、2Cの表でその対応を確認できます。','Solid: direct. Dashed: complementary. All output directions over 0–360° are shown, with both sides at the same height for each direction. The opposing data’s own rebinned angle differs by ±180°. This axis is not tube angle; the table in 2C shows the correspondence.');
@@ -4096,7 +4097,7 @@ function fdkCsvRows(r){return [
   ['# focalSizeMm',r.config.focalSizeMm??0],
   ['# focalSourceDetectorMm',r.config.focalSourceDetectorMm??1070],
   ['# focal_model_metadata',JSON.stringify(r.model.focalBlur??{})],
-  ['# configuration',JSON.stringify(r.config)],
+  ['# configuration',JSON.stringify(temporalExport(r).config)],
   ['# axial_domain_check',JSON.stringify(r.domainCheck??{})],
   ['# focal_model','uniform effective axial source integrated over acquired detector cells before interpolation; unit total source weight'],
   ['# focal_reference','CT and MRI Fig.6.6; target-angle dependence not modelled'],
@@ -4222,10 +4223,10 @@ function initializeFdkUi(initial){
   pick.querySelector('select').addEventListener('change',modeChanged);form.elements.namedItem('beamPitch').addEventListener('change',()=>{modeChanged();if(document.getElementById('position-preview'))schedulePositionPreview();});modeChanged();
   resetButton.addEventListener('click',()=>{pick.querySelector('select').value='fdk';for(const [k,v] of Object.entries(FDK_UI_FIELDS))document.getElementById('fdk-'+k).value=v;modeChanged();});
   document.getElementById('fdk-csv').onclick=()=>{const r=fdkResult;if(!r)return;downloadBlob(fdkFileStem(r)+'_SSPz.csv','\uFEFF'+fdkCsvRows(r).map(row=>row.map(csvEscape).join(',')).join('\r\n'));};
-  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:fdkResult.config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:fdkSelectedResult,directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('fdk-json').onclick=()=>{if(fdkSelectedResult)downloadBlob(fdkFileStem(fdkResult)+'_angle-'+selectedStateIndex+'_response.json',JSON.stringify({seriesConfig:temporalExport(fdkResult).config,seriesDomainCheck:fdkResult.domainCheck,selectedIndex:selectedStateIndex,result:temporalExport(fdkSelectedResult),directionalWeightAudit:SSPZAngles.weightAudit(fdkSelectedResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('fdk-xlsx').onclick=async()=>{
     const r=fdkResult;if(!r)return;
-    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],['axial_domain_check',JSON.stringify(r.domainCheck??{})],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(r.config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
+    const sheets=[['Readme',[['Item','Value'],['version',r.model.version],['axial_domain_check',JSON.stringify(r.domainCheck??{})],...Object.entries(r.model).map(([key,value])=>[key,typeof value==='object'?JSON.stringify(value):value]),...Object.entries(temporalExport(r).config).filter(([key])=>!['sphereDiameter','apertureSamples'].includes(key)),['detector_spacing','channelWidth is detector-center spacing; channelApertureMm is physical active width; both at isocenter, distinct from image pixels'],['coordinate','z relative to object point (mm); no FWHM alignment'],['readout','fixed transverse object location; one point sample per z; no disk ROI average'],['raw_profile','unfiltered axial interpolation response of a shared point object; finite focal blur is applied during acquisition before interpolation and T averaging'],['focal_normalization','uniform source with unit total weight; focalSizeMm=0 is the historical point-source limit'],['focal_reference','CT and MRI Fig.6.6: effective axial size 1.2 mm; 7-degree directional target effects and transverse focal blur omitted'],['normalization_baseline',r.baseline],['width_definition','each normalized native profile; linear threshold crossings'],['volume_storage','No image volume; selected-angle response and weight trace'],['precision','Unrounded Float64 values; display precision is not measurement accuracy']]],
       ['SSPz',fdkProfileRows(r)],
       ...fdkGroups(r).map(([name,g])=>[fdkSheetPrefix(name)+'_Mean_difference',[['z_position_mm','mean_normalized',...g.profiles.map((_,i)=>'difference_'+i)],...Array.from(g.z,(z,i)=>[z,g.mean[i],...g.meanDifference.map(p=>p[i])])]]),
       ['Widths',[['method','start_angle_rad','FWHM_mm','FWTM_mm','normalization_baseline'],...fdkGroups(r).flatMap(([name,g])=>g.profiles.map(p=>[name,p.phase,p.fwhm.width,p.fwtm.width,p.baseline]))]]];
@@ -4381,6 +4382,7 @@ function renderFdkResult(r){
   const c=r.config;document.getElementById('fdk-summary').textContent=fdkText('全360条件の計算が完了しました。選択角度の表示を準備しています。','All 360 conditions are complete. Preparing the selected-angle view.');
   document.getElementById('fdk-result-config').textContent=`${c.rows} rows / ${c.viewSamples} views/turn / ${r.profiles.length} start angles`;
   fdkDrawProfile(document.getElementById('fdk-profile'),r);
+  renderDetailedTemporal();
   const comparison=document.getElementById('cba-comparison');comparison.hidden=!r.reference;document.getElementById('cba-samples-wrap').hidden=true;
   if(r.reference){comparison.innerHTML=`<table><caption>${fdkText('各SSPzから求めたFWHM','FWHM computed from individual SSPz profiles')}</caption><thead><tr><th>${fdkText('補間方法','Method')}</th><th>${fdkText('平均 (mm)','Mean (mm)')}</th><th>SD (mm)</th><th>${fdkText('範囲 (mm)','Range (mm)')}</th></tr></thead><tbody>${fdkGroups(r).map(([name,g])=>{const q=fdkWidthStats(g);return `<tr><td>${name}</td><td>${q.mean.toFixed(2)}</td><td>${q.sd===null?'—':q.sd<.001?'&lt; 0.001':q.sd.toFixed(3)}</td><td>${q.min.toFixed(2)}–${q.max.toFixed(2)}</td></tr>`;}).join('')}</tbody></table>`;cbaDrawSamples(document.getElementById('cba-samples'),r);}
   document.getElementById('fdk-shape-wrap').hidden=false;
@@ -4400,6 +4402,91 @@ function cbaDrawSamples(canvas,r){
     const yy=a.y(q.relativeAngleDeg);ctx.strokeStyle='#0033bb';ctx.lineWidth=1.4*s;ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.rriWeights[i]),0,2*Math.PI);ctx.stroke();
     ctx.fillStyle='rgba(209,59,50,.78)';ctx.beginPath();ctx.arc(a.x(q.z[i]),yy,10*s*Math.sqrt(q.weights[i]),0,2*Math.PI);ctx.fill();
   }});ctx.restore();ctx.textAlign='center';ctx.fillStyle='#000';ctx.font=`${22*s}px Arial`;ctx.fillText('Blue outline: RRI / red fill: CBA',(a.b.left+a.b.right)/2,49*s);
+}
+
+// Time uses original acquired-view indices, never rebinned or folded angles.
+// Scaling the time axis is a display operation and does not rerun the model.
+const temporalPlots=new WeakMap();
+function temporalUnit(){return document.getElementById('tsp-time-unit')?.value==='turns'?'turns':'ms';}
+function temporalScale(){return temporalUnit()==='turns'?1:1000*readRotationTime();}
+function temporalSamples(result){return result?.profiles?.length?result.profiles:[result];}
+function temporalAvailable(t){return !!t&&t.sum>0&&t.timeTurns?.length>0;}
+function initializeTemporalUi(){
+  const article=document.createElement('article');article.id='position-tsp-card';article.className='chart-card';
+  article.innerHTML=`<h3>${fdkText('同じ評価位置のモデルTSP','Model TSP at the same evaluation point')}</h3>
+  <p>${fdkText('各取得時刻のデータが、この点の応答にどれだけ寄与するかを示します。SSPzと同じ開始角度に連動します。','Shows how much data from each acquisition time contribute to the response at this point. The start angle matches SSPz.')}</p>
+  <div class="tsp-controls"><label for="tsp-time-unit">${fdkText('時間軸の単位','Time-axis unit')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label><span id="tsp-rotation-label"></span></div>
+  <div class="position-canvas"><canvas id="position-tsp" width="1000" height="610" role="img" aria-label="${fdkText('元の取得時刻に対するモデルTSP','Model TSP versus original acquisition time')}"></canvas></div>
+  <p id="position-tsp-stats" class="tsp-stats"></p>
+  <p class="field-help">${fdkText('時間の原点は基準ビューの取得時刻です。負の時刻はその前の取得を表し、異なる回転を同じ時刻へ折り返しません。回転時間は上の条件欄で変更できます。','Time zero is acquisition of the reference view. Negative times precede it; different turns are not folded onto one time. Change rotation time in the settings above.')}</p>
+  <button type="button" id="position-tsp-csv" class="secondary" disabled>${fdkText('表示中のTSPをCSV保存','Save the displayed TSP as CSV')}</button>
+  <details class="reading-details"><summary>${fdkText('SSPzとTSPの関係・幅の読み方','How SSPz, TSP and temporal widths relate')}</summary>
+  <table><thead><tr><th>${fdkText('応答','Response')}</th><th>${fdkText('集計の見方','What is measured')}</th></tr></thead><tbody><tr><th>SSPz</th><td>${fdkText('各体軸位置で取得データの寄与を足し、点対象への応答がz方向にどう広がるかを見る。','Sum acquired-data contributions at each axial position to show how the point response spreads along z.')}</td></tr><tr><th>TSP</th><td>${fdkText('評価点を固定し、列・チャネルの寄与を元の取得時刻ごとに足して、時間方向の感度を見る。','Fix the evaluation point and sum row/channel contributions by original acquisition time to show temporal sensitivity.')}</td></tr></tbody></table>
+  <p>${fdkText('TSPは同じ点対象の強さを取得時刻ごとに変えた場合の、中心断面の応答です。最大値を1に正規化します。等価幅Teqは1ビューの時間間隔×寄与の総和÷最大寄与、寄与90%区間は累積寄与5%から95%までの幅です。どちらも実機の時間分解能を直接表す値ではありません。','TSP is the central-plane response when the amplitude of the same point changes with acquisition time, normalized to a peak of one. Equivalent width Teq is the view interval times total contribution divided by peak contribution. The 90% contribution interval spans cumulative 5% to 95%. Neither is directly a scanner temporal-resolution specification.')}</p>
+  <p>${fdkText('SSPzを寝台速度で時間へ置き換える計算ではなく、元の取得ビューへ寄与を戻して集計します。本モデルは面内フィルタ・逆投影を含みません。','Contributions are traced back to original acquired views; SSPz is not converted to time using table speed. This model omits transaxial filtering and backprojection.')} <a href="${fdkText('methods.html?topic=axial','methods.html?topic=axial&lang=en')}">${fdkText('計算方法','Method')}</a></p></details>`;
+  const ssp=document.getElementById('position-profile').closest('article'),stack=document.createElement('div');stack.className='position-response-stack';ssp.before(stack);stack.append(ssp,article);
+  document.getElementById('tsp-time-unit').onchange=refreshTemporalDisplay;
+  document.getElementById('position-tsp-csv').onclick=downloadPositionTsp;
+  const detailed=document.createElement('article');detailed.className='chart-card';detailed.innerHTML=`<h3>${fdkText('全360条件のモデルTSP：赤は選択中の開始角度','Model TSP across 360 conditions: selected start angle in red')}</h3><div class="position-canvas"><canvas id="fdk-tsp" width="1000" height="610" role="img" aria-label="${fdkText('全開始角度のモデルTSP','Model TSP for all start angles')}"></canvas></div><p id="fdk-tsp-stats" class="tsp-stats"></p><p>${fdkText('時間軸の単位は上のTSPと共通です。各曲線は同じ評価点で開始角度を変えた計算結果です。','Time units match the TSP above. Each curve represents a different start angle at the same evaluation point.')}</p>`;
+  document.getElementById('fdk-profile-step').append(detailed);
+}
+function temporalStroke(axes,t,scale,color,alpha=1,width=3.5){
+  const {ctx,b,x,y}=axes;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
+  ctx.strokeStyle=color;ctx.globalAlpha=alpha;ctx.lineWidth=width;
+  strokeNativeProfile(ctx,Float64Array.from(t.timeTurns,v=>v*scale),t.profile,x,y);ctx.restore();
+}
+function drawTemporalResponse(canvas,result,index=0){
+  if(!canvas||!result)return false;
+  const profiles=temporalSamples(result),selected=profiles[Math.min(index,profiles.length-1)],t=selected.temporalResponse;
+  const stats=document.getElementById(canvas.id+'-stats'),scale=temporalScale(),units=temporalUnit(),rotation=readRotationTime();
+  if(!Number.isFinite(rotation)){
+    if(canvas.dataset.temporalSource!=='original-acquired-view')drawCanvasStatus(canvas,'TSP',fdkText('回転時間を入力してください。','Enter a valid rotation time.'),'unavailable');
+    canvas.dataset.renderState='invalid-time';if(stats)stats.textContent=fdkText('回転時間を0.05～5秒で入力してください。以前の図がある場合は保持しています。','Enter a rotation time from 0.05 to 5 s. Any previous plot is retained.');return false;
+  }
+  if(!temporalAvailable(t)){
+    drawCanvasStatus(canvas,'TSP',fdkText('この評価点の応答がないため、TSPを定義できません。','No response at this evaluation point; TSP is undefined.'),'unavailable');
+    if(stats)stats.textContent='';delete canvas.dataset.temporalSource;return false;
+  }
+  let cached=temporalPlots.get(canvas);
+  if(!cached||cached.result!==result||cached.scale!==scale||cached.units!==units||cached.width!==canvas.width){
+    const valid=profiles.map(p=>p.temporalResponse).filter(temporalAvailable);
+    const bound=Math.max(1e-6,...valid.map(q=>Math.max(Math.abs(q.timeTurns[0]),Math.abs(q.timeTurns.at(-1)))))*scale;
+    const limit=symmetricNiceAxis(bound,3).xMax,background=document.createElement('canvas');background.width=canvas.width;background.height=canvas.height;
+    const axes=fdkAxes(background,-limit,limit,0,1.04,units==='ms'?'Acquisition time (ms)':'Acquisition time / Trot','Normalized model TSP','',[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
+    if(profiles.length>1)for(const q of valid)temporalStroke(axes,q,scale,'#89949e',.13,1.1);
+    cached={result,scale,units,width:canvas.width,background,axes,validCount:valid.length,limit};temporalPlots.set(canvas,cached);
+  }
+  const ctx=canvas.getContext('2d');ctx.drawImage(cached.background,0,0);const axes={...cached.axes,ctx};temporalStroke(axes,t,scale,'#d71920');
+  const phase=selected.phase??result.config.phase;
+  ctx.save();ctx.fillStyle='#d71920';ctx.textAlign='center';ctx.font=`700 25px ${FIGURE_FONT}`;ctx.fillText(fdkText(`開始角度 ${positionAngle(phase)} · r = ${result.config.radius} mm`,`Start angle ${positionAngle(phase)} · r = ${result.config.radius} mm`),(axes.b.left+axes.b.right)/2,43);
+  ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;ctx.fillText(profiles.length>1?fdkText(`灰色：有効${cached.validCount}/${profiles.length}本　赤：選択中`,`Grey: valid ${cached.validCount}/${profiles.length}   Red: selected`):fdkText('元の取得時刻ごとの寄与／最大値1','Original acquisition-time contributions / peak 1'),(axes.b.left+axes.b.right)/2,78);ctx.restore();
+  loadingCanvasStatuses.delete(canvas);canvas.removeAttribute('aria-busy');Object.assign(canvas.dataset,{renderState:'ready',temporalSource:'original-acquired-view',startIndex:String(index),phase:String(phase),radiusMm:String(result.config.radius),rotationTime:String(rotation),timeUnit:units,timeAxisLimit:String(cached.limit),profileCount:String(profiles.length),closureError:String(t.closureError),rawSum:String(t.sum)});
+  const unit=units==='ms'?'ms':'Trot',fmtT=value=>Number.isFinite(value)?(value*scale).toFixed(units==='ms'?1:3):'—';
+  if(stats)stats.textContent=fdkText(`等価幅 Teq ${fmtT(t.equivalentWidthTurns)} ${unit} ／ 寄与90%区間 ${fmtT(t.coverage90?.widthTurns)} ${unit}`,`Equivalent width Teq ${fmtT(t.equivalentWidthTurns)} ${unit} / 90% contribution interval ${fmtT(t.coverage90?.widthTurns)} ${unit}`);
+  return true;
+}
+function renderPositionTemporal(){
+  const result=positionMovie.series??positionResult;if(!result)return;
+  const ready=drawTemporalResponse(document.getElementById('position-tsp'),result,positionMovie.series?positionMovie.index:0);
+  document.getElementById('position-tsp-csv').disabled=!ready||!positionMovie.valid;
+  if(!positionMovie.valid)document.getElementById('position-tsp').dataset.renderState='stale';
+  const rotation=readRotationTime();document.getElementById('tsp-rotation-label').textContent=Number.isFinite(rotation)?fdkText(`回転時間 ${rotation} s/rot`,`Rotation time ${rotation} s/rot`):fdkText('回転時間を確認してください','Check rotation time');
+  if(!Number.isFinite(rotation))document.getElementById('position-json').disabled=true;
+}
+function renderDetailedTemporal(){if(fdkResult)drawTemporalResponse(document.getElementById('fdk-tsp'),fdkResult,selectedStateIndex);}
+function refreshTemporalDisplay(){
+  renderPositionTemporal();renderDetailedTemporal();
+  if(positionResult)document.getElementById('position-json').disabled=!positionMovie.valid||!Number.isFinite(readRotationTime());
+}
+function temporalExport(result){
+  const rotationTime=readRotationTime(),t=result.temporalResponse;
+  return {...result,config:{...result.config,rotationTime:Number.isFinite(rotationTime)?rotationTime:null},timeDisplay:{rotationTimeSeconds:Number.isFinite(rotationTime)?rotationTime:null,unit:temporalUnit(),origin:'original acquired reference view 0'},
+    ...(t?{temporalResponse:{...t,timeMs:Number.isFinite(rotationTime)?Float64Array.from(t.timeTurns,v=>v*rotationTime*1000):null}}:{})};
+}
+function downloadPositionTsp(){
+  const r=positionResult,t=r?.temporalResponse,rotation=readRotationTime();if(!positionMovie.valid||!temporalAvailable(t)||!Number.isFinite(rotation))return;
+  const rows=[['# scope','model point temporal impulse response at fixed evaluation point; original acquired-view contributions'],['# radius_mm',r.config.radius],['# phase_rad',r.config.phase],['# rotation_time_s',rotation],['# raw_sum',t.sum],['# raw_sspz_center',t.centerValue],['# closure_error',t.closureError],['# equivalent_width_ms',t.equivalentWidthTurns*rotation*1000],['# cumulative_5_to_95_width_ms',t.coverage90?.widthTurns*rotation*1000],['original_view','time_turns','time_ms','raw_contribution','normalized_peak_1'],...Array.from(t.timeTurns,(time,i)=>[t.viewIndices[i],time,time*rotation*1000,t.raw[i],t.profile[i]])];
+  downloadBlob(`Model_TSP_r${r.config.radius}mm_angle${positionAngle(r.config.phase).replace('°','')}_rot${rotation}s.csv`,'\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n'),'text/csv');
 }
 
 // One real response at the current FOV position. Full 360-start-angle analysis
@@ -4435,6 +4522,7 @@ function clearPositionResult(message,state='loading'){
 function holdPositionResult(message,state='loading'){
   positionMovie.valid=false;stopPositionMovie();updatePositionMovieControls();
   document.getElementById('position-json').disabled=true;
+  const tspSave=document.getElementById('position-tsp-csv');if(tspSave)tspSave.disabled=true;
   document.getElementById('position-movie-status').textContent=fdkText('条件を変更したため、360開始角度は再準備が必要です。','Settings changed. Prepare the 360 start angles again.');
   if(!positionResult){clearPositionResult(message,state);return;}
   document.getElementById('position-status').textContent=message+' '+fdkText(`前の条件の図を保持しています（r = ${positionResult.config.radius} mm）。`,`Keeping the previous plots (r = ${positionResult.config.radius} mm).`);
@@ -4461,7 +4549,7 @@ function schedulePositionPreview(delay=220){
 }
 function runPositionPreview(){
   stopPositionPreview();syncPositionControls();
-  if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){
+  if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){
     holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;
   }
   const params=readParams(),requestId=positionRequest;
@@ -4490,8 +4578,8 @@ function runPositionPreview(){
 }
 function initializePositionPreview(){
   const section=document.createElement('section');section.id='position-preview';
-  section.innerHTML=`<h2>${fdkText('評価位置と開始角度で、データの並びとSSPzはどう変わる？','How do position and start angle affect data geometry and SSPz?')}</h2>
-  <p>${fdkText('評価位置を決めて、360開始角度を準備します。灰色の360本を残したまま、選択中のSSPzを赤く強調し、同じ開始角度の展開図と一緒に再生できます。','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
+  section.innerHTML=`<h2>${fdkText('評価位置と開始角度で、展開図・SSPz・TSPはどう変わる？','How do position and start angle affect geometry, SSPz and TSP?')}</h2>
+  <p>${fdkText('評価位置を決めて、360開始角度を準備します。灰色の360本を残したまま、選択中のSSPzとTSPを赤く強調し、同じ開始角度の展開図と一緒に再生できます。','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz and TSP in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('回転中心からの距離 r','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('中心へ戻す','Return to centre')}</button><span>${fdkText('基準開始角度','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('FOVの表示サイズではなく、FOV内の評価位置を変えます。取得ビュー数・補間方法・設定厚Tは現在の入力値を使います。展開図は横軸が体軸位置、縦軸が0～360°の補間対象方向です。','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
   <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('360開始角度を準備','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('再生速度','Playback speed')} <select id="position-speed"><option value="400">${fdkText('ゆっくり','Slow')}</option><option value="150" selected>${fdkText('標準','Normal')}</option><option value="75">${fdkText('速い','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('表示中の開始角度','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
@@ -4500,12 +4588,13 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
+  initializeTemporalUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
-  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle response; diagramFrame contains display-sampled weights only',result:positionResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle SSPz and model point TSP; diagramFrame contains display-sampled weights only',result:temporalExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
-    if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
+    if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
   };
   document.getElementById('position-play').onclick=()=>{if(positionMovie.playing)stopPositionMovie();else if(positionMovie.valid&&positionMovie.series){stopAxialMovie();stopGeometryPlayback();positionMovie.playing=true;updatePositionMovieControls();schedulePositionMovie();}};
   document.getElementById('position-phase').oninput=e=>{stopPositionMovie();renderPositionFrame(Number(e.target.value));};
@@ -4539,9 +4628,10 @@ function renderPositionPreview(r,requestId='series'){
         cv.dataset.renderState=r.geometryOnly&&cv===profile?'unavailable':'ready';
       }
       document.getElementById('position-stats').textContent=r.geometryOnly?'':`FWHM ${r.fwhm.width.toFixed(2)} mm / FWTM ${r.fwtm.width.toFixed(2)} mm`;
-      document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm：同じ位置・開始角度の展開図とSSPzです。`,`r = ${r.config.radius} mm: diagram and SSPz share this position and start angle.`);
+      document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm：同じ位置・開始角度の展開図・SSPz・TSPです。`,`r = ${r.config.radius} mm: diagram, SSPz and TSP share this position and start angle.`);
       document.getElementById('position-json').disabled=false;
       positionMovie.valid=true;
+      renderPositionTemporal();
       document.getElementById('position-phase-value').textContent=positionAngle(r.config.phase);
       document.getElementById('position-phase').value=0;
       document.getElementById('position-movie-status').textContent=r.geometryOnly?fdkText('取得応答がないため、展開図のみ表示します。','No acquired response; only the diagram is available.'):fdkText('基準角度の1本を表示中。360開始角度を準備すると、全曲線を残して再生できます。','Showing one base-angle profile. Prepare 360 start angles to play with every profile visible.');
@@ -4589,7 +4679,7 @@ function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
   index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
   const p=r.profiles[index],frame=p.diagramFrame;
-  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,temporalResponse:p.temporalResponse,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
   // Compact display coefficients never masquerade as a complete weight audit.
   positionResult=selected;
   if(!m.scenes.has(index)){
@@ -4604,8 +4694,9 @@ function renderPositionFrame(index){
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
   document.getElementById('position-stats').textContent=`FWHM ${p.fwhm.width.toFixed(2)} mm / FWTM ${p.fwtm.width.toFixed(2)} mm`;
-  document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm ／ 開始角度 ${positionAngle(p.phase)}：展開図と赤いSSPzは同じ条件です。`,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram and red SSPz share the same settings.`);
+  document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm ／ 開始角度 ${positionAngle(p.phase)}：展開図・赤いSSPz・赤いTSPは同じ条件です。`,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram, red SSPz and red TSP share the same settings.`);
   document.getElementById('position-json').disabled=false;
+  renderPositionTemporal();
 }
 
 // Browser defaults use the textbook-derived isocenter estimate. The numerical
@@ -4617,6 +4708,7 @@ const WEB_DEFAULT_PARAMS = Object.freeze({
   channelApertureMm: 0.58,
   focalSizeMm: 1.2,
   focalSourceDetectorMm: 1070,
+  rotationTime: 0.5,
   detectorModel: "finite-channel",
   thicknessMapping: "configured-rectangular",
 });
@@ -4697,7 +4789,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.3 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -4740,6 +4832,23 @@ function reconstructionPathFromUrl(value) {
   return DEFAULT_PARAMS.reconstructionPath;
 }
 
+function parseRotationTime(value) {
+  if (value == null || String(value).trim() === "") return NaN;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0.05 && seconds <= 5 ? seconds : NaN;
+}
+
+function rotationTimeFromSettings(params) {
+  const key = ["rotationTime", "rotationTimeSec", "rt"].find(name => Object.prototype.hasOwnProperty.call(params, name));
+  return key ? parseRotationTime(params[key]) : WEB_DEFAULT_PARAMS.rotationTime;
+}
+
+// Read the field directly: FormData omits disabled controls, and an empty
+// number input must not become a zero-second rotation through Number("").
+function readRotationTime() {
+  return parseRotationTime(form.elements.namedItem("rotationTime")?.value);
+}
+
 function readParams() {
   const data = new FormData(form);
   return {
@@ -4751,6 +4860,7 @@ function readParams() {
     focalSourceDetectorMm: Number(data.get("focalSourceDetectorMm")),
     detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
+    rotationTime: readRotationTime(),
     sourceRadius: Number(data.get("sourceRadius")),
     radius: Number(data.get("radius")),
     zReference: 0,
@@ -4774,6 +4884,9 @@ function writeParams(params) {
     const input = form.elements.namedItem(key);
     if (input) input.value = value;
   }
+  const rotationInput = form.elements.namedItem("rotationTime");
+  const rotationTime = rotationTimeFromSettings(params);
+  if (rotationInput) rotationInput.value = Number.isFinite(rotationTime) ? rotationTime : "";
   updateInputDecorations();
 }
 
@@ -4817,7 +4930,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 15,
+    v: 16,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,
@@ -4825,6 +4938,7 @@ function paramsToUrl(params) {
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
+    rt: rotationTimeFromSettings(params),
     R: params.sourceRadius,
     r: params.radius,
     vs: selectedStateIndex,
@@ -4868,6 +4982,9 @@ function paramsFromUrl() {
       ? get('zffs_m',1072/600)*get('R',DEFAULT_PARAMS.sourceRadius) : 1070),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
+    rotationTime: ["rt", "rotationTime", "rotationTimeSec"].some(key => query.has(key))
+      ? parseRotationTime(query.get(["rt", "rotationTime", "rotationTimeSec"].find(key => query.has(key))))
+      : WEB_DEFAULT_PARAMS.rotationTime,
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
     radius: get("r", DEFAULT_PARAMS.radius),
     zReference: 0,
@@ -4893,7 +5010,7 @@ function setBusy(busy) {
   if (!busy) clearCanvasStatusAnimations();
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
-  form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
+  form.querySelectorAll("input, select").forEach(input => input.disabled = busy && input.name !== "rotationTime");
   syncFdkMethodControls();
   const inspectDisabled = busy || !lastResult || lastResult.geometryOnly;
   if (inspectState) inspectState.disabled = inspectDisabled;
@@ -7996,8 +8113,27 @@ copyLinkButton.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(url); status.textContent = "条件URLをコピーしました"; }
   catch { window.prompt("このURLをコピーしてください", url); }
 });
-form.addEventListener("input", () => {
+function persistTemporalSettings() {
+  const params = readParams();
+  // Rotation time remains editable while a spatial sweep is running. Preserve
+  // the visible values of its disabled spatial inputs in shared URLs/storage.
+  for (const [key, value] of Object.entries(params)) {
+    const input = form.elements.namedItem(key);
+    if (input?.disabled && key !== "rotationTime") params[key] = typeof value === "number" ? Number(input.value) : input.value;
+  }
+  if (typeof fdkRunParams !== "undefined" && fdkRunParams) fdkRunParams.rotationTime = params.rotationTime;
+  const url = paramsToUrl(params);
+  try { history.replaceState(null, "", url); localStorage.setItem("sspz-unwrapped-params", JSON.stringify(params)); } catch {}
+  syncLanguageLinks(url.search);
+}
+
+form.addEventListener("input", event => {
   updateInputDecorations();
+  if (event.target?.name === "rotationTime") {
+    if (typeof refreshTemporalDisplay === "function") refreshTemporalDisplay();
+    persistTemporalSettings();
+    return;
+  }
   schedulePositionPreview();
 });
 inspectState?.addEventListener("input", () => requestStateInspection(Number(inspectState.value)));
@@ -8051,6 +8187,7 @@ const initial = paramsFromUrl() ?? (() => {
     // 0.25-mm defaults; do not silently recalculate them at the new defaults.
     return {
       ...DEFAULT_PARAMS, ...stored,
+      rotationTime: rotationTimeFromSettings(stored),
       channelWidth: stored.channelWidth ?? DEFAULT_PARAMS.channelWidth,
       channelApertureMm: stored.channelApertureMm ?? stored.channelWidth ?? DEFAULT_PARAMS.channelApertureMm,
       focalSizeMm: stored.focalSizeMm ?? 0,

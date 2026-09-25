@@ -81,7 +81,9 @@ export async function computeAxialResponse(input={},hooks={}){
   }
 }
 function withAxialDomain(result,requested,expansions){
-  return {...result,domainCheck:{requestedExtentMm:requested,actualExtentMm:result.config.zExtent,expansions,
+  return {...result,...(result.temporalResponse===undefined?{temporalResponse:null,
+      temporalResponseUnavailable:'Original acquired-view temporal decomposition is available only for the source-supported response; historical one-turn paths retain their existing numerical response.'}:{}),
+    domainCheck:{requestedExtentMm:requested,actualExtentMm:result.config.zExtent,expansions,
     rawTailFraction:axialRawTailFraction(result.raw,result.max??Math.max(...result.raw)),tolerance:AXIAL_TAIL_TOLERANCE,maxExtentMm:AXIAL_MAX_EXTENT_MM}};
 }
 async function computeAxialResponseOnGrid(c,hooks){
@@ -205,6 +207,7 @@ export async function computeAxialResponseSeries(input={},hooks={}){
         if(r.geometryOnly)return r;
         if(hooks.cancelled?.())throw Error('FDK_CANCELLED');
         selected??=r;profiles.push({phase,profile:r.profile,raw:r.raw,fwhm:r.fwhm,fwtm:r.fwtm,baseline:r.baseline,rawTailFraction:r.domainCheck.rawTailFraction,
+          temporalResponse:r.temporalResponse,...(r.temporalResponseUnavailable?{temporalResponseUnavailable:r.temporalResponseUnavailable}:{}),
           ...(hooks.captureDiagramFrames?{diagramFrame:compactAxialDiagramFrame(r)}:{})});
         hooks.progress?.((i+1)/c.phaseCount);await new Promise(resolve=>setTimeout(resolve,0));
       }

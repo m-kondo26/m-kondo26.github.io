@@ -1,4 +1,6 @@
 const replacements = [
+  ['回転時間', 'Rotation time'],
+  ['1回転に要する時間です。時間軸の換算に使い、展開図とSSPzの空間計算は変えません。', 'Time for one rotation. Used to scale the time axis; spatial calculations for the diagram and SSPz stay the same.'],
   ['コーン幾何のもとでFOV内の評価位置を動かし、データの並び・補間重み・SSPzの変化を対応させます。', 'Move the evaluation point within the FOV using cone geometry to link changes in data geometry, interpolation weights and SSPz.'],
   ['コーン幾何を固定し、評価位置を変えて候補の位置・重みとSSPzを調べます。', 'Keep cone geometry fixed and change the evaluation point to inspect candidate positions, weights and SSPz.'],
   ['回転中心換算の取得幅です。', 'Acquired aperture width projected to isocentre.'],
@@ -715,6 +717,8 @@ const replacements = [
   ["最大 Gₑff/T（監査）", "Maximum Gₑff/T (audit)"],
   ["モデルSSPz", "Model SSPz"],
 ];
+
+replacements.unshift(["実機画像の時間感度と動体応答（モデル点TSPは表示）", "Scanner-image temporal sensitivity and motion response (model point TSP is displayed)"]);
 
 replacements.unshift(["検出器列ごとの投影再配列と、同報で示されたRRI相当の線形補間を採用します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。", "Implements rowwise projection rebinning and the RRI-equivalent linear interpolation described in this paper. An explicit detector-edge extension normalizes weights over acquired rows. Images are averaged axially with a rectangular window of configured width T. These added definitions do not calibrate scanner slice thickness."]);
 

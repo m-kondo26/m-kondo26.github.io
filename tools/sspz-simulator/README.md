@@ -1,3 +1,9 @@
+## Model point TSP and rotation time — 2026-09-25.4
+
+The SSPz result is followed by a model point TSP at the same location/start angle, both in the quick preview and detailed 360-angle results. All cached TSPs form a grey background; the selected condition is red and follows phase playback. Rotation time is restored as seconds/turn (default 0.5, range 0.05–5), with ms or t/Trot display. URL v16 stores rt, supports older rotationTime/rotationTimeSec aliases and preserves saved settings. Time-only edits rescale cached axes and widths without recalculating spatial responses.
+
+Temporal response sums physical point-signal contributions by ORIGINAL acquired exposure after tracing rebinning coefficients. Raw time-bin mass sums to the unnormalized SSPz centre; peak-normalized TSP, uniform-view-bin equivalent width and discrete cumulative 5–95% interval are reported. Independent original-view temporal gates verify time assignment. This is a reduced fixed-point temporal impulse operator, not SSPz/table-speed conversion or validated scanner-image TSP. See docs/content/axial-en.html. Selected JSON/CSV include raw time bins, original view indices and current rotation-time conversion.
+
 ## Cached start-angle playback — 2026-09-25.3
 
 At the chosen radius, Prepare computes all 360 start angles and compact display audits. Playback and angle scrubbing then reuse those results: all native SSPz curves remain grey, the selected curve and angle are red, and the production unwrapped diagram switches in the same frame. Both axes stay fixed across the series. This compares separate starting conditions, not tube motion during one acquisition. Numerical view sampling, interpolation and thickness averaging are unchanged.

@@ -14,6 +14,7 @@ const WEB_DEFAULT_PARAMS = Object.freeze({
   channelApertureMm: 0.58,
   focalSizeMm: 1.2,
   focalSourceDetectorMm: 1070,
+  rotationTime: 0.5,
   detectorModel: "finite-channel",
   thicknessMapping: "configured-rectangular",
 });
@@ -94,7 +95,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-25.3 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-25.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -137,6 +138,23 @@ function reconstructionPathFromUrl(value) {
   return DEFAULT_PARAMS.reconstructionPath;
 }
 
+function parseRotationTime(value) {
+  if (value == null || String(value).trim() === "") return NaN;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0.05 && seconds <= 5 ? seconds : NaN;
+}
+
+function rotationTimeFromSettings(params) {
+  const key = ["rotationTime", "rotationTimeSec", "rt"].find(name => Object.prototype.hasOwnProperty.call(params, name));
+  return key ? parseRotationTime(params[key]) : WEB_DEFAULT_PARAMS.rotationTime;
+}
+
+// Read the field directly: FormData omits disabled controls, and an empty
+// number input must not become a zero-second rotation through Number("").
+function readRotationTime() {
+  return parseRotationTime(form.elements.namedItem("rotationTime")?.value);
+}
+
 function readParams() {
   const data = new FormData(form);
   return {
@@ -148,6 +166,7 @@ function readParams() {
     focalSourceDetectorMm: Number(data.get("focalSourceDetectorMm")),
     detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
+    rotationTime: readRotationTime(),
     sourceRadius: Number(data.get("sourceRadius")),
     radius: Number(data.get("radius")),
     zReference: 0,
@@ -171,6 +190,9 @@ function writeParams(params) {
     const input = form.elements.namedItem(key);
     if (input) input.value = value;
   }
+  const rotationInput = form.elements.namedItem("rotationTime");
+  const rotationTime = rotationTimeFromSettings(params);
+  if (rotationInput) rotationInput.value = Number.isFinite(rotationTime) ? rotationTime : "";
   updateInputDecorations();
 }
 
@@ -214,7 +236,7 @@ function paramsToUrl(params) {
   const url = new URL(window.location.href);
   url.search = "";
   const compact = {
-    v: 15,
+    v: 16,
     cp: params.channelWidth,
     ca: params.channelApertureMm,
     ff: params.focalSizeMm,
@@ -222,6 +244,7 @@ function paramsToUrl(params) {
     n: params.rows,
     d: params.rowWidth,
     p: params.beamPitch,
+    rt: rotationTimeFromSettings(params),
     R: params.sourceRadius,
     r: params.radius,
     vs: selectedStateIndex,
@@ -265,6 +288,9 @@ function paramsFromUrl() {
       ? get('zffs_m',1072/600)*get('R',DEFAULT_PARAMS.sourceRadius) : 1070),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
+    rotationTime: ["rt", "rotationTime", "rotationTimeSec"].some(key => query.has(key))
+      ? parseRotationTime(query.get(["rt", "rotationTime", "rotationTimeSec"].find(key => query.has(key))))
+      : WEB_DEFAULT_PARAMS.rotationTime,
     sourceRadius: get("R", DEFAULT_PARAMS.sourceRadius),
     radius: get("r", DEFAULT_PARAMS.radius),
     zReference: 0,
@@ -290,7 +316,7 @@ function setBusy(busy) {
   if (!busy) clearCanvasStatusAnimations();
   runButton.disabled = busy;
   cancelButton.disabled = !busy;
-  form.querySelectorAll("input, select").forEach(input => input.disabled = busy);
+  form.querySelectorAll("input, select").forEach(input => input.disabled = busy && input.name !== "rotationTime");
   syncFdkMethodControls();
   const inspectDisabled = busy || !lastResult || lastResult.geometryOnly;
   if (inspectState) inspectState.disabled = inspectDisabled;
@@ -3393,8 +3419,27 @@ copyLinkButton.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(url); status.textContent = "条件URLをコピーしました"; }
   catch { window.prompt("このURLをコピーしてください", url); }
 });
-form.addEventListener("input", () => {
+function persistTemporalSettings() {
+  const params = readParams();
+  // Rotation time remains editable while a spatial sweep is running. Preserve
+  // the visible values of its disabled spatial inputs in shared URLs/storage.
+  for (const [key, value] of Object.entries(params)) {
+    const input = form.elements.namedItem(key);
+    if (input?.disabled && key !== "rotationTime") params[key] = typeof value === "number" ? Number(input.value) : input.value;
+  }
+  if (typeof fdkRunParams !== "undefined" && fdkRunParams) fdkRunParams.rotationTime = params.rotationTime;
+  const url = paramsToUrl(params);
+  try { history.replaceState(null, "", url); localStorage.setItem("sspz-unwrapped-params", JSON.stringify(params)); } catch {}
+  syncLanguageLinks(url.search);
+}
+
+form.addEventListener("input", event => {
   updateInputDecorations();
+  if (event.target?.name === "rotationTime") {
+    if (typeof refreshTemporalDisplay === "function") refreshTemporalDisplay();
+    persistTemporalSettings();
+    return;
+  }
   schedulePositionPreview();
 });
 inspectState?.addEventListener("input", () => requestStateInspection(Number(inspectState.value)));
@@ -3448,6 +3493,7 @@ const initial = paramsFromUrl() ?? (() => {
     // 0.25-mm defaults; do not silently recalculate them at the new defaults.
     return {
       ...DEFAULT_PARAMS, ...stored,
+      rotationTime: rotationTimeFromSettings(stored),
       channelWidth: stored.channelWidth ?? DEFAULT_PARAMS.channelWidth,
       channelApertureMm: stored.channelApertureMm ?? stored.channelWidth ?? DEFAULT_PARAMS.channelApertureMm,
       focalSizeMm: stored.focalSizeMm ?? 0,

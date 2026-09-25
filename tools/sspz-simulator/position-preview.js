@@ -31,6 +31,7 @@ function clearPositionResult(message,state='loading'){
 function holdPositionResult(message,state='loading'){
   positionMovie.valid=false;stopPositionMovie();updatePositionMovieControls();
   document.getElementById('position-json').disabled=true;
+  const tspSave=document.getElementById('position-tsp-csv');if(tspSave)tspSave.disabled=true;
   document.getElementById('position-movie-status').textContent=fdkText('条件を変更したため、360開始角度は再準備が必要です。','Settings changed. Prepare the 360 start angles again.');
   if(!positionResult){clearPositionResult(message,state);return;}
   document.getElementById('position-status').textContent=message+' '+fdkText(`前の条件の図を保持しています（r = ${positionResult.config.radius} mm）。`,`Keeping the previous plots (r = ${positionResult.config.radius} mm).`);
@@ -57,7 +58,7 @@ function schedulePositionPreview(delay=220){
 }
 function runPositionPreview(){
   stopPositionPreview();syncPositionControls();
-  if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){
+  if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){
     holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;
   }
   const params=readParams(),requestId=positionRequest;
@@ -86,8 +87,8 @@ function runPositionPreview(){
 }
 function initializePositionPreview(){
   const section=document.createElement('section');section.id='position-preview';
-  section.innerHTML=`<h2>${fdkText('評価位置と開始角度で、データの並びとSSPzはどう変わる？','How do position and start angle affect data geometry and SSPz?')}</h2>
-  <p>${fdkText('評価位置を決めて、360開始角度を準備します。灰色の360本を残したまま、選択中のSSPzを赤く強調し、同じ開始角度の展開図と一緒に再生できます。','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
+  section.innerHTML=`<h2>${fdkText('評価位置と開始角度で、展開図・SSPz・TSPはどう変わる？','How do position and start angle affect geometry, SSPz and TSP?')}</h2>
+  <p>${fdkText('評価位置を決めて、360開始角度を準備します。灰色の360本を残したまま、選択中のSSPzとTSPを赤く強調し、同じ開始角度の展開図と一緒に再生できます。','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz and TSP in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('回転中心からの距離 r','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('中心へ戻す','Return to centre')}</button><span>${fdkText('基準開始角度','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('FOVの表示サイズではなく、FOV内の評価位置を変えます。取得ビュー数・補間方法・設定厚Tは現在の入力値を使います。展開図は横軸が体軸位置、縦軸が0～360°の補間対象方向です。','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
   <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('360開始角度を準備','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('再生速度','Playback speed')} <select id="position-speed"><option value="400">${fdkText('ゆっくり','Slow')}</option><option value="150" selected>${fdkText('標準','Normal')}</option><option value="75">${fdkText('速い','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('表示中の開始角度','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
@@ -96,12 +97,13 @@ function initializePositionPreview(){
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
+  initializeTemporalUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
-  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle response; diagramFrame contains display-sampled weights only',result:positionResult},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle SSPz and model point TSP; diagramFrame contains display-sampled weights only',result:temporalExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
-    if([...form.querySelectorAll('input[type=number]')].some(e=>e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow)){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
+    if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
   };
   document.getElementById('position-play').onclick=()=>{if(positionMovie.playing)stopPositionMovie();else if(positionMovie.valid&&positionMovie.series){stopAxialMovie();stopGeometryPlayback();positionMovie.playing=true;updatePositionMovieControls();schedulePositionMovie();}};
   document.getElementById('position-phase').oninput=e=>{stopPositionMovie();renderPositionFrame(Number(e.target.value));};
@@ -135,9 +137,10 @@ function renderPositionPreview(r,requestId='series'){
         cv.dataset.renderState=r.geometryOnly&&cv===profile?'unavailable':'ready';
       }
       document.getElementById('position-stats').textContent=r.geometryOnly?'':`FWHM ${r.fwhm.width.toFixed(2)} mm / FWTM ${r.fwtm.width.toFixed(2)} mm`;
-      document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm：同じ位置・開始角度の展開図とSSPzです。`,`r = ${r.config.radius} mm: diagram and SSPz share this position and start angle.`);
+      document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm：同じ位置・開始角度の展開図・SSPz・TSPです。`,`r = ${r.config.radius} mm: diagram, SSPz and TSP share this position and start angle.`);
       document.getElementById('position-json').disabled=false;
       positionMovie.valid=true;
+      renderPositionTemporal();
       document.getElementById('position-phase-value').textContent=positionAngle(r.config.phase);
       document.getElementById('position-phase').value=0;
       document.getElementById('position-movie-status').textContent=r.geometryOnly?fdkText('取得応答がないため、展開図のみ表示します。','No acquired response; only the diagram is available.'):fdkText('基準角度の1本を表示中。360開始角度を準備すると、全曲線を残して再生できます。','Showing one base-angle profile. Prepare 360 start angles to play with every profile visible.');
@@ -185,7 +188,7 @@ function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
   index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
   const p=r.profiles[index],frame=p.diagramFrame;
-  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,temporalResponse:p.temporalResponse,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
   // Compact display coefficients never masquerade as a complete weight audit.
   positionResult=selected;
   if(!m.scenes.has(index)){
@@ -200,6 +203,7 @@ function renderPositionFrame(index){
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
   document.getElementById('position-stats').textContent=`FWHM ${p.fwhm.width.toFixed(2)} mm / FWTM ${p.fwtm.width.toFixed(2)} mm`;
-  document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm ／ 開始角度 ${positionAngle(p.phase)}：展開図と赤いSSPzは同じ条件です。`,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram and red SSPz share the same settings.`);
+  document.getElementById('position-status').textContent=fdkText(`r = ${r.config.radius} mm ／ 開始角度 ${positionAngle(p.phase)}：展開図・赤いSSPz・赤いTSPは同じ条件です。`,`r = ${r.config.radius} mm / start angle ${positionAngle(p.phase)}: the diagram, red SSPz and red TSP share the same settings.`);
   document.getElementById('position-json').disabled=false;
+  renderPositionTemporal();
 }
