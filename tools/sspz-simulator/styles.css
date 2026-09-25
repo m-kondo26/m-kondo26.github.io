@@ -505,8 +505,7 @@ footer p { margin: 0.2rem 0; }
 .taguchi-inputs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-top: 18px; }
 .taguchi-inputs label { display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
 .taguchi-inputs input { width: 100%; padding: 10px; border: 1px solid #b8cbd5; border-radius: 6px; background: white; }
-.taguchi-preset-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
-.taguchi-preset-row select, #tsp-time-unit { max-width: 100%; padding: 6px; }
+#tsp-time-unit { max-width: 100%; padding: 6px; }
 #taguchi-status { min-height: 1.6em; color: #375765; }
 #taguchi-result-settings { font-variant-numeric: tabular-nums; }
 #taguchi-tsp-plot { max-width: 1000px; margin: 0 auto; }

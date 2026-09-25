@@ -10,14 +10,14 @@ function initializeTaguchiUi(){
   <p>${fdkText('ここからは、ヘリカルフィルタ補間（HFI）の重みを用いて時間感度を追加計算します。上のSSPzとは計算方法が異なります。','This section calculates temporal sensitivity from helical filter interpolation (HFI) weights. It uses a different calculation method from the SSPz above.')}</p>
   <p class="taguchi-scope"><strong>${fdkText('計算対象：4列・回転中心（r = 0 mm）','Scope: four rows at isocentre (r = 0 mm)')}</strong><br>${fdkText('実データと対向データの隣接2点から再サンプリングし、幅FWの矩形フィルタを適用します。補間重みを元の取得時刻ごとに合計します。','Resample between adjacent direct and complementary data, apply a rectangular filter of width FW, and sum interpolation weights by original acquisition time.')}</p>
   <p class="taguchi-verification-note">${fdkText('照合状況：市川論文Fig.5(d)、p = 0.625では曲線形状に差が残っています。論文値に合わせる調整はしていません。','Comparison status: a curve-shape difference remains for Ichikawa Fig. 5(d), p = 0.625. No parameters have been fitted to the published values.')}</p>
-  <div class="taguchi-preset-row"><label for="taguchi-preset">${fdkText('論文の比較条件','Paper comparison settings')} <select id="taguchi-preset"><option value="custom">${fdkText('任意の条件','Custom settings')}</option><option value="0.625">Ichikawa Fig. 5(d): p = 0.625</option><option value="1">Ichikawa Fig. 5(e): p = 1.0</option><option value="1.5">Ichikawa Fig. 5(f): p = 1.5</option></select></label><button type="button" id="taguchi-copy" class="secondary">${fdkText('上の列幅・ピッチをコピー','Copy row width and pitch from above')}</button></div>
+  <div class="action-row"><button type="button" id="taguchi-copy" class="secondary">${fdkText('上の列幅・ピッチをコピー','Copy row width and pitch from above')}</button></div>
   <div class="taguchi-inputs">
   <label>${fdkText('回転中心換算の列幅 d (mm)','Row width at isocentre d (mm)')}<input id="taguchi-row-width" type="number" min="0.1" max="10" step="0.1" value="1" required></label>
   <label>${fdkText('ビームピッチ p','Beam pitch p')}<input id="taguchi-pitch" type="number" min="0.1" max="2" step="0.001" value="0.875" required></label>
   <label>${fdkText('HFIフィルタ幅 FW (mm)','HFI filter width FW (mm)')}<input id="taguchi-filter-width" type="number" min="0.1" max="20" step="0.1" value="1" required></label>
   <label>${fdkText('回転時間 (s/rot)','Rotation time (s/rot)')}<input id="taguchi-rotation" type="number" min="0.05" max="5" step="0.05" value="0.5" required></label></div>
   <p class="field-help">${fdkText('pは1回転の寝台移動量 ÷（4 × d）。FWは上の設定厚Tとは独立です。回転時間は上の条件欄と共通です。','p is table travel per rotation divided by (4 × d). FW is independent of thickness T above. Rotation time is shared with the settings above.')}</p>
-  <p class="field-help">${fdkText('上の評価位置r・開始角度の再生・焦点サイズは使いません。論文条件は d = 2 mm、FW = 2 mm、回転時間1 sです。','The radius r, start-angle playback and focal size above are not used. Paper settings use d = 2 mm, FW = 2 mm and a 1 s rotation.')}</p>
+  <p class="field-help">${fdkText('上の評価位置r・開始角度の再生・焦点サイズは使いません。','The radius r, start-angle playback and focal size above are not used.')}</p>
   <div class="action-row"><button type="button" id="taguchi-calculate">${fdkText('HFIでTSPを追加計算','Calculate the HFI TSP')}</button><label for="tsp-time-unit">${fdkText('時間軸','Time axis')} <select id="tsp-time-unit"><option value="ms">ms</option><option value="turns">t / Trot</option></select></label></div>
   <p id="taguchi-status" role="status" aria-live="polite"></p>
   <div class="position-canvas"><canvas id="taguchi-tsp-plot" width="1100" height="660" role="img" aria-label="${fdkText('Taguchi HFIによる回転中心の理論TSP','Isocentre theoretical TSP using Taguchi HFI')}"></canvas></div>
@@ -28,8 +28,7 @@ function initializeTaguchiUi(){
   <p>${fdkText('比較対象は市川ら（2015）Fig.5(d–f)のHFI条件です。実機の再構成画像や周辺位置のTSPを再現したものではありません。','The reference comparison is the HFI setting in Ichikawa et al. (2015), Fig. 5(d–f). This does not reproduce reconstructed scanner images or off-centre TSPs.')} <a href="${fdkText('methods.html?topic=axial#taguchi-hfi-tsp','methods.html?topic=axial&lang=en#taguchi-hfi-tsp')}">${fdkText('計算式・確認結果','Equations and checks')}</a></p>
   <p><a href="https://doi.org/10.1118/1.598230">Taguchi &amp; Aradate (1998)</a> · <a href="https://doi.org/10.1016/j.ejmp.2015.02.012">Ichikawa et al. (2015)</a></p></details>`;
   document.getElementById('fdk-panel').after(section);
-  for(const id of ['taguchi-row-width','taguchi-pitch','taguchi-filter-width'])document.getElementById(id).addEventListener('input',()=>{document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();});
-  document.getElementById('taguchi-preset').onchange=e=>{if(e.target.value==='custom')return;document.getElementById('taguchi-row-width').value='2';document.getElementById('taguchi-filter-width').value='2';document.getElementById('taguchi-pitch').value=e.target.value;setTaguchiRotation('1');invalidateTaguchiResult();};
+  for(const id of ['taguchi-row-width','taguchi-pitch','taguchi-filter-width'])document.getElementById(id).addEventListener('input',invalidateTaguchiResult);
   document.getElementById('taguchi-copy').onclick=copyTaguchiSettings;
   document.getElementById('taguchi-calculate').onclick=runTaguchiCalculation;
   document.getElementById('taguchi-rotation').oninput=e=>setTaguchiRotation(e.target.value);
@@ -39,13 +38,13 @@ function initializeTaguchiUi(){
   const width=Number(form.elements.namedItem('rowWidth').value),pitch=Number(form.elements.namedItem('beamPitch').value);
   if(width>=.1&&width<=10){document.getElementById('taguchi-row-width').value=String(width);document.getElementById('taguchi-filter-width').value=String(width);}
   if(pitch>=.1&&pitch<=2)document.getElementById('taguchi-pitch').value=String(pitch);
-  refreshTemporalDisplay();drawCanvasStatus(document.getElementById('taguchi-tsp-plot'),'HFI TSP',fdkText('条件を選び、追加計算を実行してください。','Choose settings and run the additional calculation.'),'idle');
+  refreshTemporalDisplay();drawCanvasStatus(document.getElementById('taguchi-tsp-plot'),'HFI TSP',fdkText('条件を入力し、追加計算を実行してください。','Enter settings and run the additional calculation.'),'idle');
   document.getElementById('taguchi-status').textContent=fdkText('SSPzの計算とは独立して実行します。','This calculation runs independently of SSPz.');
 }
 function setTaguchiRotation(value){form.elements.namedItem('rotationTime').value=value;persistTemporalSettings();refreshTemporalDisplay();}
 function copyTaguchiSettings(){
   document.getElementById('taguchi-row-width').value=form.elements.namedItem('rowWidth').value;document.getElementById('taguchi-pitch').value=form.elements.namedItem('beamPitch').value;
-  document.getElementById('taguchi-preset').value='custom';invalidateTaguchiResult();refreshTemporalDisplay();
+  invalidateTaguchiResult();refreshTemporalDisplay();
   document.getElementById('taguchi-status').textContent=fdkText('列幅とピッチをコピーしました。4列・回転中心で計算します。FWを確認して追加計算してください。','Row width and pitch copied. Calculation remains at isocentre with four rows. Check FW, then calculate.');
 }
 function taguchiDownloads(enabled){for(const id of ['taguchi-csv','taguchi-json'])document.getElementById(id).disabled=!enabled;}
