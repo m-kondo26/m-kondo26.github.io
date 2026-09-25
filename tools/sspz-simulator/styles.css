@@ -501,7 +501,9 @@ footer p { margin: 0.2rem 0; }
 #taguchi-tsp h2 { margin: 0 0 16px; }
 #taguchi-tsp .eyebrow { margin: 0 0 6px; font-weight: 700; color: #176b87; }
 .taguchi-scope { padding: 14px 16px; background: #eaf2f6; border-radius: 8px; }
-.taguchi-verification-note { padding: 12px 16px; border-left: 3px solid #a67624; background: #fff6e5; color: #684e20; }
+.taguchi-development-notice { margin: 18px 0; padding: 18px 20px; border: 2px solid #ad541c; border-left-width: 6px; border-radius: 6px; background: #fff4df; color: #65370e; }
+.taguchi-development-notice strong { display: block; font-size: 1.2rem; }
+.taguchi-development-notice p { margin: 10px 0 0; }
 .taguchi-inputs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-top: 18px; }
 .taguchi-inputs label { display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
 .taguchi-inputs input { width: 100%; padding: 10px; border: 1px solid #b8cbd5; border-radius: 6px; background: white; }

@@ -1,4 +1,6 @@
-## Separate Taguchi HFI TSP reference calculation — 2026-09-25.6
+## Taguchi HFI TSP — under development, validation incomplete — 2026-09-25.7
+
+**Development preview only. TSP curves and metrics are provisional and are not ready for research conclusions or scanner performance evaluation. The UI, plot and CSV/JSON exports carry this status.**
 
 The fixed-point temporal plot has been removed from the cone-model SSPz preview and detailed results. An independent additional-calculation section follows the SSPz results. It uses rectangular HFI interpolation coefficients based on Taguchi & Aradate (1998), Eq. (6) and Appendix, aggregated by original acquisition time following Ichikawa et al. (2015), p.376. It does not multiply the coefficients by the stationary point-object signal.
 
