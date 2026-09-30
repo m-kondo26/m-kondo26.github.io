@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { finalizeEnglishHtml, translateEnglishSource } from "./english-replacements.mjs";
 import { buildMethods } from "./build-methods.mjs";
 
-const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
+const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|candidate-density-core|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");
 
 const detector = stripExports(await readFile(new URL("../detector-aperture.js", import.meta.url), "utf8"));
@@ -21,7 +21,9 @@ const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
 const taguchiCore='const SSPZTaguchi=(()=>{\n'+stripExports(await readFile(new URL('../taguchi-tsp-core.js',import.meta.url),'utf8'))+'\nreturn {computeTaguchiTsp};})();\n';
-const positionUi=(await readFile(new URL('../temporal-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../position-preview.js',import.meta.url),'utf8'));
+const positionUi=(await readFile(new URL('../temporal-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../position-preview.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../candidate-density-ui.js',import.meta.url),'utf8'));
+const densitySourceGeometry=stripExports(await readFile(new URL('../axial-source-support.js',import.meta.url),'utf8'))+'\n'+fdk.match(/function fdkWidth\([\s\S]*?\n\}/)[0]+'\n'+stripExports(await readFile(new URL('../axial-source-response.js',import.meta.url),'utf8')).match(/function sourceAxialGroups\([\s\S]*?\n\}/)[0];
+const densityCore=stripExports(stripImports(await readFile(new URL('../candidate-density-core.js',import.meta.url),'utf8')));
 const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
@@ -30,7 +32,7 @@ const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${zffsGeometry}\n$
 // selection and integration run in the worker, using the numerical core.
 const animationGeometry=animation.slice(0,animation.indexOf('// Coefficients'));
 const cbaGeometry='const CBA_TAU=2*Math.PI;\n'+cba.match(/function cbaCoordinates\([\s\S]*?\n\}/)[0];
-const appBundle = `(() => {\n"use strict";\n${core}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${taguchiCore}\n${app}\n})();\n`;
+const appBundle = `(() => {\n"use strict";\n${core}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${densitySourceGeometry}\n${densityCore}\n${taguchiCore}\n${app}\n})();\n`;
 const workerSource = `globalThis.SSPZ_WORKER_SOURCE = ${JSON.stringify(workerBundle)};\n`;
 const englishCore = translateEnglishSource(core);
 const englishWorker = translateEnglishSource(worker);
@@ -41,7 +43,7 @@ const englishFdkUi=(modelChoice+'\n'+fdkUi+'\n'+positionUi)
   .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
 const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);
 const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${englishWorker}\n`;
-const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${taguchiCore}\n${englishApp}\n})();\n`;
+const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${densitySourceGeometry}\n${densityCore}\n${taguchiCore}\n${englishApp}\n})();\n`;
 const englishWorkerSource = `globalThis.SSPZ_WORKER_SOURCE = ${JSON.stringify(englishWorkerBundle)};\n`;
 const englishHtml = finalizeEnglishHtml(indexHtml);
 

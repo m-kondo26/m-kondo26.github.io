@@ -1,3 +1,11 @@
+## Candidate-count distributions within FWHM/FWTM — 2026-09-30.1
+
+Preparing the full 360-start-angle SSPz series now also displays two candidate-count panels at the current in-plane position: direct data only, and direct plus complementary data. Both use the same finite acquired-source support and the same fixed FWHM/FWTM windows derived from the native-z mean SSPz. Every detector-row centre inside each window is counted before interpolation selection or weighting.
+
+The distribution contains 360 output directions × 360 start angles: 129,600 observations, each representing the count for **one direction**, rather than an all-view total. The panels share count and frequency-width scales; absent integer counts remain empty. The interface exports 600-dpi PNG, vector SVG, integer-frequency CSV, complete per-direction/start-angle CSV, and JSON. Settings changes retain the old figure with a stale label and disable its exports until recalculation.
+
+These are response-window centre populations, not independent measurement counts, dose, noise, or motion-correction performance. Equal counts can conceal different within-window spacing. Read them together with the unwrapped diagrams. See [CANDIDATE_DENSITY_METHOD.md](CANDIDATE_DENSITY_METHOD.md) for the counting definition and numerical audit.
+
 ## Restore visible SSPz variation section — 2026-09-25.8
 
 The fixed-z mean-deviation plot and the FWHM-midpoint-aligned shape distribution now occupy a persistent section directly after the position preview. The single-angle preview cannot supply a 360-angle mean: a visible calculation action remains before the first sweep, and previous plots stay visible with their previous settings and a stale-result warning during edits and recalculation. Numerical response and shape processing are unchanged.

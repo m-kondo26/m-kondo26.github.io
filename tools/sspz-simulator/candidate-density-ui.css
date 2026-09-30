@@ -1,0 +1,15 @@
+#candidate-density { margin-top: 1.4rem; }
+#candidate-density .density-intro { max-width: 75ch; }
+#candidate-density .density-actions { display:flex; flex-wrap:wrap; gap:.65rem; align-items:center; margin:.8rem 0; }
+#candidate-density .density-status { padding:.7rem .9rem; border-left:4px solid #216bb1; background:#eef5fb; }
+#candidate-density[data-render-state="stale"] .density-status { border-color:#af7b18; background:#fff7e6; }
+#candidate-density .density-figure { margin:0; overflow:auto; }
+#candidate-density .density-figure svg { display:block; width:100%; height:auto; min-width:620px; }
+#candidate-density .density-note { color:#536879; font-size:.92rem; line-height:1.6; }
+#candidate-density .density-table-scroll { overflow:auto; }
+#candidate-density table { border-collapse:collapse; width:100%; max-width:1000px; margin:.6rem 0; }
+#candidate-density th,#candidate-density td { padding:.5rem .7rem; text-align:right; border-bottom:1px solid #d8e1e8; white-space:nowrap; }
+#candidate-density th:first-child,#candidate-density td:first-child { text-align:left; }
+#candidate-density caption { text-align:left; font-weight:700; padding:.5rem 0; }
+#candidate-density [hidden] { display:none !important; }
+@media (max-width:650px) { #candidate-density .density-actions button { flex:1 1 45%; } }

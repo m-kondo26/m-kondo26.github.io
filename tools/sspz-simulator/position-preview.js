@@ -38,6 +38,7 @@ function holdPositionResult(message,state='loading'){
 }
 function invalidatePositionMovie(){
   stopPositionMovie();positionMovie.series=null;positionMovie.scenes.clear();positionMovie.background=null;positionMovie.valid=false;updatePositionMovieControls();
+  if(typeof invalidateCandidateDensityUi==='function')invalidateCandidateDensityUi();
   const prepare=document.getElementById('position-prepare');if(prepare)prepare.disabled=false;
 }
 function schedulePositionPreview(delay=220){
@@ -113,6 +114,7 @@ function initializePositionPreview(){
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPositionMovie();});
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduced.matches)document.getElementById('position-speed').value='400';
   reduced.addEventListener('change',()=>{stopPositionMovie();if(reduced.matches)document.getElementById('position-speed').value='400';});
+  if(typeof initializeCandidateDensityUi==='function')initializeCandidateDensityUi();
   runButton.textContent=fdkText('全360開始角度を計算する','Calculate all 360 start angles');
   resetButton.addEventListener('click',()=>schedulePositionPreview());
   syncPositionControls();
@@ -184,6 +186,7 @@ function preparePositionSeries(r){
   renderPositionFrame(0);
   positionSeriesProgress(fdkText(`${r.profiles.length}開始角度の準備が完了しました。灰色：全曲線／赤：表示中の開始角度。`,`${r.profiles.length} start angles ready. Grey: all profiles / red: displayed start angle.`));
   updatePositionMovieControls();
+  if(typeof prepareCandidateDensityFromSeries==='function')prepareCandidateDensityFromSeries(r);
 }
 function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
