@@ -1,3 +1,9 @@
+## Position-preview FWHM-midpoint registration — 2026-09-30.2
+
+The right SSPz panel now translates each single, grey-background and selected red profile by the midpoint of its two native 50% crossings. The x axis remains in physical millimetres; profiles are neither rescaled nor resampled, and the peak is not forced to zero. All 360 registered curves share fixed axes throughout playback, and a half-height arrow marks the selected FWHM.
+
+The left unwrapped diagram keeps the reconstruction target as its origin. A visible note distinguishes the two origins. Native response arrays, FWHM/FWTM widths and the candidate-count windows derived from the native-z mean remain unchanged. The selected-response JSON retains its native result and separately records the displayed coordinates, original midpoint and translation rule. If bilateral 50% crossings are unavailable, the panel explicitly retains the target-point origin.
+
 ## Candidate-count distributions within FWHM/FWTM — 2026-09-30.1
 
 Preparing the full 360-start-angle SSPz series now also displays two candidate-count panels at the current in-plane position: direct data only, and direct plus complementary data. Both use the same finite acquired-source support and the same fixed FWHM/FWTM windows derived from the native-z mean SSPz. Every detector-row centre inside each window is counted before interpolation selection or weighting.

@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {fdkWidth} from '../fdk-core.js';
+import {candidateDensityWindows} from '../candidate-density-core.js';
 
 // UI-state regression checks. Small labelled arrays stand in for already
 // computed responses; position-worker/axial-response tests verify the physics.
 // This harness observes worker messages and canvas writes rather than copying
 // the playback implementation or running 360 reconstructions.
-const elements=new Map(),timers=new Map(),workers=[],exports=[],paints=[],lines=[],scenes=[];
+const elements=new Map(),timers=new Map(),workers=[],exports=[],paints=[],lines=[],arrows=[],scenes=[],densityInputs=[];
 const documentListeners=new Map(),motionListeners=new Map();
 let nextTimer=0,nextUrl=0,calculations=0,statusPaints=0;
 const context2d=canvas=>({canvas,save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},
@@ -68,6 +70,7 @@ const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Bl
   initializeTaguchiUi(){},spatialExport:result=>result,updateSspzVariation(){},
   setBusy:busy=>{runButton.disabled=busy;},fdkToggleDownloads(){},clearCanvasStatusAnimations(){},
   stopAxialMovie(){},stopGeometryPlayback(){},runSimulation:()=>{calculations++;},
+  prepareCandidateDensityFromSeries:series=>densityInputs.push(series),
   fdkInspectionRequest:0,fdkInspectionTimer:null,fdkResult:null,fdkSelectedResult:null,fdkShapeGroups:null,lastResult:null,
   loadingCanvasStatuses:new Map(),
   downloadBlob:(name,body,type)=>exports.push({name,body,type}),
@@ -80,13 +83,14 @@ const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Bl
   drawDiagram:(canvas,scene,mode,xLimit)=>paints.push({kind:'diagram',canvas,scene,mode,xLimit}),
   fdkDrawProfile:(canvas,result)=>paints.push({kind:'single-profile',canvas,result}),
   fdkAxes:(canvas,...args)=>({ctx:canvas.getContext('2d'),b:{left:130,right:965},y:value=>value,args}),
-  fdkDrawLines:(axes,z,profiles,color)=>lines.push({canvas:axes.ctx.canvas,z,profiles,color}),
+  fdkDrawLines:(axes,z,profiles,color,style)=>lines.push({canvas:axes.ctx.canvas,z,profiles,color,style,axes}),
+  fdkArrow:(axes,width,level,color)=>arrows.push({canvas:axes.ctx.canvas,width,level,color}),
 };
 vm.createContext(sandbox);
 vm.runInContext(readFileSync(new URL('../position-preview.js',import.meta.url),'utf8')+`
 globalThis.testApi={initializePositionPreview,preparePositionSeries,renderPositionFrame,renderPositionPreview,
   beginPositionSeries,failPositionSeries,schedulePositionPreview,runPositionPreview,holdPositionResult,
-  stopPositionMovie,stopPositionPreview,positionAngle,
+  stopPositionMovie,stopPositionPreview,clearPositionResult,positionAngle,
   get movie(){return positionMovie;},get result(){return positionResult;},get worker(){return positionWorker;},
   get request(){return positionRequest;}};
 `,sandbox);
@@ -101,24 +105,60 @@ const fire=(id,event='click',value)=>{
   el(id)[`on${event}`]({target:el(id)});
 };
 const makeSeries=(radius=100)=>{
-  const phase=.37,z=Float64Array.of(-1,0,1),profiles=Array.from({length:360},(_,index)=>({
-    phase:phase+index*Math.PI/180,profile:Float64Array.of(index/1000,1,0),raw:Float64Array.of(index/1000,2,0),
-    fwhm:{width:1+index/1000,left:-.5,right:.5},fwtm:{width:2+index/1000,left:-1,right:1},baseline:0,rawTailFraction:0,
-    diagramFrame:{coordinateSystem:'rebinned-theta',extent:{maxAbsZ:1+index/360},
-      weightAudit:{displayOnly:true,samples:[{index,weight:.5}]},rebinnedWeightAudit:{displayOnly:true,index}},
-  }));
-  return {config:{...readParams(),radius,phase},z,zObject:0,profiles,model:{kind:'axial-rri'},domainCheck:{expansions:0}};
+  // Alternating asymmetric and flat-top profiles have true native crossings
+  // and a peak away from their FWHM midpoint. z is ALREADY object-relative;
+  // the nonzero absolute zObject must never be subtracted a second time.
+  const phase=.37,z=Float64Array.of(-2,-1.2,-.7,-.1,.2,.6,1.3,2.1);
+  const profiles=Array.from({length:360},(_,index)=>{
+    const profile=Float64Array.from(index%2?
+      [index/10000,.18+index/100000,.74,1,1,.84,.35,0]:
+      [index/10000,.12+index/100000,.48,1,.83,.64,.19,0]);
+    return {phase:phase+index*Math.PI/180,profile,raw:Float64Array.from(profile,v=>2*v),
+      fwhm:fdkWidth(z,profile,.5),fwtm:fdkWidth(z,profile,.1),baseline:0,rawTailFraction:0,
+      diagramFrame:{coordinateSystem:'rebinned-theta',extent:{maxAbsZ:1+index/360},
+        weightAudit:{displayOnly:true,samples:[{index,weight:.5}]},rebinnedWeightAudit:{displayOnly:true,index}},
+    };
+  });
+  const mean=Float64Array.from(z,(_,i)=>profiles.reduce((sum,p)=>sum+p.profile[i],0)/profiles.length);
+  const meanDifference=profiles.map(p=>Float64Array.from(p.profile,(v,i)=>v-mean[i]));
+  return {config:{...readParams(),radius,phase,feed:3.5,state:.35},z,zObject:1.225,profiles,mean,meanDifference,
+    model:{kind:'axial-rri'},domainCheck:{expansions:0}};
 };
 const single=(radius=100)=>{
   const series=makeSeries(radius),p=series.profiles[0];
-  return {config:series.config,z:series.z,zObject:0,...p,model:series.model,domainCheck:series.domainCheck,
+  return {config:series.config,z:series.z,zObject:series.zObject,...p,model:series.model,domainCheck:series.domainCheck,
     weightAudit:{samples:[{view:0,row:1,weight:1,acquiredValue:2}]}};
+};
+const bytes=a=>Buffer.from(a.buffer,a.byteOffset,a.byteLength).toString('hex');
+const nativeSnapshot=r=>({z:bytes(r.z),zObject:r.zObject,config:JSON.stringify(r.config),
+  mean:r.mean?bytes(r.mean):null,meanDifference:r.meanDifference?.map(bytes)??null,
+  profiles:(r.profiles??[r]).map(p=>({profile:bytes(p.profile),raw:bytes(p.raw),
+    fwhm:JSON.stringify(p.fwhm),fwtm:JSON.stringify(p.fwtm)}))});
+const near=(actual,expected,message)=>assert.ok(Math.abs(actual-expected)<=1e-12,`${message}: ${actual} vs ${expected}`);
+const assertRegisteredLine=(line,z,p)=>{
+  assert.equal(line.profiles.length,1);assert.equal(line.profiles[0],p.profile,'Signal is not resampled');
+  assert.notEqual(line.z,z,'Display coordinates use a separate array');
+  const midpoint=(p.fwhm.left+p.fwhm.right)/2;
+  assert.notEqual(midpoint,0,'Fixture must distinguish the native origin from the FWHM midpoint');
+  for(let i=0;i<z.length;i++)assert.equal(line.z[i],z[i]-midpoint,'Translation uses native z, not z - zObject');
+  const half=fdkWidth(line.z,p.profile,.5),tenth=fdkWidth(line.z,p.profile,.1);
+  near((half.left+half.right)/2,0,'Displayed FWHM midpoint');
+  near(half.width,p.fwhm.width,'FWHM width is unchanged');near(tenth.width,p.fwtm.width,'FWTM width is unchanged');
+  const peak=p.profile.indexOf(Math.max(...p.profile));
+  assert.ok(Math.abs(line.z[peak])>.05,'FWHM registration must not force the peak to zero');
 };
 let checks=0;
 
 // Preparation is explicit. It disables export/play, retains an existing plot,
 // and installs all 360 grey profiles once, not once per playback frame.
-api.renderPositionPreview(single());
+const singleResult=single(),singleBefore=nativeSnapshot(singleResult);
+api.renderPositionPreview(singleResult);
+assertRegisteredLine(lines.filter(p=>p.color==='#d71920').at(-1),singleResult.z,singleResult);
+assert.deepEqual(nativeSnapshot(singleResult),singleBefore);
+assert.equal(arrows.at(-1).level,.5);near((arrows.at(-1).width.left+arrows.at(-1).width.right)/2,0,'Single-profile arrow midpoint');
+assert.match(lines.at(-1).axes.args[4],/FWHM midpoint/);
+assert.equal(el('position-profile').dataset.profileAlignment,'fwhm-midpoint');
+assert.equal(el('position-profile').dataset.displayFwhmMidpointMm,'0');checks++;
 const previousResult=api.result,previousPaints=paints.length;
 fire('position-prepare');assert.equal(calculations,1);
 api.beginPositionSeries();
@@ -126,11 +166,18 @@ assert.equal(el('position-prepare').disabled,true);
 assert.equal(el('position-json').disabled,true);assert.equal(el('position-play').disabled,true);
 assert.equal(api.result,previousResult);assert.equal(paints.length,previousPaints);
 assert.equal(el('position-diagram').dataset.renderState,'stale');
-const series=makeSeries();api.preparePositionSeries(series);
+const series=makeSeries(),seriesBefore=nativeSnapshot(series),windowsBefore=candidateDensityWindows(series);
+api.preparePositionSeries(series);
 assert.equal(el('position-prepare').disabled,false);assert.equal(el('position-play').disabled,false);
 assert.equal(api.movie.index,0);assert.equal(el('position-phase').max,359);
-assert.equal(lines.filter(p=>p.color==='#89949e').length,1);
-assert.equal(lines.find(p=>p.color==='#89949e').profiles.length,360);
+const greyLines=lines.filter(p=>p.color==='#89949e');assert.equal(greyLines.length,360);
+greyLines.forEach((line,index)=>{
+  assertRegisteredLine(line,series.z,series.profiles[index]);
+  assert.equal(line.style.opacity,.13);assert.equal(line.style.lineWidth,1.1);
+});
+assert.equal(densityInputs.length,1);assert.equal(densityInputs[0],series,'Candidate counts receive the original native series');
+assert.equal(api.movie.series,series);assert.deepEqual(nativeSnapshot(series),seriesBefore);
+assert.deepEqual(candidateDensityWindows(densityInputs[0]),windowsBefore,'Native mean-response count windows are unchanged');
 assert.equal(el('position-profile').dataset.profileCount,'360');checks++;
 
 // A frame's diagram, red curve, reported phase and exported response must all
@@ -139,6 +186,8 @@ api.renderPositionFrame(123);
 const chosen=series.profiles[123],sceneCount=scenes.length;
 assert.equal(paints.filter(p=>p.kind==='diagram').at(-1).scene.phase,chosen.phase);
 assert.equal(lines.filter(p=>p.color==='#d71920').at(-1).profiles[0],chosen.profile);
+assertRegisteredLine(lines.filter(p=>p.color==='#d71920').at(-1),series.z,chosen);
+near((arrows.at(-1).width.left+arrows.at(-1).width.right)/2,0,'Selected-profile arrow midpoint');
 assert.equal(api.result.profile,chosen.profile);assert.equal(api.result.config.phase,chosen.phase);
 assert.equal(el('position-diagram').dataset.phase,String(chosen.phase));
 assert.equal(el('position-profile').dataset.phase,String(chosen.phase));
@@ -152,6 +201,17 @@ fire('position-json');const downloaded=JSON.parse(exports.at(-1).body);
 assert.match(downloaded.scope,/display-sampled weights only/);
 assert.equal(downloaded.result.config.phase,chosen.phase);
 assert.equal(downloaded.result.profile[0],chosen.profile[0]);
+assert.deepEqual(downloaded.result.z,Array.from(series.z));
+assert.deepEqual(downloaded.result.raw,Array.from(chosen.raw));
+assert.deepEqual(downloaded.result.profile,Array.from(chosen.profile));
+assert.deepEqual(downloaded.result.fwhm,chosen.fwhm);assert.deepEqual(downloaded.result.fwtm,chosen.fwtm);
+assert.equal(downloaded.result.zObject,series.zObject);
+assert.equal(downloaded.display.alignment,'fwhm-midpoint');assert.equal(downloaded.display.units,'mm');
+assert.equal(downloaded.display.nativeCoordinateOrigin,'reconstruction object point');
+assert.equal(downloaded.display.nativeFwhmMidpointMm,(chosen.fwhm.left+chosen.fwhm.right)/2);
+assert.deepEqual(downloaded.display.z,Array.from(lines.filter(p=>p.color==='#d71920').at(-1).z));
+near((downloaded.display.fwhm.left+downloaded.display.fwhm.right)/2,0,'Exported display midpoint');
+assert.equal(downloaded.display.fwhm.width,chosen.fwhm.width);
 assert.equal(downloaded.result.diagramFrame.weightAudit.displayOnly,true);
 assert.equal(Object.hasOwn(downloaded.result,'weightAudit'),false);
 assert.equal(Object.hasOwn(downloaded.result,'rebinnedWeightAudit'),false);
@@ -170,6 +230,8 @@ assert.deepEqual({workers:workers.length,calculations,statusPaints,greys:lines.f
 assert.equal(paints.filter(p=>p.kind==='clear').length,0);
 assert.ok(paints.filter(p=>p.kind==='background').every(p=>p.source===api.movie.background));
 for(let index=0;index<12;index++)api.renderPositionFrame(index);
+assert.deepEqual(nativeSnapshot(series),seriesBefore,'Playback leaves native arrays and widths byte-for-byte unchanged');
+assert.deepEqual(candidateDensityWindows(series),windowsBefore);
 assert.ok(api.movie.scenes.size<=8);checks++;
 
 // Pausing on document hide/reduced motion cancels the next tick.
@@ -208,4 +270,32 @@ assert.equal(el('position-profile').dataset.radiusMm,'200');assert.equal(freshWo
 assert.equal(el('position-json').disabled,false);assert.equal(el('position-play').disabled,true);
 assert.equal(el('position-diagram').getAttribute('aria-busy'),null);checks++;
 
-console.log(`PASS: position playback ${checks} lifecycle groups; 360 cached curves, phase pairing, export scope, wrap/scrub/pause, stale holds and superseded workers`);
+// An unavailable response must not retain registration metadata from the
+// previously displayed SSPz, or manufacture registered coordinates in JSON.
+const alignmentKeys=['profileAlignment','nativeFwhmMidpointMm','displayFwhmMidpointMm'];
+assert.equal(el('position-profile').dataset.profileAlignment,'fwhm-midpoint');
+const {profile:_profile,raw:_raw,fwhm:_fwhm,fwtm:_fwtm,...geometryOnly}=single(200);
+geometryOnly.geometryOnly=true;
+const beforeUnavailable={lines:lines.length,arrows:arrows.length};api.renderPositionPreview(geometryOnly);
+assert.equal(el('position-profile').dataset.renderState,'unavailable');
+for(const key of alignmentKeys)assert.equal(Object.hasOwn(el('position-profile').dataset,key),false);
+assert.equal(el('position-alignment').textContent,'');assert.equal(el('position-stats').textContent,'');
+assert.deepEqual({lines:lines.length,arrows:arrows.length},beforeUnavailable);
+fire('position-json');const unavailableJson=JSON.parse(exports.at(-1).body);
+assert.equal(unavailableJson.result.geometryOnly,true);assert.equal(unavailableJson.display,null);checks++;
+
+// Clearing a registered response resets both the annotation and canvas
+// metadata, with no valid result/export left behind.
+api.renderPositionPreview(single(200));
+assert.equal(el('position-profile').dataset.profileAlignment,'fwhm-midpoint');
+assert.notEqual(el('position-alignment').textContent,'');
+api.clearPositionResult('Replacement response pending');
+assert.equal(api.result,null);assert.equal(el('position-json').disabled,true);
+assert.equal(el('position-alignment').textContent,'');assert.equal(el('position-stats').textContent,'');
+for(const canvas of [el('position-diagram'),el('position-profile')]){
+  for(const key of alignmentKeys)assert.equal(Object.hasOwn(canvas.dataset,key),false);
+  assert.equal(canvas.dataset.renderState,'loading');
+}
+const afterClearExports=exports.length;fire('position-json');assert.equal(exports.length,afterClearExports);checks++;
+
+console.log(`PASS: position playback ${checks} lifecycle groups; 360 independently FWHM-registered native curves, asymmetric/flat-top peaks, immutable responses/count windows, raw/display JSON separation, unavailable/reset metadata, phase pairing, wrap/scrub/pause, stale holds and superseded workers`);

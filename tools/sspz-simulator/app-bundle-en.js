@@ -4782,9 +4782,9 @@ function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=
   canvas.dataset.renderState='ready';
   return {ctx:plot.ctx,s:1,b,x:plot.x,y:plot.y};
 }
-function fdkDrawLines(a,xs,series,color=FDK_PRIMARY_COLOR){
+function fdkDrawLines(a,xs,series,color=FDK_PRIMARY_COLOR,style={}){
   const {ctx,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  ctx.strokeStyle=color;ctx.globalAlpha=series.length>1?.13:1;ctx.lineWidth=series.length>1?1.1:4;
+  ctx.strokeStyle=color;ctx.globalAlpha=style.opacity??(series.length>1?.13:1);ctx.lineWidth=style.lineWidth??(series.length>1?1.1:4);
   for(const values of series)strokeNativeProfile(ctx,xs,values,x,y);
   ctx.restore();
 }
@@ -4975,7 +4975,45 @@ function spatialExport(result){
 // One real response at the current FOV position. Full 360-start-angle analysis
 // remains an explicit action; this worker/result never impersonates that series.
 let positionWorker=null,positionWorkerUrl=null,positionTimer=null,positionRequest=0,positionResult=null;
-const positionMovie={series:null,index:0,playing:false,timer:null,scenes:new Map(),background:null,axes:null,xLimit:null,valid:false};
+const positionMovie={series:null,index:0,playing:false,timer:null,scenes:new Map(),background:null,axes:null,displayProfiles:null,xLimit:null,valid:false};
+// Display registration only. Native z is already relative to the object point;
+// neither zObject nor the candidate-count windows are changed here.
+function positionProfileDisplay(z,p){
+  const fw=p.fwhm,aligned=Number.isFinite(fw?.left)&&Number.isFinite(fw?.right)&&fw.right>fw.left;
+  const midpoint=aligned?(fw.left+fw.right)/2:0;
+  return {aligned,midpoint,z:Float64Array.from(z,v=>v-midpoint),
+    fwhm:aligned?{...fw,left:fw.left-midpoint,right:fw.right-midpoint}:null};
+}
+function positionProfileAxes(canvas,displays,profiles){
+  const span=Math.max(...displays.map(p=>Math.max(Math.abs(p.z[0]),Math.abs(p.z.at(-1)))));
+  const low=Math.min(0,Math.floor(Math.min(...profiles.map(p=>Math.min(...p.profile)))*10)/10);
+  const label=displays.every(p=>p.aligned)?fdkText('','z from FWHM midpoint (mm)'):fdkText('','z from object point (mm)');
+  return fdkAxes(canvas,-span,span,low,1.04,label,fdkText('','Normalized SSPz'),'',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
+}
+function drawPositionProfileGuides(a){
+  const {ctx,b,y}=a;ctx.save();ctx.strokeStyle='#9ba5ad';ctx.lineWidth=1;ctx.setLineDash([5,4]);
+  for(const level of [.5,.1]){ctx.beginPath();ctx.moveTo(b.left,y(level));ctx.lineTo(b.right,y(level));ctx.stroke();}ctx.restore();
+}
+function drawPositionProfileTitle(a,phase,radius,count){
+  const {ctx,b}=a;ctx.save();ctx.fillStyle='#d71920';ctx.font=`700 26px ${FIGURE_FONT}`;ctx.textAlign='center';
+  ctx.fillText(fdkText(``,`Start angle ${positionAngle(phase)} · r = ${radius} mm`),(b.left+b.right)/2,45);
+  ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;
+  ctx.fillText(count>1?fdkText(``,`Grey: all ${count} profiles   Red: selected`):fdkText('','Red: selected start angle'),(b.left+b.right)/2,80);ctx.restore();
+}
+function setPositionAlignment(canvas,display){
+  Object.assign(canvas.dataset,{profileAlignment:display.aligned?'fwhm-midpoint':'object-origin-unavailable-fwhm',nativeFwhmMidpointMm:display.aligned?String(display.midpoint):'',displayFwhmMidpointMm:display.aligned?'0':'',profileInterpolation:'native-sample-linear'});
+  document.getElementById('position-alignment').textContent=display.aligned?
+    fdkText('','Zero is each SSPz\'s FWHM midpoint (midpoint of the two 50% crossings) on the right, and the reconstruction target on the left.'):
+    fdkText('','Both plots use the reconstruction target as zero because bilateral FWHM crossings are unavailable.');
+}
+function positionDisplayExport(result){
+  if(result.geometryOnly)return null;
+  const display=positionProfileDisplay(result.z,result);
+  return {alignment:display.aligned?'fwhm-midpoint':'object-origin-unavailable-fwhm',units:'mm',
+    rule:'displayed z = native z - native FWHM midpoint; translation only',
+    nativeCoordinateOrigin:'reconstruction object point',nativeFwhmMidpointMm:display.aligned?display.midpoint:null,
+    z:display.z,fwhm:display.fwhm};
+}
 function stopPositionPreview(){
   clearTimeout(positionTimer);positionRequest++;
   positionWorker?.terminate();positionWorker=null;
@@ -4996,9 +5034,11 @@ function clearPositionResult(message,state='loading'){
   positionResult=null;
   document.getElementById('position-json').disabled=true;
   document.getElementById('position-stats').textContent='';
+  document.getElementById('position-alignment').textContent='';
   document.getElementById('position-status').textContent=message;
   for(const canvas of positionCanvases()){
     delete canvas.dataset.radiusMm;delete canvas.dataset.responseRequest;
+    delete canvas.dataset.profileAlignment;delete canvas.dataset.nativeFwhmMidpointMm;delete canvas.dataset.displayFwhmMidpointMm;
     drawCanvasStatus(canvas,'',message,state);
   }
 }
@@ -5011,7 +5051,7 @@ function holdPositionResult(message,state='loading'){
   for(const canvas of positionCanvases()){canvas.dataset.renderState='stale';canvas.setAttribute('aria-busy',String(state==='loading'));}
 }
 function invalidatePositionMovie(){
-  stopPositionMovie();positionMovie.series=null;positionMovie.scenes.clear();positionMovie.background=null;positionMovie.valid=false;updatePositionMovieControls();
+  stopPositionMovie();positionMovie.series=null;positionMovie.scenes.clear();positionMovie.background=null;positionMovie.displayProfiles=null;positionMovie.valid=false;updatePositionMovieControls();
   if(typeof invalidateCandidateDensityUi==='function')invalidateCandidateDensityUi();
   const prepare=document.getElementById('position-prepare');if(prepare)prepare.disabled=false;
 }
@@ -5070,14 +5110,14 @@ function initializePositionPreview(){
   <p id="position-movie-status" aria-live="polite">${fdkText('','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
   <p class="field-help">${fdkText('','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label=''></canvas></div></article><article class="chart-card"><h3>${fdkText('','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label=''></canvas></div><p id="position-stats"></p><p>${fdkText('','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
-  <button type="button" id="position-json" class="secondary" disabled>${fdkText('','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
+  <p id="position-alignment" class="field-help"></p><button type="button" id="position-json" class="secondary" disabled>${fdkText('','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
   document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
-  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'displayed single-start-angle SSPz; diagramFrame contains display-sampled weights only',result:spatialExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
+  document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'native single-start-angle SSPz plus registered display coordinates; diagramFrame contains display-sampled weights only',result:spatialExport(positionResult),display:positionDisplayExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
     if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('','Check the input ranges.'),'error');return;}runSimulation();
   };
@@ -5104,8 +5144,17 @@ function renderPositionPreview(r,requestId='series'){
       // Keep full-turn coordinates irrespective of the advanced-panel zoom.
       drawDiagram(canvas,scene,'zoom');
       const profile=document.getElementById('position-profile');
-      if(r.geometryOnly)drawCanvasStatus(profile,'',fdkText('','No acquired response: SSPz is unavailable.'),'unavailable');
-      else fdkDrawProfile(profile,{...r,profiles:[r]},'');
+      if(r.geometryOnly){
+        drawCanvasStatus(profile,'',fdkText('','No acquired response: SSPz is unavailable.'),'unavailable');
+        document.getElementById('position-alignment').textContent='';
+        delete profile.dataset.profileAlignment;delete profile.dataset.nativeFwhmMidpointMm;delete profile.dataset.displayFwhmMidpointMm;
+      }
+      else {
+        const display=positionProfileDisplay(r.z,r),axes=positionProfileAxes(profile,[display],[r]);
+        drawPositionProfileGuides(axes);fdkDrawLines(axes,display.z,[r.profile],'#d71920');
+        if(display.fwhm)fdkArrow(axes,display.fwhm,.5,'#59636c');
+        drawPositionProfileTitle(axes,r.config.phase,r.config.radius,1);setPositionAlignment(profile,display);
+      }
       for(const cv of positionCanvases()){
         cv.removeAttribute('aria-busy');
         delete cv.dataset.profileCount;delete cv.dataset.selectedColor;delete cv.dataset.profileSource;delete cv.dataset.xLimit;
@@ -5152,10 +5201,10 @@ function preparePositionSeries(r){
   // Re-rounding an already nice span can enlarge it and omit edge turns.
   m.xLimit=Math.max(...r.profiles.map(p=>Math.max(r.config.rowWidth,Math.ceil(p.diagramFrame.extent.maxAbsZ*10)/10)*1.12));
   const canvas=document.getElementById('position-profile');m.background=document.createElement('canvas');m.background.width=canvas.width;m.background.height=canvas.height;
-  const low=Math.min(0,Math.floor(Math.min(...r.profiles.map(p=>Math.min(...p.profile)))*10)/10);
-  m.axes=fdkAxes(m.background,r.z[0],r.z.at(-1),low,1.04,'z position (mm)','Normalized SSPz','',low<0?[low,0,.2,.4,.6,.8,1]:[0,.2,.4,.6,.8,1],110,null,v=>v.toFixed(1));
-  fdkDrawLines(m.axes,r.z,r.profiles.map(p=>p.profile),'#89949e');
-  const {ctx,b,y}=m.axes;ctx.save();ctx.strokeStyle='#9ba5ad';ctx.lineWidth=1;ctx.setLineDash([5,4]);for(const level of [.5,.1]){ctx.beginPath();ctx.moveTo(b.left,y(level));ctx.lineTo(b.right,y(level));ctx.stroke();}ctx.restore();
+  m.displayProfiles=r.profiles.map(p=>positionProfileDisplay(r.z,p));
+  m.axes=positionProfileAxes(m.background,m.displayProfiles,r.profiles);
+  drawPositionProfileGuides(m.axes);
+  r.profiles.forEach((p,i)=>fdkDrawLines(m.axes,m.displayProfiles[i].z,[p.profile],'#89949e',{opacity:.13,lineWidth:1.1}));
   document.getElementById('position-phase').max=r.profiles.length-1;
   renderPositionFrame(0);
   positionSeriesProgress(fdkText(``,`${r.profiles.length} start angles ready. Grey: all profiles / red: displayed start angle.`));
@@ -5175,8 +5224,9 @@ function renderPositionFrame(index){
   }
   drawDiagram(document.getElementById('position-diagram'),m.scenes.get(index),'zoom',m.xLimit);
   const canvas=document.getElementById('position-profile'),ctx=canvas.getContext('2d');ctx.drawImage(m.background,0,0);
-  const axes={...m.axes,ctx};fdkDrawLines(axes,r.z,[p.profile],'#d71920');
-  ctx.save();ctx.fillStyle='#d71920';ctx.font=`700 26px ${FIGURE_FONT}`;ctx.textAlign='center';ctx.fillText(fdkText(``,`Start angle ${positionAngle(p.phase)} · r = ${r.config.radius} mm`),(axes.b.left+axes.b.right)/2,45);ctx.fillStyle='#65727e';ctx.font=`21px ${FIGURE_FONT}`;ctx.fillText(fdkText(``,`Grey: all ${r.profiles.length} profiles   Red: selected`),(axes.b.left+axes.b.right)/2,80);ctx.restore();
+  const axes={...m.axes,ctx},display=m.displayProfiles[index];fdkDrawLines(axes,display.z,[p.profile],'#d71920');
+  if(display.fwhm)fdkArrow(axes,display.fwhm,.5,'#59636c');
+  drawPositionProfileTitle(axes,p.phase,r.config.radius,r.profiles.length);setPositionAlignment(canvas,display);
   for(const cv of positionCanvases()){loadingCanvasStatuses.delete(cv);cv.removeAttribute('aria-busy');Object.assign(cv.dataset,{radiusMm:String(r.config.radius),startIndex:String(index),phase:String(p.phase),renderState:'ready',responseRequest:'cached-series',xLimit:String(m.xLimit)});}
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
@@ -5456,7 +5506,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-09-30.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-09-30.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

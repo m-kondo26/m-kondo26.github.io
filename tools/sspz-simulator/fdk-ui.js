@@ -245,9 +245,9 @@ function fdkAxes(canvas,xmin,xmax,ymin,ymax,xlabel,ylabel,panel,yTicks=null,top=
   canvas.dataset.renderState='ready';
   return {ctx:plot.ctx,s:1,b,x:plot.x,y:plot.y};
 }
-function fdkDrawLines(a,xs,series,color=FDK_PRIMARY_COLOR){
+function fdkDrawLines(a,xs,series,color=FDK_PRIMARY_COLOR,style={}){
   const {ctx,b,x,y}=a;ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.right-b.left,b.bottom-b.top);ctx.clip();
-  ctx.strokeStyle=color;ctx.globalAlpha=series.length>1?.13:1;ctx.lineWidth=series.length>1?1.1:4;
+  ctx.strokeStyle=color;ctx.globalAlpha=style.opacity??(series.length>1?.13:1);ctx.lineWidth=style.lineWidth??(series.length>1?1.1:4);
   for(const values of series)strokeNativeProfile(ctx,xs,values,x,y);
   ctx.restore();
 }
