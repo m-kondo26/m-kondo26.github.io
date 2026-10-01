@@ -62,7 +62,7 @@ function updateCandidateDensityStatus(state,message=''){
 function densitySettingsLabel(result){
   if(!result)return '';
   const c=result.config;
-  return `r = ${c.radius} mm / ${c.rows} × ${c.rowWidth} mm / pitch ${c.beamPitch} / T = ${c.axialAverageMm??c.sliceThicknessMm??0} mm`;
+   return `r = ${c.radius} mm / ${c.rows} × ${c.rowWidth} mm / pitch ${c.beamPitch} / T = ${c.axialAverageMm??c.sliceThicknessMm??0} mm / ${fdkInterpolationLabel(c)}`;
 }
 
 // Filled by the core/worker integration: one job uses the already calculated
@@ -146,7 +146,7 @@ function renderCandidateDensityUi(result){
   figure.dataset.integerHoles='unobserved-integers-empty';
   figure.dataset.sharedAxes='count-and-frequency-width';
 }
-function densityExportStem(result){const c=result.config;return `candidate-count-N${c.rows}-d${c.rowWidth}mm-p${c.beamPitch}-T${c.axialAverageMm??c.sliceThicknessMm??0}mm-r${c.radius}mm`;}
+function densityExportStem(result){const c=result.config;return `candidate-count-${fdkInterpolationRule(c)}-N${c.rows}-d${c.rowWidth}mm-p${c.beamPitch}-T${c.axialAverageMm??c.sliceThicknessMm??0}mm-r${c.radius}mm`;}
 function candidateDensitySamplesCsv(result){
   const r=result,rows=[['start_index','start_angle_deg','direction_index','output_direction_deg','direct_fwhm_count','direct_fwtm_count','combined_fwhm_count','combined_fwtm_count']];
   for(let s=0;s<r.startSamples;s++)for(let a=0;a<r.angleSamples;a++){

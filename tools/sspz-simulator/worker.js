@@ -113,7 +113,8 @@ self.onmessage = async event => {
     const token=++positionPreviewToken;
     cancelled=false;
     try{
-      const result=await computeAxialResponse({...message.params,computationModel:'fdk',axialRule:'rri',comparisonMode:'matched-rri'},
+      const rule=['rri','merged'].includes(message.params.axialRule)?message.params.axialRule:message.params.method==='merged'?'merged':'rri';
+      const result=await computeAxialResponse({...message.params,computationModel:'fdk',axialRule:rule,comparisonMode:rule==='merged'?'legacy':'matched-rri'},
         {cancelled:()=>cancelled||token!==positionPreviewToken});
       if(!cancelled&&token===positionPreviewToken)self.postMessage({type:'position-preview-result',requestId:message.requestId,result});
     }catch(error){

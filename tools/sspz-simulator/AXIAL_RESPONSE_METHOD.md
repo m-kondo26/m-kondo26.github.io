@@ -1,4 +1,12 @@
-## Current matched comparison — 2026-09-24.1
+## Current interpolation choices — Web 2026-10-01.1
+
+The main UI uses shared cone geometry with two axial interpolation rules: direction-wise RRI-equivalent row interpolation (`rri`, default and primary measured comparison) and combined nearest-bracketing two-point interpolation (`merged`, separate rule/literature exploration). Both retain the same acquired response, 360° + 2Φ source support, detector aperture, focal-size assumptions and rectangular T average. Row interpolation combines the supported direct/opposing direction and turn groups; two-point interpolation chooses the nearest positions on either side from their union. This is a rule comparison, not a switch between 2D and 3D image reconstruction.
+
+The position worker, full sweep, candidate diagrams, numerical exports and shared URLs retain the selected rule. Published FWHM/FWTM examples contain only this model's calculated values; published-graph readings are not used as reference numerical data or quantitative agreement evidence. The frozen axial numerical core version remains 2026-09-24.1.
+
+The following dated sections are retained as historical implementation records. Their UI descriptions are superseded by the current choices above.
+
+## Historical matched comparison — 2026-09-24.1
 
 The main UI now has two choices: cone geometry with RRI-equivalent row interpolation (①), and a nondivergent reference with **the same row interpolation and finite source-angle support** (②). Both use 360° + 2Φ, with Φ the declared full fan opening, the same input detector/focal sizes and rectangular T average. The reference retains helical table motion, finite aperture and centre-projected focal blur; it omits fan rebinning and fixes axial row spacing to d. This comparison does not isolate the axial cone angle alone. Keep z-FFS OFF in both for this comparison.
 

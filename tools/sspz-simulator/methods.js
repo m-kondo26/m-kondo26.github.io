@@ -7,12 +7,12 @@
   const copy = language === 'en' ? {
     back: '← SSPz simulator', label: 'CT geometry and SSPz — Calculation methods',
     skip: 'Skip to content', nav: 'Calculation guides', other: '日本語',
-    version: 'Explanation pages updated 2026-09-24 · Web build 2026-09-24.2',
+    version: 'Interpolation guide updated 2026-10-01 · Web build 2026-10-01.1',
     description: 'Detector aperture, axial interpolation, focal blur and calculation methods for the CT geometry and SSPz simulator.'
   } : {
     back: '← SSPzシミュレーション', label: 'CT展開図・SSPz — 計算方法',
     skip: '本文へ', nav: '計算方法の説明', other: 'English',
-    version: '説明ページ更新：2026-09-24 · Web build 2026-09-24.2',
+    version: '補間の説明更新：2026-10-01 · Web build 2026-10-01.1',
     description: 'CT展開図・SSPzシミュレーションの開口幅、補間、焦点ボケと計算方法の説明。'
   };
   const href = (key, lang = language) => `methods.html?topic=${key}${lang === 'en' ? '&lang=en' : ''}`;

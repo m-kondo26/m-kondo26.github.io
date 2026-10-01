@@ -31,6 +31,34 @@
   font-size: .95rem;
   line-height: 1.65;
 }
+.model-choice .model-choice-rule {
+  display: grid;
+  gap: .5rem;
+  max-width: 100%;
+  margin: .9rem 0 .5rem;
+}
+.model-choice .model-choice-rule select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: .65rem .75rem;
+  border: 1px solid #9bb4c7;
+  border-radius: 6px;
+  background: #fff;
+  color: #183449;
+  font-size: .95rem;
+}
+.model-choice .model-choice-rule-description {
+  margin: .4rem 0;
+  line-height: 1.6;
+  font-size: .94rem;
+}
+.model-choice .model-choice-rule-scope {
+  margin: .4rem 0 .9rem;
+  color: #4e6577;
+  font-size: .9rem;
+  line-height: 1.6;
+}
 .model-choice .model-choice-reading-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
