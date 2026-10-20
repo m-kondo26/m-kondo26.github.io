@@ -13,6 +13,6 @@
     "verify:fdk": "node scripts/verify-fdk.mjs",
     "test:cba": "node tests/cba.mjs",
     "verify:cba": "node scripts/verify-cba.mjs",
-    "test:figure3": "node tests/figure3-render.mjs && node tests/figure3-worker.mjs"
+    "test:candidate-comparison": "node tests/candidate-counts-render.mjs && node tests/candidate-counts-worker.mjs"
   }
 }

@@ -1,6 +1,6 @@
 const replacements = [
-  ['原稿の図3（4位置比較）と数値表を出力する', 'Export manuscript Figure 3 and numerical tables for all four positions'],
-  ['href="figure3.html"', 'href="figure3.html?lang=en"'],
+  ['現在の条件で、任意の位置の候補数を比較する', 'Compare candidate counts at chosen positions using the current settings'],
+  ['href="candidate-counts.html"', 'href="candidate-counts.html?lang=en"'],
   ['回転時間', 'Rotation time'],
   ['1回転に要する時間です。時間軸の換算に使い、展開図とSSPzの空間計算は変えません。', 'Time for one rotation. Used to scale the time axis; spatial calculations for the diagram and SSPz stay the same.'],
   ['コーン幾何のもとでFOV内の評価位置を動かし、データの並び・補間重み・SSPzの変化を対応させます。', 'Move the evaluation point within the FOV using cone geometry to link changes in data geometry, interpolation weights and SSPz.'],

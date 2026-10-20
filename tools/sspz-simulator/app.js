@@ -95,7 +95,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-20.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-10-20.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -103,7 +103,30 @@ function syncLanguageLinks(search = window.location.search) {
     target.search = search;
     link.href = target.toString();
   });
+  syncCandidateComparisonLinks(search);
 }
+
+function syncCandidateComparisonLinks(search=window.location.search){
+  const target=new URL('candidate-counts.html',window.location.href);
+  target.search=search;
+  if(document.documentElement.lang==='en')target.searchParams.set('lang','en');
+  document.querySelectorAll('[data-candidate-comparison]').forEach(link=>{link.href=target.href;});
+}
+function syncCandidateComparisonFromForm(){
+  const params=readParams();
+  // FormData omits disabled controls during a running simulation. The new
+  // comparison must inherit the values the user actually sees in the form.
+  for(const [key,value] of Object.entries(params)){
+    const input=form.elements.namedItem(key);
+    if(input)params[key]=typeof value==='number'?Number(input.value):input.value;
+  }
+  syncCandidateComparisonLinks(paramsToUrl(params).search);
+}
+document.addEventListener('click',event=>{
+  if(event.target.closest?.('[data-candidate-comparison]'))syncCandidateComparisonFromForm();
+});
+form.addEventListener('input',()=>syncCandidateComparisonFromForm());
+form.addEventListener('change',()=>syncCandidateComparisonFromForm());
 
 syncLanguageLinks();
 document.addEventListener("click", event => {
@@ -3516,4 +3539,5 @@ if (legacyUrlNote) {
 }
 initializeFdkUi(initial);
 initializePositionPreview();
+syncCandidateComparisonFromForm();
 schedulePositionPreview(0);

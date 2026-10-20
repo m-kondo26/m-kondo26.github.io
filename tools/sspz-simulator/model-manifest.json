@@ -480,28 +480,21 @@
     "controls": "independent row width/pitch/FW; shared rotation time; explicit copy; direct numeric entry without paper presets",
     "exports": "separate CSV/JSON; old point temporal data removed from SSPz exports"
   },
-  "figure3Publication": {
-    "webBuild": "2026-10-20.1",
-    "page": "figure3.html",
-    "data": "figure3-data.json",
-    "sourceProvenance": "figure3-data-provenance.json",
-    "radiiMm": [
-      10,
-      50,
-      80,
-      102
-    ],
-    "Tmm": 1,
-    "sourceSupport": "Finite460-degree source-fan-window, frozen manuscript model2026-09-24.1",
-    "initialData": "Explicitly labelled cached manuscript calculations; all16distributions and52positive-frequency points preserved",
-    "recalculation": "Optional dedicated worker, four positions by360starts and360directions; original numerical core unchanged",
+  "candidateCountComparison": {
+    "webBuild": "2026-10-20.2",
+    "page": "candidate-counts.html",
+    "input": "Current simulator settings in URL; user-defined1–12positions",
+    "initialData": "No fixed publication dataset; calculate at the selected collimation, pitch and positions",
+    "pooling": "360start angles by360directions at each position; native meanFWHM/FWTM windows",
+    "basePhase": "Inherited basephase used by both SSPmeans and counts",
+    "model": "Existing finite-source-window model2026-09-24.1; numerical kernels unchanged",
     "exports": [
       "SVG",
-      "180mm/600dpi PNG",
-      "fullprecision frequency CSV",
-      "fullprecision summary CSV",
-      "JSON"
+      "180mm600dpiPNG",
+      "frequencyCSV",
+      "summaryCSV",
+      "settingsJSON"
     ],
-    "regularSimulatorNumericalChange": false
+    "legacyPage": "figure3.html redirects to the configurable comparison"
   }
 }
