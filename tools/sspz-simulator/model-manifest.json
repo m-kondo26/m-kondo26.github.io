@@ -481,7 +481,7 @@
     "exports": "separate CSV/JSON; old point temporal data removed from SSPz exports"
   },
   "candidateCountComparison": {
-    "webBuild": "2026-10-20.2",
+    "webBuild": "2026-10-20.3",
     "page": "candidate-counts.html",
     "input": "Current simulator settings in URL; user-defined1–12positions",
     "initialData": "No fixed publication dataset; calculate at the selected collimation, pitch and positions",

@@ -102,6 +102,19 @@ assert.ok(Number(singleAttributes['data-x-minimum']) > 0 && Number(singleAttribu
   'Physical x range comes from requested positions, without a historical 0..114 floor');
 assert.equal(singleAttributes['data-y-maximum'], '12');
 
+// Few requested positions leave balanced margins instead of filling both edges.
+for (const radii of [[20, 60], [0, 250], [20, 20.01]]) {
+  const twoSvg = renderCandidateCountsSvg(custom(radii));
+  const a = attributes(twoSvg.match(/^<svg([^>]*)>/)[1]);
+  const lo = Number(a['data-x-minimum']), hi = Number(a['data-x-maximum']);
+  near((radii[0] - lo) / (hi - lo), .25, 'First position at one-quarter plot width');
+  near((radii[1] - lo) / (hi - lo), .75, 'Second position at three-quarter plot width');
+  assert.equal(a['data-position-scale'], 'physical');
+}
+const spacedThreeSvg = renderCandidateCountsSvg(custom([10, 50, 90]));
+const a3 = attributes(spacedThreeSvg.match(/^<svg([^>]*)>/)[1]);
+near((10 - Number(a3['data-x-minimum'])) / (Number(a3['data-x-maximum']) - Number(a3['data-x-minimum'])), 1 / 6, 'Three-position edge margin');
+
 const three = custom([47.2, 2.5, 16.125], [1, 4], {rows: 16, rowSpacingMm: 1.25, beamPitch: .5625, Tmm: 3.2});
 const threeBefore = JSON.stringify(three), threeSvg = renderCandidateCountsSvg(three);
 assert.match(threeSvg, /Collimation: 16 × 1\.25 mm/);
@@ -111,6 +124,10 @@ assert.match(threeSvg, /data-y-maximum="4"/, 'No fixed 9-count floor');
 assert.match(threeSvg, /data-position-scale="physical"/);
 assert.deepEqual(csvRows(candidateSummaryCsv(three)).rows.slice(0, 6).map(row => Number(row.radius_mm)), [2.5, 2.5, 16.125, 16.125, 47.2, 47.2]);
 assert.equal(JSON.stringify(three), threeBefore, 'Sorting never mutates requested position order');
+
+const unevenReadableSvg = renderCandidateCountsSvg(custom([20, 28, 60]));
+assert.match(unevenReadableSvg, /data-position-scale="physical"/,
+  'Extra margins must not force previously readable physical positions onto equal spacing');
 
 const closePositions = custom([0, .000001, 100]);
 const closeSvg = renderCandidateCountsSvg(closePositions);

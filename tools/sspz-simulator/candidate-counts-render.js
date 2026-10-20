@@ -175,12 +175,22 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
   const labelWidth = Math.max(...labels.map(value => countComparisonTextWidth(value, 9)));
   const minimum = data.radii[0].radiusMm, maximum = data.radii.at(-1).radiusMm;
   const span = maximum - minimum;
-  const padding = span ? span * .12 : Math.max(1, Math.abs(minimum) * .1);
-  const xMinimum = minimum - padding, xMaximum = maximum + padding;
   const gaps = data.radii.slice(1).map((radius, i) => radius.radiusMm - data.radii[i].radiusMm);
-  const minimumGap = gaps.length ? Math.min(...gaps) : xMaximum - xMinimum;
-  const physicalGapPt = minimumGap / (xMaximum - xMinimum) * axisWidth;
-  const equallySpaced = data.radii.length > 1 && physicalGapPt < Math.max(27, labelWidth + 4);
+  const minimumGap = gaps.length ? Math.min(...gaps) : 0;
+  const requiredGapPt = Math.max(27, labelWidth + 4);
+  const basePadding = span * .12;
+  // Give a small set of positions half a nominal inter-position gap at each
+  // edge. Two positions sit at 25% and 75% when labels permit. Cap additional
+  // padding before it would squeeze readable physical spacing into a fallback.
+  const equallySpaced = data.radii.length > 1 && minimumGap / (span + 2 * basePadding) * axisWidth < requiredGapPt;
+  const paddingFraction = data.radii.length > 1 ? Math.max(.12, 1 / (2 * (data.radii.length - 1))) : 0;
+  let padding = span ? span * paddingFraction : Math.max(1, Math.abs(minimum) * .1);
+  if (data.radii.length > 1 && !equallySpaced) {
+    const readablePadding = (minimumGap * axisWidth / requiredGapPt - span) / 2;
+    padding = Math.min(padding, Math.max(basePadding, readablePadding));
+  }
+  const xMinimum = minimum - padding, xMaximum = maximum + padding;
+  const physicalGapPt = (gaps.length ? minimumGap : xMaximum - xMinimum) / (xMaximum - xMinimum) * axisWidth;
   const slot = equallySpaced ? axisWidth / data.radii.length : physicalGapPt;
   const markerScale = Math.min(1, slot * .8 / (2 * Math.sqrt(96)));
   const rotated = labelWidth > slot * .9;
@@ -231,7 +241,7 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
     const left = leftMargin + (stacked ? 0 : panelIndex * (axisWidth + panelGap));
     const right = left + axisWidth, top = plotTop + (stacked ? panelIndex * panelHeight : 0), bottom = top + plotHeight;
     const x = (radius, index) => equallySpaced ? left + (index + .5) / data.radii.length * axisWidth : left + (radius - xMinimum) / (xMaximum - xMinimum) * axisWidth;
-    const offset = equallySpaced ? Math.min(12, slot * .2) : Math.min(minimumGap * .2, (xMaximum - xMinimum) * .06) / (xMaximum - xMinimum) * axisWidth;
+    const offset = equallySpaced ? Math.min(12, slot * .2) : Math.min((gaps.length ? minimumGap : xMaximum - xMinimum) * .2, (xMaximum - xMinimum) * .06) / (xMaximum - xMinimum) * axisWidth;
     const y = count => bottom - count / yAxis.maximum * plotHeight;
     const panelTitle = pool === 'direct' ? text('Real data only', '実データのみ') : text('Real + conjugate', '実データ＋対向データ');
     label(left, top - 10, `(${String.fromCharCode(97 + panelIndex)})  ${panelTitle}`, 'font-size="10.5" font-weight="700"');
