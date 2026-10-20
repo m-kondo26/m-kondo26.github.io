@@ -481,7 +481,8 @@
     "exports": "separate CSV/JSON; old point temporal data removed from SSPz exports"
   },
   "candidateCountComparison": {
-    "webBuild": "2026-10-20.3",
+    "webBuild": "2026-10-20.4",
+    "countAxes": "Independent zero-based automatic axes for real-only and real-plus-conjugate panels, with marker headroom; shared occurrence-size scale in screen and exported figures",
     "page": "candidate-counts.html",
     "input": "Current simulator settings in URL; user-defined1–12positions",
     "initialData": "No fixed publication dataset; calculate at the selected collimation, pitch and positions",

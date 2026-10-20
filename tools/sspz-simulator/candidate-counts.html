@@ -5,7 +5,7 @@
   <title>任意の位置における候補データ数の比較</title>
   <meta name="description" content="シミュレーターの現在のコリメーション・ピッチなどを引き継ぎ、任意の複数位置で候補データ数の分布を計算・比較します。">
   <link rel="canonical" href="https://m-kondo26.github.io/tools/sspz-simulator/candidate-counts.html">
-  <link rel="stylesheet" href="candidate-counts.css?v=2026-10-20.3">
+  <link rel="stylesheet" href="candidate-counts.css?v=2026-10-20.4">
 </head>
 <body><main>
   <nav><a id="back-link" href="./" data-i18n="back">← シミュレーターで条件を変更</a><a id="language-link" href="?lang=en">English</a></nav>
@@ -26,10 +26,10 @@
     <p id="source-status" class="source-status" role="status" aria-live="polite" data-i18n="empty">比較する位置を指定し、計算してください。</p>
     <div class="actions"><button id="export-svg" disabled data-i18n="svg">図をSVG保存</button><button id="export-png" disabled data-i18n="png">図を600 dpi PNG保存</button><button id="export-frequency" disabled data-i18n="frequencyCsv">出現頻度表をCSV保存</button><button id="export-summary" disabled data-i18n="summaryCsv">集計表をCSV保存</button><button id="export-json" disabled data-i18n="json">数値・条件をJSON保存</button></div>
     <figure hidden id="result-figure"><div id="figure-chart"></div><figcaption id="result-caption"></figcaption></figure>
-    <p class="quiet" data-i18n="exportNote">青はFWHM区間、橙はFWTM区間です。円の大きさは各個数の出現割合を示します。保存図は英語表記、CSV・JSONは丸め前の数値です。</p>
+    <p class="quiet" data-i18n="exportNote">縦軸は(a)・(b)それぞれの候補数に合わせて自動調整します。青はFWHM区間、橙はFWTM区間、円の大きさは共通の尺度による出現割合です。保存図は英語表記、CSV・JSONは丸め前の数値です。</p>
     <details id="summary-details" hidden><summary data-i18n="summaryTitle">候補データ数の集計表</summary><p data-i18n="summaryNote">各区間に含まれる候補データの個数です。</p><div class="table-scroll" id="summary-table"></div></details>
     <details id="frequency-details" hidden><summary data-i18n="frequencyTitle">個数ごとの出現頻度表</summary><p data-i18n="frequencyNote">各セルは出現割合（出現回数）です。「—」は0回を示します。</p><div id="frequency-tables"></div></details>
   </section>
   <section><details><summary data-i18n="countTitle">数え方と図の読み方</summary><p data-i18n="countRule">各位置で360本の正規化SSPzを元のz座標で平均し、再正規化した平均の50%・10%交点で集計範囲を定めます。各開始角度と360方向の組み合わせ、計129,600組を同じ重みで集計します。</p><p data-i18n="scope">実データのみと実データ＋対向データを、補間の選択・重みづけ前の列中心の数で比較します。候補数は独立した測定数や線量を表しません。同じ個数でも配置の間隔は異なり得ます。</p></details></section>
   <footer data-i18n="footer">表示する図と表は、この画面に引き継いだ条件と指定した位置から計算します。</footer>
-</main><script type="module" src="candidate-counts-page.js?v=2026-10-20.3"></script></body></html>
+</main><script type="module" src="candidate-counts-page.js?v=2026-10-20.4"></script></body></html>

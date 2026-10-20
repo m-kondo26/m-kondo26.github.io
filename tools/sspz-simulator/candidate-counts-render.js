@@ -135,10 +135,12 @@ export function candidateSummaryCsv(input) {
 }
 
 function countComparisonYAxis(maximum) {
-  if (maximum <= 8) return {maximum: Math.max(1, maximum), ticks: Array.from({length: Math.max(1, maximum) + 1}, (_, i) => i)};
-  const raw = maximum / 6, power = 10 ** Math.floor(Math.log10(raw));
+  // Reserve headroom for the largest observed circle in each panel.
+  if (maximum <= 8) return {maximum: maximum + 1, ticks: Array.from({length: maximum + 2}, (_, i) => i)};
+  const target = maximum + Math.max(1, maximum * .06);
+  const raw = target / 6, power = 10 ** Math.floor(Math.log10(raw));
   const step = Math.max(1, [1, 2, 5, 10].find(multiplier => multiplier * power >= raw) * power);
-  const top = Math.ceil(maximum / step) * step;
+  const top = Math.ceil(target / step) * step;
   return {maximum: top, ticks: Array.from({length: Math.round(top / step) + 1}, (_, i) => i * step)};
 }
 
@@ -166,8 +168,10 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
   const data = countComparisonValidatedData(input), japanese = lang.startsWith('ja');
   const text = (en, ja) => japanese ? ja : en;
   const widthMm = stacked ? 100 : 180, width = widthMm * COUNT_COMPARISON_PT_PER_MM;
-  const yAxis = countComparisonYAxis(Math.max(...countComparisonGroups(data).map(({group}) => group.max)));
-  const yLabelWidth = Math.max(...yAxis.ticks.map(value => countComparisonTextWidth(value)));
+  const observedMaxima = Object.fromEntries(COUNT_COMPARISON_POOLS.map(pool => [pool,
+    Math.max(...data.radii.flatMap(radius => COUNT_COMPARISON_WINDOWS.map(window => radius.groups[pool][window].max)))]));
+  const yAxes = Object.fromEntries(COUNT_COMPARISON_POOLS.map(pool => [pool, countComparisonYAxis(observedMaxima[pool])]));
+  const yLabelWidth = Math.max(...COUNT_COMPARISON_POOLS.flatMap(pool => yAxes[pool].ticks.map(value => countComparisonTextWidth(value))));
   const leftMargin = Math.max(stacked ? 44 : 54, yLabelWidth + 24), rightMargin = 12;
   const panelGap = Math.max(60, yLabelWidth + 30);
   const axisWidth = stacked ? width - leftMargin - rightMargin : (width - leftMargin - rightMargin - panelGap) / 2;
@@ -212,9 +216,9 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
   const prefix = String(idPrefix ?? `candidate-counts-${japanese ? 'ja' : 'en'}-${stacked ? 'stacked' : 'wide'}`).replace(/[^a-zA-Z0-9_-]/g, '-');
   const title = text('Candidate counts within SSPz windows', 'SSPz範囲内の候補データ数');
   const axisNote = equallySpaced ? text('Positions equally spaced for comparison', '位置は比較のため等間隔表示') : '';
-  const description = text('Real-only and real-plus-conjugate panels compare geometric detector-row centres before interpolation selection or weighting. Blue represents FWHM and orange FWTM. Circle size encodes occurrence. Unobserved outcomes have no circle.',
-    '実データのみと実データ・対向データについて、補間の選択・重みづけ前の列中心数を比較します。青はFWHM、橙はFWTMです。円の大きさは出現割合を示し、出現しない個数は描画しません。') + (axisNote ? ` ${axisNote}.` : '');
-  const output = [`<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${prefix}-title ${prefix}-desc" data-layout="${stacked ? 'stacked' : 'wide'}" data-position-scale="${equallySpaced ? 'equally-spaced' : 'physical'}" data-x-minimum="${xMinimum}" data-x-maximum="${xMaximum}" data-y-maximum="${yAxis.maximum}">`,
+  const description = text('Real-only and real-plus-conjugate panels compare geometric detector-row centres before interpolation selection or weighting. Each panel has its own count axis. Blue represents FWHM and orange FWTM. Circle size uses a shared occurrence scale. Unobserved outcomes have no circle.',
+    '実データのみと実データ・対向データについて、補間の選択・重みづけ前の列中心数を比較します。候補数の縦軸は図ごとに調整します。青はFWHM、橙はFWTMです。円の大きさは共通の尺度で出現割合を示し、出現しない個数は描画しません。') + (axisNote ? ` ${axisNote}.` : '');
+  const output = [`<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${prefix}-title ${prefix}-desc" data-layout="${stacked ? 'stacked' : 'wide'}" data-position-scale="${equallySpaced ? 'equally-spaced' : 'physical'}" data-x-minimum="${xMinimum}" data-x-maximum="${xMaximum}" data-y-scale="independent" data-y-maximum-direct="${yAxes.direct.maximum}" data-y-maximum-combined="${yAxes.combined.maximum}">`,
     `<title id="${prefix}-title">${countComparisonEscape(title)}</title>`, `<desc id="${prefix}-desc">${countComparisonEscape(description)}</desc>`,
     `<rect width="${width}" height="${height}" fill="white"/>`,
     '<g font-family="DejaVu Sans, Arial, Noto Sans CJK JP, sans-serif" font-size="10" fill="#263544">'];
@@ -238,6 +242,8 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
     label(x, occurrenceY + 13, `${fraction * 100}%`, 'text-anchor="middle"');
   }
   for (const [panelIndex, pool] of COUNT_COMPARISON_POOLS.entries()) {
+    const yAxis = yAxes[pool];
+    output.push(`<g class="candidate-count-panel" data-pool="${pool}" data-y-minimum="0" data-y-maximum="${yAxis.maximum}" data-observed-maximum="${observedMaxima[pool]}">`);
     const left = leftMargin + (stacked ? 0 : panelIndex * (axisWidth + panelGap));
     const right = left + axisWidth, top = plotTop + (stacked ? panelIndex * panelHeight : 0), bottom = top + plotHeight;
     const x = (radius, index) => equallySpaced ? left + (index + .5) / data.radii.length * axisWidth : left + (radius - xMinimum) / (xMaximum - xMinimum) * axisWidth;
@@ -273,7 +279,7 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
         marker(center, y(point.count), point.fraction, COUNT_COMPARISON_COLORS[window], attributes, hover);
       }
     }));
-    output.push('</g>');
+    output.push('</g></g>');
   }
   output.push('</g></svg>');
   return output.join('');

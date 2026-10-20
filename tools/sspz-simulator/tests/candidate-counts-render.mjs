@@ -14,6 +14,70 @@ function circles(svg) {
   return [...svg.matchAll(/<circle\b([^>]*class="candidate-count-observation"[^>]*)>([\s\S]*?)<\/circle>/g)]
     .map(match => ({...attributes(match[1]), child: match[2]}));
 }
+function svgAttributes(svg) {
+  return attributes(svg.match(/^<svg([^>]*)>/)[1]);
+}
+function panels(svg) {
+  const starts = [...svg.matchAll(/<g\b([^>]*class="candidate-count-panel"[^>]*)>/g)];
+  assert.equal(starts.length, 2, 'Both pools expose their own panel and vertical scale');
+  return Object.fromEntries(starts.map((match, index) => {
+    const a = attributes(match[1]);
+    return [a['data-pool'], {attributes: a, body: svg.slice(match.index + match[0].length,
+      starts[index + 1]?.index ?? svg.length)}];
+  }));
+}
+function legendCircles(svg) {
+  return [...svg.matchAll(/<circle\b([^>]*)>/g)].map(match => attributes(match[1]))
+    .filter(circle => circle['data-legend-fraction'] !== undefined);
+}
+function checkIndependentAxes(svg, data) {
+  const root = svgAttributes(svg), byPool = panels(svg), result = {};
+  assert.equal(root['data-y-scale'], 'independent');
+  assert.ok(!Object.hasOwn(root, 'data-y-maximum'), 'No ambiguous common maximum remains on the SVG');
+  for (const pool of pools) {
+    const panel = byPool[pool];
+    assert.ok(panel, `Panel ${pool}`);
+    const a = panel.attributes, maximum = Number(a['data-y-maximum']);
+    assert.ok(!a.transform, 'A panel cannot stretch its circular markers to implement a different axis');
+    const observedMaximum = Math.max(...data.radii.flatMap(radius => windows.flatMap(window =>
+      radius.groups[pool][window].frequencies.filter(point => point.frequency > 0).map(point => point.count))));
+    assert.equal(a['data-y-minimum'], '0');
+    assert.equal(Number(a['data-observed-maximum']), observedMaximum);
+    assert.equal(Number(root[`data-y-maximum-${pool}`]), maximum);
+    const ticks = [...panel.body.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/g)]
+      .map(match => ({attributes: attributes(match[1]), value: Number(match[2])}))
+      .filter(tick => tick.attributes.class?.split(/\s+/).includes('candidate-count-tick'));
+    assert.ok(ticks.length >= 2 && ticks.length <= 10, 'Bounded tick allocation within each panel');
+    assert.equal(ticks[0].value, 0);
+    assert.equal(ticks.at(-1).value, maximum);
+    assert.ok(ticks.every(tick => Number.isInteger(tick.value)));
+    const step = ticks[1].value - ticks[0].value;
+    assert.ok(Number.isInteger(step) && step > 0);
+    for (let i = 1; i < ticks.length; i++) {
+      assert.equal(ticks[i].value - ticks[i - 1].value, step, 'Regular integer tick step');
+      assert.ok(Number(ticks[i].attributes.y) < Number(ticks[i - 1].attributes.y));
+    }
+    if (observedMaximum <= 8) {
+      assert.equal(maximum, observedMaximum + 1, 'Small counts have exactly one count of upper headroom');
+      assert.equal(step, 1);
+    } else {
+      assert.ok(maximum >= observedMaximum + Math.max(1, observedMaximum * .06) - 1e-10,
+        'Large counts include the requested headroom before rounding to nice ticks');
+      const normalizedStep = step / 10 ** Math.floor(Math.log10(step));
+      assert.ok([1, 2, 5, 10].some(nice => Math.abs(normalizedStep - nice) < 1e-10), 'Nice integer step');
+    }
+    const bottom = Number(ticks[0].attributes.y), top = Number(ticks.at(-1).attributes.y);
+    for (const circle of circles(panel.body)) {
+      assert.equal(circle['data-pool'], pool, 'A panel contains only its own pool');
+      near(Number(circle.cy), bottom - Number(circle['data-count']) / maximum * (bottom - top),
+        'Each point uses its own pool scale');
+      assert.ok(!Object.hasOwn(circle, 'rx') && !Object.hasOwn(circle, 'ry'), 'Markers remain circles');
+      assert.ok(!circle.transform, 'Candidate circles do not inherit an individual shape stretch');
+    }
+    result[pool] = {maximum, observedMaximum, step, ticks: ticks.map(tick => tick.value)};
+  }
+  return result;
+}
 function csvRows(csv) {
   assert.ok(csv.endsWith('\r\n'));
   assert.ok(!csv.startsWith('\uFEFF'), 'Optional BOM belongs to the download UI');
@@ -34,6 +98,10 @@ const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/candidate-counts-
 const before = JSON.stringify(fixture);
 freeze(fixture);
 const svg = renderCandidateCountsSvg(fixture);
+const originalFrequencyCsv = candidateFrequencyCsv(fixture), originalSummaryCsv = candidateSummaryCsv(fixture);
+const fixtureAxes = checkIndependentAxes(svg, fixture);
+assert.equal(fixtureAxes.direct.maximum, 5);
+assert.equal(fixtureAxes.combined.maximum, 9);
 const observed = groupRows(fixture).flatMap(({pool, window, radius, group}) => group.frequencies
   .filter(point => point.frequency > 0).map(point => ({pool, window, radius, point})));
 assert.equal(observed.length, 52);
@@ -75,6 +143,9 @@ for (const {pool, window, radius, group} of groupRows(fixture)) {
   }
 }
 assert.equal(JSON.stringify(fixture), before, 'Drawing and exports leave the frozen input unchanged');
+checkIndependentAxes(renderCandidateCountsSvg(fixture, {stacked: true}), fixture);
+assert.equal(candidateFrequencyCsv(fixture), originalFrequencyCsv, 'Wide/stacked drawing never changes frequency CSV bytes');
+assert.equal(candidateSummaryCsv(fixture), originalSummaryCsv, 'Wide/stacked drawing never changes summary CSV bytes');
 
 function custom(radii, values = [0, 11], condition = {}) {
   const n = 12, mean = values[0] * .25 + values[1] * .75;
@@ -100,7 +171,9 @@ assert.equal((singleSvg.match(/>37\.25<\/text>/g) ?? []).length, 2);
 const singleAttributes = attributes(singleSvg.match(/^<svg([^>]*)>/)[1]);
 assert.ok(Number(singleAttributes['data-x-minimum']) > 0 && Number(singleAttributes['data-x-maximum']) < 50,
   'Physical x range comes from requested positions, without a historical 0..114 floor');
-assert.equal(singleAttributes['data-y-maximum'], '12');
+const singleAxes = checkIndependentAxes(singleSvg, single);
+assert.equal(singleAxes.direct.maximum, 12);
+assert.equal(singleAxes.combined.maximum, 12);
 
 // Few requested positions leave balanced margins instead of filling both edges.
 for (const radii of [[20, 60], [0, 250], [20, 20.01]]) {
@@ -120,7 +193,9 @@ const threeBefore = JSON.stringify(three), threeSvg = renderCandidateCountsSvg(t
 assert.match(threeSvg, /Collimation: 16 × 1\.25 mm/);
 assert.match(threeSvg, /pitch: 0\.5625/);
 assert.match(threeSvg, /T = 3\.2 mm/);
-assert.match(threeSvg, /data-y-maximum="4"/, 'No fixed 9-count floor');
+const threeAxes = checkIndependentAxes(threeSvg, three);
+assert.equal(threeAxes.direct.maximum, 5, 'No fixed 9-count floor; include one count of headroom');
+assert.equal(threeAxes.combined.maximum, 5);
 assert.match(threeSvg, /data-position-scale="physical"/);
 assert.deepEqual(csvRows(candidateSummaryCsv(three)).rows.slice(0, 6).map(row => Number(row.radius_mm)), [2.5, 2.5, 16.125, 16.125, 47.2, 47.2]);
 assert.equal(JSON.stringify(three), threeBefore, 'Sorting never mutates requested position order');
@@ -151,10 +226,50 @@ assert.match(stacked, /width="100mm"/);
 assert.match(stacked, /candidate-counts-en-stacked-title/);
 assert.equal(circles(stacked).length, 96);
 assert.ok(!/NaN|Infinity/.test(stacked));
+checkIndependentAxes(twelveSvg, twelve);
+checkIndependentAxes(stacked, twelve);
+
+// Only one radius/window in one pool changes its observed maximum. The other
+// pool keeps its scale and all marker coordinates; marker size and the common
+// occurrence legend remain independent of either pool's y range.
+const independentBase = custom([20, 60], [1, 4]);
+const onePoolChanged = clone(independentBase);
+onePoolChanged.radii[1].groups.direct.fwtm = clone(custom([60], [1, 8]).radii[0].groups.direct.fwtm);
+for (const stacked of [false, true]) {
+  const baseSvg = renderCandidateCountsSvg(independentBase, {stacked});
+  const changedSvg = renderCandidateCountsSvg(onePoolChanged, {stacked});
+  const beforeAxes = checkIndependentAxes(baseSvg, independentBase);
+  const afterAxes = checkIndependentAxes(changedSvg, onePoolChanged);
+  assert.equal(beforeAxes.direct.maximum, 5);
+  assert.equal(afterAxes.direct.maximum, 9);
+  assert.deepEqual(afterAxes.combined, beforeAxes.combined, 'Unchanged pool retains its axis');
+  assert.deepEqual(circles(changedSvg).filter(circle => circle['data-pool'] === 'combined'),
+    circles(baseSvg).filter(circle => circle['data-pool'] === 'combined'), 'Other panel marker attributes and positions are identical');
+  const oldMarkers = circles(baseSvg), newMarkers = circles(changedSvg);
+  assert.equal(newMarkers.length, oldMarkers.length);
+  for (let i = 0; i < oldMarkers.length; i++) {
+    for (const field of ['cx', 'r', 'fill', 'stroke', 'stroke-width', 'data-marker-size-pt2', 'data-marker-scale', 'data-frequency', 'data-fraction']) {
+      assert.equal(newMarkers[i][field], oldMarkers[i][field], `Axis change preserves ${field}`);
+    }
+  }
+  assert.deepEqual(legendCircles(changedSvg), legendCircles(baseSvg), 'One common size legend, unchanged by individual axis ranges');
+  assert.equal(legendCircles(changedSvg).length, 3);
+  for (const legend of legendCircles(changedSvg)) {
+    assert.equal(legend['data-marker-scale'], newMarkers[0]['data-marker-scale']);
+    near(Number(legend.r), Math.sqrt(1 + 95 * Number(legend['data-legend-fraction'])) / 2 * Number(legend['data-marker-scale']), 'Common occurrence-legend circle size');
+  }
+}
+for (const exporter of [candidateFrequencyCsv, candidateSummaryCsv]) {
+  const beforeOtherPool = csvRows(exporter(independentBase)).rows.filter(row => row.data_included === 'combined');
+  const afterOtherPool = csvRows(exporter(onePoolChanged)).rows.filter(row => row.data_included === 'combined');
+  assert.deepEqual(afterOtherPool, beforeOtherPool, 'Other pool CSV data are unchanged');
+}
 
 const large = custom([9.5, 100.25], [30000, 65000], {rows: 320, beamPitch: 2.25});
 const largeSvg = renderCandidateCountsSvg(large);
-assert.match(largeSvg, /data-y-maximum="80000"/);
+const largeAxes = checkIndependentAxes(largeSvg, large);
+assert.equal(largeAxes.direct.maximum, 80000);
+assert.equal(largeAxes.combined.maximum, 80000);
 assert.ok((largeSvg.match(/class="candidate-count-tick"/g) ?? []).length <= 16,
   'Large counts use a small set of integer ticks, never an integer-by-integer allocation');
 assert.equal(csvRows(candidateFrequencyCsv(large)).rows.length, 16,
@@ -162,14 +277,24 @@ assert.equal(csvRows(candidateFrequencyCsv(large)).rows.length, 16,
 
 const zero = custom([0], [0, 0]);
 const zeroSvg = renderCandidateCountsSvg(zero);
-assert.match(zeroSvg, /data-y-maximum="1"/);
+const zeroAxes = checkIndependentAxes(zeroSvg, zero);
+assert.equal(zeroAxes.direct.maximum, 1);
+assert.equal(zeroAxes.combined.maximum, 1);
 assert.equal(circles(zeroSvg).length, 4);
 assert.ok(circles(zeroSvg).every(circle => circle['data-count'] === '0'));
 assert.ok(!/NaN|Infinity/.test(zeroSvg));
+checkIndependentAxes(renderCandidateCountsSvg(zero, {stacked: true}), zero);
+for (const maximum of [8, 9, 10, 100, 1000]) {
+  const headroomCase = custom([20, 60], [0, maximum]);
+  for (const stacked of [false, true]) checkIndependentAxes(renderCandidateCountsSvg(headroomCase, {stacked}), headroomCase);
+}
 const explicitZero = custom([.1]);
 for (const {group} of groupRows(explicitZero)) group.frequencies.push({count: 50000, frequency: 0, fraction: 0});
 assert.equal(circles(renderCandidateCountsSvg(explicitZero)).length, 8);
 assert.equal(csvRows(candidateFrequencyCsv(explicitZero)).rows.filter(row => row.frequency === '0' && row.candidate_count === '50000').length, 4);
+const explicitZeroAxes = checkIndependentAxes(renderCandidateCountsSvg(explicitZero), explicitZero);
+assert.equal(explicitZeroAxes.direct.maximum, 12, 'Unobserved zero-frequency outcomes never inflate an axis');
+assert.equal(explicitZeroAxes.combined.maximum, 12);
 assert.match(renderCandidateCountsSvg(single, {lang: 'ja'}), /候補データ数（個）/);
 
 const repeated = custom([1, 1]);
@@ -178,5 +303,8 @@ const invalid = custom([1]); invalid.radii[0].groups.direct.fwhm.frequencies[0].
 assert.throws(() => renderCandidateCountsSvg(invalid), /COUNT_COMPARISON_DATA/);
 assert.throws(() => candidateFrequencyCsv({schemaVersion: 2, radii: []}), /COUNT_COMPARISON_DATA/);
 console.log(JSON.stringify({status: 'pass', originalPoints: 52, originalGroups: 16,
-  genericCases: ['one-position', 'three-custom-decimal-positions', 'uneven-close-positions', 'twelve-positions', 'large-counts', 'zero-counts', 'explicit-zero-frequency'],
+  genericCases: ['one-position', 'three-custom-decimal-positions', 'uneven-close-positions', 'twelve-positions', 'large-counts', 'zero-counts', 'explicit-zero-frequency', 'one-pool-maximum-change', 'small-large-headroom-boundary'],
+  axisPolicy: 'independent direct/combined; small max+1; large nice integer ticks include upper headroom; all-zero0..1',
+  fixtureMaximum: {direct: fixtureAxes.direct.maximum, combined: fixtureAxes.combined.maximum},
+  preservation: ['circle sizes', 'common occurrence legend', 'other panel scale and coordinates', 'CSV bytes for unchanged data'],
   frequencyPolicy: 'preserve supplied observed and explicit-zero cells; no huge dense range', widthsMm: {wide: 180, stacked: 100}}));
