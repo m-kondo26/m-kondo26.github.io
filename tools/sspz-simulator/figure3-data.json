@@ -1,0 +1,744 @@
+{
+  "schemaVersion": 1,
+  "title": "Candidate-count distributions corresponding to manuscript Figure 3",
+  "condition": {
+    "rows": 4,
+    "rowSpacingMm": 1,
+    "beamPitch": 0.875,
+    "Tmm": 1,
+    "nativeViewsPerRotation": 1200,
+    "sourceRadiusMm": 600,
+    "sourceDetectorDistanceMm": 1070,
+    "axialFocusSizeMm": 1.2,
+    "channelSpacingMm": 0.58,
+    "channelApertureMm": 0.58,
+    "fullFanAngleDeg": 50,
+    "sourceSupportDeg": 460,
+    "axialRule": "rri",
+    "candidateSearch": "source-fan-window",
+    "normalization": "minmax",
+    "directions": 360,
+    "startAngles": 360,
+    "statesPerRadius": 129600,
+    "modelVersion": "2026-09-24.1"
+  },
+  "radii": [
+    {
+      "radiusMm": 10,
+      "sampleCount": 129600,
+      "config": {
+        "rows": 4,
+        "rowWidth": 1,
+        "beamPitch": 0.875,
+        "sourceRadius": 600,
+        "radius": 10,
+        "viewSamples": 1200,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0,
+        "channelWidth": 0.58,
+        "apertureSamples": 0,
+        "xyExtent": 0.5,
+        "xySamples": 5,
+        "zExtent": 3.5,
+        "zStep": 0.01,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "axialAverageMm": 1,
+        "objectModel": "point",
+        "channelApertureMm": 0.58,
+        "focalSizeMm": 1.2,
+        "focalSourceDetectorMm": 1070,
+        "edgePolicy": "available",
+        "fullFanAngleDeg": 50,
+        "comparisonMode": "matched-rri",
+        "zFfsEnabled": false,
+        "axialRule": "rri",
+        "response": "axial-interpolation",
+        "feed": 3.5,
+        "zSamples": 701,
+        "channels": 42,
+        "uOffset": 0.5,
+        "vOffset": 0.5,
+        "interpolationRule": "rri",
+        "candidateSearch": "source-fan-window"
+      },
+      "windows": {
+        "fwhm": {
+          "left": -0.736373702914457,
+          "right": 0.7363737029144574,
+          "width": 1.4727474058289145
+        },
+        "fwtm": {
+          "left": -1.2906137076525679,
+          "right": 1.2906137076525677,
+          "width": 2.5812274153051353
+        }
+      },
+      "groups": {
+        "direct": {
+          "fwhm": {
+            "n": 129600,
+            "min": 1,
+            "max": 2,
+            "mean": 1.6783333333333332,
+            "sd": 0.4671158552460223,
+            "frequencies": [
+              {
+                "count": 1,
+                "frequency": 41688,
+                "fraction": 0.32166666666666666
+              },
+              {
+                "count": 2,
+                "frequency": 87912,
+                "fraction": 0.6783333333333333
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 2.6322376543209876,
+            "sd": 0.5282286895452538,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 50676,
+                "fraction": 0.39101851851851854
+              },
+              {
+                "count": 3,
+                "frequency": 75910,
+                "fraction": 0.5857253086419754
+              },
+              {
+                "count": 4,
+                "frequency": 3014,
+                "fraction": 0.02325617283950617
+              }
+            ]
+          }
+        },
+        "combined": {
+          "fwhm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 3.3566666666666665,
+            "sd": 0.5595511869920389,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 5420,
+                "fraction": 0.04182098765432099
+              },
+              {
+                "count": 3,
+                "frequency": 72536,
+                "fraction": 0.5596913580246914
+              },
+              {
+                "count": 4,
+                "frequency": 51644,
+                "fraction": 0.39848765432098765
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 4,
+            "max": 6,
+            "mean": 5.264475308641975,
+            "sd": 0.6209488726753247,
+            "frequencies": [
+              {
+                "count": 4,
+                "frequency": 12380,
+                "fraction": 0.09552469135802469
+              },
+              {
+                "count": 5,
+                "frequency": 70564,
+                "fraction": 0.5444753086419754
+              },
+              {
+                "count": 6,
+                "frequency": 46656,
+                "fraction": 0.36
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "radiusMm": 50,
+      "sampleCount": 129600,
+      "config": {
+        "rows": 4,
+        "rowWidth": 1,
+        "beamPitch": 0.875,
+        "sourceRadius": 600,
+        "radius": 50,
+        "viewSamples": 1200,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0,
+        "channelWidth": 0.58,
+        "apertureSamples": 0,
+        "xyExtent": 0.5,
+        "xySamples": 5,
+        "zExtent": 3.5,
+        "zStep": 0.01,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "axialAverageMm": 1,
+        "objectModel": "point",
+        "channelApertureMm": 0.58,
+        "focalSizeMm": 1.2,
+        "focalSourceDetectorMm": 1070,
+        "edgePolicy": "available",
+        "fullFanAngleDeg": 50,
+        "comparisonMode": "matched-rri",
+        "zFfsEnabled": false,
+        "axialRule": "rri",
+        "response": "axial-interpolation",
+        "feed": 3.5,
+        "zSamples": 701,
+        "channels": 180,
+        "uOffset": 0.5,
+        "vOffset": 0.5,
+        "interpolationRule": "rri",
+        "candidateSearch": "source-fan-window"
+      },
+      "windows": {
+        "fwhm": {
+          "left": -0.7339653361383139,
+          "right": 0.733965336138314,
+          "width": 1.467930672276628
+        },
+        "fwtm": {
+          "left": -1.2891362536023634,
+          "right": 1.2891362536023636,
+          "width": 2.5782725072047272
+        }
+      },
+      "groups": {
+        "direct": {
+          "fwhm": {
+            "n": 129600,
+            "min": 1,
+            "max": 3,
+            "mean": 1.6557407407407407,
+            "sd": 0.476812080326338,
+            "frequencies": [
+              {
+                "count": 1,
+                "frequency": 44720,
+                "fraction": 0.3450617283950617
+              },
+              {
+                "count": 2,
+                "frequency": 84776,
+                "fraction": 0.6541358024691358
+              },
+              {
+                "count": 3,
+                "frequency": 104,
+                "fraction": 0.0008024691358024691
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 2.6310956790123456,
+            "sd": 0.5261281559891464,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 50661,
+                "fraction": 0.39090277777777777
+              },
+              {
+                "count": 3,
+                "frequency": 76088,
+                "fraction": 0.5870987654320987
+              },
+              {
+                "count": 4,
+                "frequency": 2851,
+                "fraction": 0.021998456790123456
+              }
+            ]
+          }
+        },
+        "combined": {
+          "fwhm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 3.3114814814814815,
+            "sd": 0.6209443447578001,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 11088,
+                "fraction": 0.08555555555555555
+              },
+              {
+                "count": 3,
+                "frequency": 67056,
+                "fraction": 0.5174074074074074
+              },
+              {
+                "count": 4,
+                "frequency": 51456,
+                "fraction": 0.397037037037037
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 4,
+            "max": 7,
+            "mean": 5.262191358024691,
+            "sd": 0.6270813347717709,
+            "frequencies": [
+              {
+                "count": 4,
+                "frequency": 12634,
+                "fraction": 0.09748456790123457
+              },
+              {
+                "count": 5,
+                "frequency": 70664,
+                "fraction": 0.5452469135802469
+              },
+              {
+                "count": 6,
+                "frequency": 45990,
+                "fraction": 0.3548611111111111
+              },
+              {
+                "count": 7,
+                "frequency": 312,
+                "fraction": 0.0024074074074074076
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "radiusMm": 80,
+      "sampleCount": 129600,
+      "config": {
+        "rows": 4,
+        "rowWidth": 1,
+        "beamPitch": 0.875,
+        "sourceRadius": 600,
+        "radius": 80,
+        "viewSamples": 1200,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0,
+        "channelWidth": 0.58,
+        "apertureSamples": 0,
+        "xyExtent": 0.5,
+        "xySamples": 5,
+        "zExtent": 3.5,
+        "zStep": 0.01,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "axialAverageMm": 1,
+        "objectModel": "point",
+        "channelApertureMm": 0.58,
+        "focalSizeMm": 1.2,
+        "focalSourceDetectorMm": 1070,
+        "edgePolicy": "available",
+        "fullFanAngleDeg": 50,
+        "comparisonMode": "matched-rri",
+        "zFfsEnabled": false,
+        "axialRule": "rri",
+        "response": "axial-interpolation",
+        "feed": 3.5,
+        "zSamples": 701,
+        "channels": 284,
+        "uOffset": 0.5,
+        "vOffset": 0.5,
+        "interpolationRule": "rri",
+        "candidateSearch": "source-fan-window"
+      },
+      "windows": {
+        "fwhm": {
+          "left": -0.7303830064134865,
+          "right": 0.730383006413487,
+          "width": 1.4607660128269735
+        },
+        "fwtm": {
+          "left": -1.2867856632142292,
+          "right": 1.286785663214229,
+          "width": 2.573571326428458
+        }
+      },
+      "groups": {
+        "direct": {
+          "fwhm": {
+            "n": 129600,
+            "min": 1,
+            "max": 3,
+            "mean": 1.6362191358024691,
+            "sd": 0.4884087555248447,
+            "frequencies": [
+              {
+                "count": 1,
+                "frequency": 47606,
+                "fraction": 0.36733024691358024
+              },
+              {
+                "count": 2,
+                "frequency": 81534,
+                "fraction": 0.6291203703703704
+              },
+              {
+                "count": 3,
+                "frequency": 460,
+                "fraction": 0.0035493827160493828
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 2.62945987654321,
+            "sd": 0.5291642766886693,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 51053,
+                "fraction": 0.39392746913580245
+              },
+              {
+                "count": 3,
+                "frequency": 75516,
+                "fraction": 0.5826851851851852
+              },
+              {
+                "count": 4,
+                "frequency": 3031,
+                "fraction": 0.023387345679012347
+              }
+            ]
+          }
+        },
+        "combined": {
+          "fwhm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 3.2724382716049383,
+            "sd": 0.6748156441555082,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 16664,
+                "fraction": 0.12858024691358025
+              },
+              {
+                "count": 3,
+                "frequency": 60964,
+                "fraction": 0.4704012345679012
+              },
+              {
+                "count": 4,
+                "frequency": 51972,
+                "fraction": 0.4010185185185185
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 4,
+            "max": 7,
+            "mean": 5.25891975308642,
+            "sd": 0.6812733672820642,
+            "frequencies": [
+              {
+                "count": 4,
+                "frequency": 13682,
+                "fraction": 0.10557098765432099
+              },
+              {
+                "count": 5,
+                "frequency": 72640,
+                "fraction": 0.5604938271604938
+              },
+              {
+                "count": 6,
+                "frequency": 39318,
+                "fraction": 0.3033796296296296
+              },
+              {
+                "count": 7,
+                "frequency": 3960,
+                "fraction": 0.030555555555555555
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "radiusMm": 102,
+      "sampleCount": 129600,
+      "config": {
+        "rows": 4,
+        "rowWidth": 1,
+        "beamPitch": 0.875,
+        "sourceRadius": 600,
+        "radius": 102,
+        "viewSamples": 1200,
+        "phase": 0,
+        "state": 0,
+        "sphereDiameter": 0,
+        "channelWidth": 0.58,
+        "apertureSamples": 0,
+        "xyExtent": 0.5,
+        "xySamples": 5,
+        "zExtent": 3.5,
+        "zStep": 0.01,
+        "phaseCount": 1,
+        "normalization": "minmax",
+        "axialAverageMm": 1,
+        "objectModel": "point",
+        "channelApertureMm": 0.58,
+        "focalSizeMm": 1.2,
+        "focalSourceDetectorMm": 1070,
+        "edgePolicy": "available",
+        "fullFanAngleDeg": 50,
+        "comparisonMode": "matched-rri",
+        "zFfsEnabled": false,
+        "axialRule": "rri",
+        "response": "axial-interpolation",
+        "feed": 3.5,
+        "zSamples": 701,
+        "channels": 360,
+        "uOffset": 0.5,
+        "vOffset": 0.5,
+        "interpolationRule": "rri",
+        "candidateSearch": "source-fan-window"
+      },
+      "windows": {
+        "fwhm": {
+          "left": -0.7277787303659394,
+          "right": 0.7277787303659395,
+          "width": 1.455557460731879
+        },
+        "fwtm": {
+          "left": -1.2855417607637385,
+          "right": 1.2855417607637385,
+          "width": 2.571083521527477
+        }
+      },
+      "groups": {
+        "direct": {
+          "fwhm": {
+            "n": 129600,
+            "min": 1,
+            "max": 3,
+            "mean": 1.621280864197531,
+            "sd": 0.4962957490227157,
+            "frequencies": [
+              {
+                "count": 1,
+                "frequency": 49796,
+                "fraction": 0.3842283950617284
+              },
+              {
+                "count": 2,
+                "frequency": 79090,
+                "fraction": 0.6102623456790124
+              },
+              {
+                "count": 3,
+                "frequency": 714,
+                "fraction": 0.005509259259259259
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 2,
+            "max": 4,
+            "mean": 2.630030864197531,
+            "sd": 0.5387794840013251,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 51654,
+                "fraction": 0.3985648148148148
+              },
+              {
+                "count": 3,
+                "frequency": 74240,
+                "fraction": 0.5728395061728395
+              },
+              {
+                "count": 4,
+                "frequency": 3706,
+                "fraction": 0.02859567901234568
+              }
+            ]
+          }
+        },
+        "combined": {
+          "fwhm": {
+            "n": 129600,
+            "min": 2,
+            "max": 5,
+            "mean": 3.242561728395062,
+            "sd": 0.7129470089337848,
+            "frequencies": [
+              {
+                "count": 2,
+                "frequency": 20692,
+                "fraction": 0.1596604938271605
+              },
+              {
+                "count": 3,
+                "frequency": 57120,
+                "fraction": 0.44074074074074077
+              },
+              {
+                "count": 4,
+                "frequency": 51448,
+                "fraction": 0.39697530864197533
+              },
+              {
+                "count": 5,
+                "frequency": 340,
+                "fraction": 0.002623456790123457
+              }
+            ]
+          },
+          "fwtm": {
+            "n": 129600,
+            "min": 4,
+            "max": 8,
+            "mean": 5.260061728395062,
+            "sd": 0.7428199496991751,
+            "frequencies": [
+              {
+                "count": 4,
+                "frequency": 15352,
+                "fraction": 0.11845679012345679
+              },
+              {
+                "count": 5,
+                "frequency": 72332,
+                "fraction": 0.5581172839506173
+              },
+              {
+                "count": 6,
+                "frequency": 35570,
+                "fraction": 0.27445987654320986
+              },
+              {
+                "count": 7,
+                "frequency": 5552,
+                "fraction": 0.042839506172839506
+              },
+              {
+                "count": 8,
+                "frequency": 794,
+                "fraction": 0.006126543209876543
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "sourceLabel": "Archived calculation results for manuscript Figure 3",
+    "sourceFile": "candidate_density_data.json",
+    "sourceSha256": "9ca2171f3d6d78b79939ff04e2816e4f336188af7a033140b1cdd98f4a0803f9",
+    "sourceCountCoreSha256": "48cf219834f7ee65ac9d90664a79f4241d7814e9f4de2c87756d8e70cbe74c21",
+    "sourceWindowSha256": "972fc24fb37837718f1da6a19d8ab6881dbccaebcfffa2faa303b178c6d4addf",
+    "aggregation": "360 interpolation directions × 360 start angles, equally weighted",
+    "cached": true
+  },
+  "chart": {
+    "type": "frequency-dot-plot",
+    "widthMm": 180,
+    "heightMm": 95,
+    "colors": {
+      "fwhm": "#2166A5",
+      "fwtm": "#C87620"
+    },
+    "xOffsetsMm": {
+      "fwhm": -4.4,
+      "fwtm": 4.4
+    },
+    "markerSize": {
+      "basePt2": 1,
+      "frequencyScalePt2": 95,
+      "formula": "1 + 95 * fraction",
+      "circleRadiusPt": "sqrt(1 + 95 * fraction) / 2"
+    },
+    "frequencyLegendFractions": [
+      0.1,
+      0.5,
+      1
+    ],
+    "xLimitsMm": [
+      -1,
+      114
+    ],
+    "yLimits": [
+      0,
+      9
+    ],
+    "xTicksMm": [
+      10,
+      50,
+      80,
+      102
+    ],
+    "yTicks": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "labels": {
+      "title": "Simulated candidate counts within SSPz windows: T = 1 mm",
+      "subtitle": "Collimation: 4 × 1.0 mm; pitch: 0.875; 360 directions × 360 start angles",
+      "x": "Distance from isocenter (mm)",
+      "y": "Number of candidates",
+      "direct": "(a)  Real data only",
+      "combined": "(b)  Real + conjugate",
+      "fwhm": "FWHM (left)",
+      "fwtm": "FWTM (right)",
+      "frequency": "Occurrence"
+    },
+    "fonts": {
+      "family": "DejaVu Sans",
+      "bodyPt": 10,
+      "titlePt": 12,
+      "panelTitlePt": 10.5
+    },
+    "markerStrokePt": 0.55
+  }
+}

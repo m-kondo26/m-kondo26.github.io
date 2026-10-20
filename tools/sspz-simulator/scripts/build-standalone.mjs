@@ -1,6 +1,9 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile as readSourceFile, writeFile } from "node:fs/promises";
 import { finalizeEnglishHtml, translateEnglishSource } from "./english-replacements.mjs";
 import { buildMethods } from "./build-methods.mjs";
+
+// Keep embedded worker-source strings identical on Windows and LF checkouts.
+const readFile = async (...args) => (await readSourceFile(...args)).replace(/\r\n/g, '\n');
 
 const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|candidate-density-core|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");

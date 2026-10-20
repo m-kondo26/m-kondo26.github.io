@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>原稿 図3：候補データ数の4位置比較</title>
+  <meta name="description" content="SSPz原稿の図3を4位置の比較図と数値表として表示し、SVG・600 dpi PNG・CSV・JSONで保存します。">
+  <link rel="canonical" href="https://m-kondo26.github.io/tools/sspz-simulator/figure3.html">
+  <link rel="stylesheet" href="figure3.css?v=2026-10-20.1">
+</head>
+<body>
+  <main>
+    <nav><a id="back-link" href="./" data-i18n="back">← シミュレーターへ</a><a id="language-link" href="?lang=en">English</a></nav>
+    <header>
+      <p class="eyebrow" data-i18n="eyebrow">SSPz 原稿の図と数値</p>
+      <h1 data-i18n="title">図3：候補データ数の4位置比較</h1>
+      <p data-i18n="intro">アイソセンタから10・50・80・102 mmの位置で、FWHM・FWTM区間に含まれる候補データ数を比較します。</p>
+    </header>
+    <section aria-label="Figure and exports" id="figure-section">
+      <p id="source-status" class="source-status" role="status" aria-live="polite" data-i18n="loading">原稿の計算結果を読み込んでいます。</p>
+      <div class="actions" aria-label="Exports">
+        <button id="export-svg" disabled data-i18n="svg">図をSVG保存</button>
+        <button id="export-png" disabled data-i18n="png">図を600 dpi PNG保存</button>
+        <button id="export-frequency" disabled data-i18n="frequencyCsv">出現頻度表をCSV保存</button>
+        <button id="export-summary" disabled data-i18n="summaryCsv">集計表をCSV保存</button>
+        <button id="export-json" disabled data-i18n="json">数値・条件をJSON保存</button>
+      </div>
+      <figure>
+        <div id="figure-chart" aria-busy="true"></div>
+        <figcaption data-i18n="caption">（a）実データのみ、（b）実データ＋対向データ。青はFWHM区間、橙はFWTM区間です。円の大きさは各個数の出現割合を示します。各位置で360方向×360開始角度＝129,600組を集計しています。</figcaption>
+      </figure>
+      <p class="quiet" data-i18n="exportNote">保存図は原稿と同じ2パネル配置・英語表記です。スマートフォンでは画面上の2パネルを縦に並べます。CSVとJSONは丸め前の数値を保持します。</p>
+    </section>
+    <section aria-labelledby="summary-title">
+      <h2 id="summary-title" data-i18n="summaryTitle">候補データ数の集計表</h2>
+      <p data-i18n="summaryNote">SSPzの幅ではなく、各区間に含まれる候補データの個数を示します。</p>
+      <div class="table-scroll" id="summary-table"></div>
+      <details>
+        <summary data-i18n="frequencyTitle">個数ごとの出現頻度表を開く</summary>
+        <p data-i18n="frequencyNote">各セルは出現割合（出現回数）です。「—」は0回を示します。</p>
+        <div id="frequency-tables"></div>
+      </details>
+    </section>
+    <section aria-labelledby="conditions-title">
+      <details>
+        <summary id="conditions-title" data-i18n="conditionsTitle">原稿と共通の条件・数え方</summary>
+        <dl id="conditions"></dl>
+        <p data-i18n="countRule">各開始角度のSSPzを正規化し、位置合わせせずに元のz座標で平均します。その平均を再正規化した50%・10%交点で集計範囲を固定し、補間の選択・重みづけ前の列中心を数えます。</p>
+        <p data-i18n="scope">対向データは取得済みデータの対応づけです。候補数は独立した測定数や線量を表しません。同じ個数でも、間隔や集中する位置は異なり得ます。</p>
+        <p><a id="data-link" href="figure3-data.json" data-i18n="dataSource">原稿の数値・条件・出典情報（JSON）</a></p>
+      </details>
+    </section>
+    <section aria-labelledby="recalculate-title">
+      <details>
+        <summary id="recalculate-title" data-i18n="recalculateTitle">同じ条件で計算をやり直す</summary>
+        <p data-i18n="recalculateNote">最初に表示されるのは、原稿で使用した確認済みの計算結果です。下の操作では同じ4位置・各360開始角度を、このブラウザで再計算します。計算には時間がかかります。中止しても、それまで表示していた結果は残ります。</p>
+        <div class="actions"><button id="recalculate" disabled data-i18n="recalculate">4位置を再計算</button><button id="cancel" hidden data-i18n="cancel">中止</button><button id="restore" disabled data-i18n="restore">原稿の保存結果に戻す</button></div>
+        <progress id="calculation-progress" value="0" max="1" hidden></progress>
+        <p id="calculation-status" role="status" aria-live="polite"></p>
+      </details>
+    </section>
+    <section aria-labelledby="correspondence-title">
+      <details>
+        <summary id="correspondence-title" data-i18n="correspondenceTitle">原稿のほかの比較計算との関係</summary>
+        <p data-i18n="parallelExplanation">非発散条件は、体軸方向の列間隔が位置や方向によって広がらないと仮定する比較計算です。ヘリカル移動や列間補間は保ち、コーン幾何の計算と比べます。通常の画面では、この比較条件を選ぶ欄を設けていません。</p>
+        <p data-i18n="hsiehExplanation">表2は、検証用の2点補間から求めたFWHM・FWTMに、有効開口幅と列間隔の比を掛けてから、Hsieh（2003）の掲載値と並べた比較です。例えば列間隔1.25 mm・非検出幅0.1 mmなら、両幅に1.15÷1.25＝0.92を掛けます。この追加の補正・照合表は、通常のWeb画面が出す補正前の幅とは区別します。</p>
+        <p><a href="https://doi.org/10.1118/1.1533750">Hsieh (2003). Analytical models for multi-slice helical CT performance parameters.</a></p>
+      </details>
+    </section>
+    <footer data-i18n="footer">原稿の図3に対応する固定条件の出力画面です。通常のシミュレーターの入力変更は、この図の条件を変更しません。</footer>
+  </main>
+  <script type="module" src="figure3-page.js?v=2026-10-20.1"></script>
+</body>
+</html>

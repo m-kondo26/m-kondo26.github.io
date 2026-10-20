@@ -1,4 +1,6 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile as readSourceFile, writeFile } from 'node:fs/promises';
+
+const readFile = async (...args) => (await readSourceFile(...args)).replace(/\r\n/g, '\n');
 
 const topics = {
   aperture: { ja: ['開口幅と計算方法', '検出器の開口幅'], en: ['Detector aperture and calculation methods', 'Detector aperture'] },

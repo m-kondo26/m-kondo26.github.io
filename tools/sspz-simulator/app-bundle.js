@@ -5287,6 +5287,7 @@ function initializeCandidateDensityUi(){
   if(document.getElementById('candidate-density'))return;
   const section=document.createElement('section');section.id='candidate-density';section.dataset.renderState='idle';
   section.innerHTML=`<h2>${fdkText('候補データの数と変動：FWHM・FWTM内の分布','Candidate counts and variation within FWHM and FWTM')}</h2>
+    <p class="density-paper-link"><a href="figure3.html${document.documentElement.lang==='en'?'?lang=en':''}">${fdkText('原稿の図3：4位置を並べた図と数値表を表示・保存','Manuscript Figure 3: view and save the four-position figure and numerical tables')}</a></p>
     <p class="density-intro">${fdkText('同じ範囲にある実データのみの数と、対向データを含む候補数を並べます。選択や補間重みが付く前の、検出器列中心の数です。','Compare direct-data counts with counts including complementary data in the same windows. These detector-row centres are counted before selection or interpolation weighting.')}</p>
     <div class="density-actions"><button type="button" id="density-calculate">${fdkText('360開始角度を準備して分布を表示','Prepare 360 start angles and show distributions')}</button><button type="button" id="density-cancel" class="secondary" hidden>${fdkText('集計を中止','Cancel counting')}</button></div>
     <p id="density-status" class="density-status" role="status" aria-live="polite"></p>
@@ -5545,7 +5546,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-01.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-10-20.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
