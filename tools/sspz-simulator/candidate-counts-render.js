@@ -159,33 +159,49 @@ function countComparisonHeaderLines(tokens, available) {
   return lines;
 }
 
-/** Arbitrary evaluation positions; physical spacing is retained when legible.
- * Very close/uneven positions use an explicitly labelled equally spaced axis.
- * Export width is 180 mm; stacked screen width is 100 mm. Height adapts to
- * tick-label length and panel arrangement, and is recorded in the SVG itself.
+// Publication geometry follows the adopted 180 x 95 mm manuscript figure.
+// These are display coordinates and font metrics, not saved simulation results.
+function countComparisonTitleLines(value, available) {
+  const lines = []; let current = '';
+  for (const word of value.split(' ')) {
+    const next = current ? `${current} ${word}` : word;
+    // Bold glyphs are wider than the regular subtitle estimate, especially
+    // when a mobile title wraps close to its right edge.
+    if (current && countComparisonTextWidth(next, 12) * 1.1 > available) { lines.push(current); current = word; }
+    else current = next;
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/** Manuscript-style wide figures retain arbitrary user-selected conditions.
+ * Close/many positions keep adaptive spacing; mobile panels remain stacked.
+ * The reference position set uses its adopted display domain only. All counts,
+ * occurrence sizes, axes maxima and condition labels come from the input.
  */
 export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', idPrefix} = {}) {
   const data = countComparisonValidatedData(input), japanese = lang.startsWith('ja');
   const text = (en, ja) => japanese ? ja : en;
   const widthMm = stacked ? 100 : 180, width = widthMm * COUNT_COMPARISON_PT_PER_MM;
+  const publicationHeight = 95 * COUNT_COMPARISON_PT_PER_MM;
   const observedMaxima = Object.fromEntries(COUNT_COMPARISON_POOLS.map(pool => [pool,
     Math.max(...data.radii.flatMap(radius => COUNT_COMPARISON_WINDOWS.map(window => radius.groups[pool][window].max)))]));
   const yAxes = Object.fromEntries(COUNT_COMPARISON_POOLS.map(pool => [pool, countComparisonYAxis(observedMaxima[pool])]));
   const yLabelWidth = Math.max(...COUNT_COMPARISON_POOLS.flatMap(pool => yAxes[pool].ticks.map(value => countComparisonTextWidth(value))));
-  const leftMargin = Math.max(stacked ? 44 : 54, yLabelWidth + 24), rightMargin = 12;
-  const panelGap = Math.max(60, yLabelWidth + 30);
+  const extraYMargin = Math.max(0, yLabelWidth - countComparisonTextWidth('9'));
+  const leftMargin = stacked ? Math.max(44, yLabelWidth + 24) : width * .105 + extraYMargin;
+  const rightMargin = stacked ? 12 : width * .023;
+  const baseAxisWidth = width * (.977 - .105) / (2 + .32);
+  const panelGap = stacked ? 0 : Math.max(baseAxisWidth * .32, yLabelWidth + 30);
   const axisWidth = stacked ? width - leftMargin - rightMargin : (width - leftMargin - rightMargin - panelGap) / 2;
   const labels = data.radii.map(radius => String(radius.radiusMm));
-  const labelWidth = Math.max(...labels.map(value => countComparisonTextWidth(value, 9)));
+  const labelWidth = Math.max(...labels.map(value => countComparisonTextWidth(value, 10)));
   const minimum = data.radii[0].radiusMm, maximum = data.radii.at(-1).radiusMm;
   const span = maximum - minimum;
   const gaps = data.radii.slice(1).map((radius, i) => radius.radiusMm - data.radii[i].radiusMm);
   const minimumGap = gaps.length ? Math.min(...gaps) : 0;
   const requiredGapPt = Math.max(27, labelWidth + 4);
   const basePadding = span * .12;
-  // Give a small set of positions half a nominal inter-position gap at each
-  // edge. Two positions sit at 25% and 75% when labels permit. Cap additional
-  // padding before it would squeeze readable physical spacing into a fallback.
   const equallySpaced = data.radii.length > 1 && minimumGap / (span + 2 * basePadding) * axisWidth < requiredGapPt;
   const paddingFraction = data.radii.length > 1 ? Math.max(.12, 1 / (2 * (data.radii.length - 1))) : 0;
   let padding = span ? span * paddingFraction : Math.max(1, Math.abs(minimum) * .1);
@@ -193,81 +209,96 @@ export function renderCandidateCountsSvg(input, {stacked = false, lang = 'en', i
     const readablePadding = (minimumGap * axisWidth / requiredGapPt - span) / 2;
     padding = Math.min(padding, Math.max(basePadding, readablePadding));
   }
-  const xMinimum = minimum - padding, xMaximum = maximum + padding;
+  // Matching position labels retain the manuscript's domain, independently of
+  // collimation, pitch, response windows or count values selected by the user.
+  const referenceDomain = data.radii.length === 4 && data.radii.every((radius, i) => radius.radiusMm === [10, 50, 80, 102][i]);
+  const xMinimum = referenceDomain ? -1 : minimum - padding;
+  const xMaximum = referenceDomain ? 114 : maximum + padding;
   const physicalGapPt = (gaps.length ? minimumGap : xMaximum - xMinimum) / (xMaximum - xMinimum) * axisWidth;
   const slot = equallySpaced ? axisWidth / data.radii.length : physicalGapPt;
   const markerScale = Math.min(1, slot * .8 / (2 * Math.sqrt(96)));
   const rotated = labelWidth > slot * .9;
   const tickHeight = rotated ? labelWidth * Math.sin(Math.PI / 3) + 12 : 18;
-  const axisTextHeight = tickHeight + 20 + (equallySpaced ? 13 : 0);
+  const axisNote = equallySpaced ? text('Positions equally spaced for comparison', '位置は比較のため等間隔表示') : '';
+  const extraAxisHeight = Math.max(0, tickHeight - 18) + (axisNote ? 13 : 0);
   const rowSpacing = Number.isInteger(data.condition.rowSpacingMm) ? data.condition.rowSpacingMm.toFixed(1) : String(data.condition.rowSpacingMm);
   const directions = data.condition.directions, starts = data.condition.startAngles;
+  const title = text(`Simulated candidate counts within SSPz windows: T = ${data.condition.Tmm} mm`,
+    `計算SSPz範囲内の候補データ数：T = ${data.condition.Tmm} mm`);
+  const textLeft = stacked ? 12 : width * .045;
+  const titleLines = countComparisonTitleLines(title, width - 2 * textLeft);
+  const titleY = publicationHeight * .021 + 9.118125;
+  const headerY = publicationHeight * .101 + 7.5984375 + (titleLines.length - 1) * 14;
   const header = countComparisonHeaderLines([
     text(`Collimation: ${data.condition.rows} × ${rowSpacing} mm`, `検出器：${data.condition.rows} × ${rowSpacing} mm`),
-    `pitch: ${data.condition.beamPitch}`, `T = ${data.condition.Tmm} mm`,
+    `pitch: ${data.condition.beamPitch}`,
     text(`${directions} directions × ${starts} start angles`, `${directions}方向 × ${starts}開始角度`),
-  ], width - 24);
-  const subtitleEnd = 30 + (header.length - 1) * 14;
-  const legendY = subtitleEnd + 19, occurrenceY = stacked ? legendY + 23 : legendY;
-  const plotTop = occurrenceY + 39, plotHeight = stacked ? 122 : 138;
-  const panelHeight = plotHeight + axisTextHeight + 29;
-  const height = plotTop + plotHeight + axisTextHeight + 12 + (stacked ? panelHeight : 0);
-  const heightMm = height / COUNT_COMPARISON_PT_PER_MM;
+  ], width - 2 * textLeft);
+  const headerShift = (titleLines.length + header.length - 2) * 14;
+  const legendY = stacked ? headerY + (header.length - 1) * 14 + 23.273228 : 58.070091 + headerShift;
+  const occurrenceY = stacked ? legendY + 23 : publicationHeight * .183 + headerShift;
+  const occurrenceLabelY = occurrenceY + 2.759375;
+  const occurrencePercentY = occurrenceY + 19.447256;
+  const plotTop = stacked ? occurrenceY + 39 : publicationHeight * .32 + headerShift;
+  const plotHeight = stacked ? 122 : publicationHeight * .515;
+  const axisLabelOffset = 27.5765625 + Math.max(0, tickHeight - 18);
+  const panelHeight = plotHeight + axisLabelOffset + (axisNote ? 13 : 0) + 30;
+  const height = stacked ? plotTop + panelHeight + plotHeight + axisLabelOffset + (axisNote ? 13 : 0) + 17 : publicationHeight + headerShift + extraAxisHeight;
+  const heightMm = stacked || headerShift || extraAxisHeight ? height / COUNT_COMPARISON_PT_PER_MM : 95;
   const prefix = String(idPrefix ?? `candidate-counts-${japanese ? 'ja' : 'en'}-${stacked ? 'stacked' : 'wide'}`).replace(/[^a-zA-Z0-9_-]/g, '-');
-  const title = text('Candidate counts within SSPz windows', 'SSPz範囲内の候補データ数');
-  const axisNote = equallySpaced ? text('Positions equally spaced for comparison', '位置は比較のため等間隔表示') : '';
   const description = text('Real-only and real-plus-conjugate panels compare geometric detector-row centres before interpolation selection or weighting. Each panel has its own count axis. Blue represents FWHM and orange FWTM. Circle size uses a shared occurrence scale. Unobserved outcomes have no circle.',
     '実データのみと実データ・対向データについて、補間の選択・重みづけ前の列中心数を比較します。候補数の縦軸は図ごとに調整します。青はFWHM、橙はFWTMです。円の大きさは共通の尺度で出現割合を示し、出現しない個数は描画しません。') + (axisNote ? ` ${axisNote}.` : '');
-  const output = [`<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${prefix}-title ${prefix}-desc" data-layout="${stacked ? 'stacked' : 'wide'}" data-position-scale="${equallySpaced ? 'equally-spaced' : 'physical'}" data-x-minimum="${xMinimum}" data-x-maximum="${xMaximum}" data-y-scale="independent" data-y-maximum-direct="${yAxes.direct.maximum}" data-y-maximum-combined="${yAxes.combined.maximum}">`,
+  const output = [`<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${prefix}-title ${prefix}-desc" data-style="manuscript" data-reference-domain="${referenceDomain}" data-layout="${stacked ? 'stacked' : 'wide'}" data-position-scale="${equallySpaced ? 'equally-spaced' : 'physical'}" data-x-minimum="${xMinimum}" data-x-maximum="${xMaximum}" data-y-scale="independent" data-y-maximum-direct="${yAxes.direct.maximum}" data-y-maximum-combined="${yAxes.combined.maximum}">`,
     `<title id="${prefix}-title">${countComparisonEscape(title)}</title>`, `<desc id="${prefix}-desc">${countComparisonEscape(description)}</desc>`,
     `<rect width="${width}" height="${height}" fill="white"/>`,
     '<g font-family="DejaVu Sans, Arial, Noto Sans CJK JP, sans-serif" font-size="10" fill="#263544">'];
   const label = (x, y, value, attributes = '') => output.push(`<text x="${x}" y="${y}" ${attributes}>${countComparisonEscape(value)}</text>`);
-  const line = (x1, y1, x2, y2, color = '#263544', stroke = .6) => output.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${stroke}"/>`);
-  const marker = (x, y, fraction, color, attributes = '', titleText = '', scale = markerScale) => {
+  const line = (x1, y1, x2, y2, color = '#000000', stroke = .6) => output.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${stroke}" stroke-linecap="square"/>`);
+  const marker = (x, y, fraction, color, attributes = '', titleText = '', scale = markerScale, stroke = .55) => {
     const size = 1 + 95 * fraction, radius = Math.sqrt(size) / 2 * scale;
-    output.push(`<circle cx="${x}" cy="${y}" r="${radius}" fill="${color}" stroke="${color}" stroke-width="${.55 * scale}" data-marker-size-pt2="${size}" data-marker-scale="${scale}" ${attributes}>${titleText ? `<title>${countComparisonEscape(titleText)}</title>` : ''}</circle>`);
+    output.push(`<circle cx="${x}" cy="${y}" r="${radius}" fill="${color}" stroke="${color}" stroke-width="${stroke * scale}" data-marker-size-pt2="${size}" data-marker-scale="${scale}" ${attributes}>${titleText ? `<title>${countComparisonEscape(titleText)}</title>` : ''}</circle>`);
   };
-  label(12, 14, title, 'font-size="12" font-weight="700"');
-  header.forEach((value, i) => label(12, 30 + 14 * i, value));
+  titleLines.forEach((value, i) => label(textLeft, titleY + i * 14, value, 'font-size="12" font-weight="700"'));
+  header.forEach((value, i) => label(textLeft, headerY + 14 * i, value));
   for (const [index, window] of COUNT_COMPARISON_WINDOWS.entries()) {
-    const x = 17 + index * (stacked ? 118 : 115);
-    output.push(`<circle cx="${x}" cy="${legendY}" r="2.5" fill="${COUNT_COMPARISON_COLORS[window]}"/>`);
-    label(x + 8, legendY, text(`${window.toUpperCase()} (${index === 0 ? 'left' : 'right'})`, `${window.toUpperCase()}（${index === 0 ? '左' : '右'}）`), 'dominant-baseline="middle"');
+    const x = stacked ? 17 + index * 118 : width * .034 + 19 + index * 92.465625;
+    output.push(`<circle cx="${x}" cy="${legendY}" r="2.5" fill="${COUNT_COMPARISON_COLORS[window]}" stroke="${COUNT_COMPARISON_COLORS[window]}" stroke-width="1"/>`);
+    label(x + (stacked ? 8 : 14.5), legendY + 3.5,
+      text(`${window.toUpperCase()} (${index === 0 ? 'left' : 'right'})`, `${window.toUpperCase()}（${index === 0 ? '左' : '右'}）`));
   }
-  label(stacked ? 12 : width * .603, occurrenceY, text('Occurrence', '出現割合'), 'dominant-baseline="middle"');
+  label(stacked ? 12 : width * .603, occurrenceLabelY, text('Occurrence', '出現割合'));
   for (const [i, fraction] of [.1, .5, 1].entries()) {
     const x = stacked ? 136 + i * 60 : width * [.765, .855, .945][i];
-    marker(x, occurrenceY, fraction, '#59636D', `data-legend-fraction="${fraction}"`);
-    label(x, occurrenceY + 13, `${fraction * 100}%`, 'text-anchor="middle"');
+    marker(x, occurrenceY, fraction, '#59636D', `data-legend-fraction="${fraction}"`, '', markerScale, 1);
+    label(x, occurrencePercentY, `${fraction * 100}%`, 'text-anchor="middle"');
   }
   for (const [panelIndex, pool] of COUNT_COMPARISON_POOLS.entries()) {
     const yAxis = yAxes[pool];
-    output.push(`<g class="candidate-count-panel" data-pool="${pool}" data-y-minimum="0" data-y-maximum="${yAxis.maximum}" data-observed-maximum="${observedMaxima[pool]}">`);
     const left = leftMargin + (stacked ? 0 : panelIndex * (axisWidth + panelGap));
     const right = left + axisWidth, top = plotTop + (stacked ? panelIndex * panelHeight : 0), bottom = top + plotHeight;
+    output.push(`<g class="candidate-count-panel" data-pool="${pool}" data-y-minimum="0" data-y-maximum="${yAxis.maximum}" data-observed-maximum="${observedMaxima[pool]}" data-plot-left="${left}" data-plot-right="${right}" data-plot-top="${top}" data-plot-bottom="${bottom}">`);
     const x = (radius, index) => equallySpaced ? left + (index + .5) / data.radii.length * axisWidth : left + (radius - xMinimum) / (xMaximum - xMinimum) * axisWidth;
     const offset = equallySpaced ? Math.min(12, slot * .2) : Math.min((gaps.length ? minimumGap : xMaximum - xMinimum) * .2, (xMaximum - xMinimum) * .06) / (xMaximum - xMinimum) * axisWidth;
     const y = count => bottom - count / yAxis.maximum * plotHeight;
     const panelTitle = pool === 'direct' ? text('Real data only', '実データのみ') : text('Real + conjugate', '実データ＋対向データ');
-    label(left, top - 10, `(${String.fromCharCode(97 + panelIndex)})  ${panelTitle}`, 'font-size="10.5" font-weight="700"');
+    label(left, top - 8, `(${String.fromCharCode(97 + panelIndex)})  ${panelTitle}`, 'font-size="10.5" font-weight="700"');
     for (const count of yAxis.ticks) {
       line(left, y(count), right, y(count), '#E3E7EB', .4);
       line(left - 2.3, y(count), left, y(count), '#263544', .55);
-      label(left - 5.3, y(count), count, 'class="candidate-count-tick" text-anchor="end" dominant-baseline="middle"');
+      label(left - 5.3, y(count) + 3.79921875, count, 'class="candidate-count-tick" text-anchor="end"');
     }
     line(left, top, left, bottom); line(left, bottom, right, bottom);
     data.radii.forEach((radius, index) => {
       const center = x(radius.radiusMm, index);
       line(center, bottom, center, bottom + 2.3, '#263544', .55);
-      if (rotated) output.push(`<text class="candidate-distance-tick" transform="translate(${center} ${bottom + 8}) rotate(-60)" text-anchor="end" font-size="9">${countComparisonEscape(labels[index])}</text>`);
-      else label(center, bottom + 14.5, labels[index], 'class="candidate-distance-tick" text-anchor="middle" font-size="9"');
+      if (rotated) output.push(`<text class="candidate-distance-tick" transform="translate(${center} ${bottom + 8}) rotate(-60)" text-anchor="end" font-size="10">${countComparisonEscape(labels[index])}</text>`);
+      else label(center, bottom + 12.8984375, labels[index], 'class="candidate-distance-tick" text-anchor="middle" font-size="10"');
     });
-    const axisLabelY = bottom + tickHeight + 14;
+    const axisLabelY = bottom + axisLabelOffset;
     label((left + right) / 2, axisLabelY, text('Distance from isocenter (mm)', 'アイソセンタからの距離（mm）'), 'text-anchor="middle"');
     if (axisNote) label((left + right) / 2, axisLabelY + 13, axisNote, 'class="candidate-position-note" text-anchor="middle" font-size="8.5"');
-    const yTitleX = Math.max(12, left - yLabelWidth - 14);
-    output.push(`<text transform="translate(${yTitleX} ${(top + bottom) / 2}) rotate(-90)" text-anchor="middle">${countComparisonEscape(text('Number of candidates', '候補データ数（個）'))}</text>`);
+    const yTitleX = left - 18.7421875 - extraYMargin, yTitleY = (top + bottom) / 2;
+    output.push(`<text x="${yTitleX}" y="${yTitleY}" transform="rotate(-90 ${yTitleX} ${yTitleY})" text-anchor="middle">${countComparisonEscape(text('Number of candidates', '候補データ数（個）'))}</text>`);
     const clip = `${prefix}-clip-${pool}`, bleed = 6 * markerScale;
     output.push(`<defs><clipPath id="${clip}"><rect x="${left - bleed}" y="${top - bleed}" width="${axisWidth + 2 * bleed}" height="${plotHeight + 2 * bleed}"/></clipPath></defs><g clip-path="url(#${clip})">`);
     data.radii.forEach((radius, index) => COUNT_COMPARISON_WINDOWS.forEach((window, windowIndex) => {

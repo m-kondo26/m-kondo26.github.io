@@ -7,6 +7,8 @@ const pools = ['direct', 'combined'], windows = ['fwhm', 'fwtm'];
 const groupRows = data => pools.flatMap(pool => data.radii.flatMap(radius => windows.map(window =>
   ({pool, window, radius, group: radius.groups[pool][window]}))));
 const near = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-10, `${message}: ${a} != ${b}`);
+const nearManuscript = (a, b, message) => assert.ok(Math.abs(a - b) <= 1.01e-6,
+  `${message}: ${a} != ${b} (six-decimal manuscript SVG coordinates)`);
 function attributes(value) {
   return Object.fromEntries([...value.matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]]));
 }
@@ -29,6 +31,19 @@ function panels(svg) {
 function legendCircles(svg) {
   return [...svg.matchAll(/<circle\b([^>]*)>/g)].map(match => attributes(match[1]))
     .filter(circle => circle['data-legend-fraction'] !== undefined);
+}
+function textNodes(svg) {
+  return [...svg.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/g)]
+    .map(match => ({attributes: attributes(match[1]), text: match[2].replace(/<[^>]+>/g, '')}));
+}
+function axisGeometry(panel) {
+  const horizontal = [...panel.body.matchAll(/<line\b([^>]*)\/?\s*>/g)]
+    .map(match => attributes(match[1])).filter(a => Number(a.y1) === Number(a.y2) && Number(a.x2) > Number(a.x1));
+  const longest = Math.max(...horizontal.map(a => Number(a.x2) - Number(a.x1)));
+  const fullWidth = horizontal.filter(a => Math.abs(Number(a.x2) - Number(a.x1) - longest) < 1e-9);
+  assert.ok(fullWidth.length >= 2, 'Read actual axis/grid geometry rather than text baselines');
+  return {left: Number(fullWidth[0].x1), right: Number(fullWidth[0].x2),
+    top: Math.min(...fullWidth.map(a => Number(a.y1))), bottom: Math.max(...fullWidth.map(a => Number(a.y1)))};
 }
 function checkIndependentAxes(svg, data) {
   const root = svgAttributes(svg), byPool = panels(svg), result = {};
@@ -66,7 +81,9 @@ function checkIndependentAxes(svg, data) {
       const normalizedStep = step / 10 ** Math.floor(Math.log10(step));
       assert.ok([1, 2, 5, 10].some(nice => Math.abs(normalizedStep - nice) < 1e-10), 'Nice integer step');
     }
-    const bottom = Number(ticks[0].attributes.y), top = Number(ticks.at(-1).attributes.y);
+    // A publication font's text baseline can sit below its grid line. Candidate
+    // coordinates are measured against actual grid/axis lines, not tick text.
+    const {bottom, top} = axisGeometry(panel);
     for (const circle of circles(panel.body)) {
       assert.equal(circle['data-pool'], pool, 'A panel contains only its own pool');
       near(Number(circle.cy), bottom - Number(circle['data-count']) / maximum * (bottom - top),
@@ -108,7 +125,8 @@ assert.equal(observed.length, 52);
 assert.equal(circles(svg).length, 52);
 assert.match(svg, /data-position-scale="physical"/);
 assert.match(svg, /role="img" aria-labelledby="candidate-counts-en-wide-title candidate-counts-en-wide-desc"/);
-assert.ok(!/Figure 3|figure3|manuscript|Radial position/.test(svg));
+assert.ok(!/Figure 3|figure3|Radial position/.test(svg), 'No fixed-paper label or obsolete position wording');
+assert.match(svg, /data-style="manuscript"/, 'Adopt the figure style without adding a fixed-data preset');
 for (const {pool, window, radius, point} of observed) {
   const circle = circles(svg).find(circle => circle['data-pool'] === pool && circle['data-window'] === window &&
     Number(circle['data-radius-mm']) === radius.radiusMm && Number(circle['data-count']) === point.count);
@@ -147,6 +165,84 @@ checkIndependentAxes(renderCandidateCountsSvg(fixture, {stacked: true}), fixture
 assert.equal(candidateFrequencyCsv(fixture), originalFrequencyCsv, 'Wide/stacked drawing never changes frequency CSV bytes');
 assert.equal(candidateSummaryCsv(fixture), originalSummaryCsv, 'Wide/stacked drawing never changes summary CSV bytes');
 
+// Golden display geometry comes from the adopted independent-axis Figure3 SVG
+// (figure3_independent_axes, 2026-10-20). Coordinates are rounded to six decimals
+// in Matplotlib's export; frequency/area checks above remain unrounded.
+const manuscriptGeometry = {
+  widthMm: 180, heightMm: 95, viewBox: [0, 0, 510.236220, 269.291339],
+  direct: {left: 53.574803, right: 245.353245, top: 86.173228, bottom: 224.858268},
+  combined: {left: 306.722346, right: 498.500787, top: 86.173228, bottom: 224.858268},
+};
+function checkManuscriptWideGeometry(svg, data) {
+  const root = svgAttributes(svg), byPool = panels(svg);
+  assert.equal(root.width, '180mm');
+  assert.equal(root.height, '95mm');
+  assert.equal(root['data-reference-domain'], 'true');
+  assert.equal(Number(root['data-x-minimum']), -1);
+  assert.equal(Number(root['data-x-maximum']), 114);
+  root.viewBox.split(/\s+/).map(Number).forEach((value, i) => nearManuscript(value,
+    manuscriptGeometry.viewBox[i], 'Figure footprint'));
+  assert.deepEqual(root.viewBox.split(/\s+/).map(Number).slice(2).map(value => Math.floor(value * 600 / 72)),
+    [4251, 2244], 'Adopted 600-dpi canvas dimensions');
+  const title = `Simulated candidate counts within SSPz windows: T = ${data.condition.Tmm} mm`;
+  const titleNode = textNodes(svg).find(node => node.text === title);
+  assert.ok(titleNode, 'Title stays dynamic and matches the adopted format');
+  for (const [text, x, y] of [[title, 22.960630, 14.773243],
+    ['Occurrence', 307.672441, 52.039690], ['10%', 390.330709, 68.727571],
+    ['50%', 436.251969, 68.727571], ['100%', 482.173228, 68.727571],
+    ['FWHM (left)', 50.848031, 61.570091], ['FWTM (right)', 143.313656, 61.570091]]) {
+    const node = textNodes(svg).find(node => node.text === text);
+    assert.ok(node, text);
+    nearManuscript(Number(node.attributes.x), x, `${text} anchor x`);
+    nearManuscript(Number(node.attributes.y), y, `${text} anchor y`);
+  }
+  const subtitle = textNodes(svg).find(node => node.text.startsWith('Collimation:'));
+  assert.ok(subtitle);
+  nearManuscript(Number(subtitle.attributes.x), 22.960630, 'Subtitle x');
+  nearManuscript(Number(subtitle.attributes.y), 34.796863, 'Subtitle y');
+  assert.ok(!subtitle.text.includes('T ='), 'Averaging width is in the title, without redundant subtitle text');
+  for (const pool of pools) {
+    const plot = axisGeometry(byPool[pool]);
+    for (const bound of ['left', 'right', 'top', 'bottom']) nearManuscript(plot[bound], manuscriptGeometry[pool][bound], `${pool} ${bound}`);
+    const maximum = Number(byPool[pool].attributes['data-y-maximum']);
+    for (const circle of circles(byPool[pool].body)) {
+      const position = Number(circle['data-radius-mm']) + (circle['data-window'] === 'fwhm' ? -4.4 : 4.4);
+      near(Number(circle.cx), plot.left + (position + 1) / 115 * (plot.right - plot.left), 'Manuscript physical horizontal positions');
+      near(Number(circle.cy), plot.bottom - Number(circle['data-count']) / maximum * (plot.bottom - plot.top), 'Manuscript vertical positions');
+    }
+    const panelTitle = textNodes(byPool[pool].body).find(node => node.text.startsWith(pool === 'direct' ? '(a)' : '(b)'));
+    assert.ok(panelTitle);
+    nearManuscript(Number(panelTitle.attributes.y), 78.173228, 'Panel title y');
+    const xlabel = textNodes(byPool[pool].body).find(node => node.text === 'Distance from isocenter (mm)');
+    nearManuscript(Number(xlabel.attributes.x), pool === 'direct' ? 149.464024 : 402.611567, 'Distance-axis title x');
+    nearManuscript(Number(xlabel.attributes.y), 252.434830, 'Distance-axis title y');
+    const ylabel = textNodes(byPool[pool].body).find(node => node.text === 'Number of candidates');
+    nearManuscript(Number(ylabel.attributes.x), pool === 'direct' ? 34.832616 : 287.980158, 'Count-axis title x');
+    nearManuscript(Number(ylabel.attributes.y), 155.515748, 'Count-axis title y');
+    for (const tick of textNodes(byPool[pool].body).filter(node => node.attributes.class === 'candidate-count-tick')) {
+      near(Number(tick.attributes.y), plot.bottom - Number(tick.text) / maximum * (plot.bottom - plot.top) + 3.79921875,
+        'Adopted count tick baseline below its grid line');
+    }
+    for (const tick of textNodes(byPool[pool].body).filter(node => node.attributes.class === 'candidate-distance-tick')) {
+      near(Number(tick.attributes.y), plot.bottom + 12.8984375, 'Adopted distance tick baseline');
+    }
+  }
+  for (const [index, circle] of legendCircles(svg).entries()) {
+    nearManuscript(Number(circle.cx), [390.330709, 436.251969, 482.173228][index], 'Occurrence marker x');
+    nearManuscript(Number(circle.cy), 49.280315, 'Occurrence marker y');
+  }
+  const seriesLegend = [...svg.matchAll(/<circle\b([^>]*)>/g)].map(match => attributes(match[1]))
+    .filter(circle => !circle.class && circle['data-legend-fraction'] === undefined);
+  assert.equal(seriesLegend.length, 2);
+  seriesLegend.forEach((circle, index) => {
+    nearManuscript(Number(circle.cx), [36.348031, 128.813656][index], 'Series legend marker x');
+    nearManuscript(Number(circle.cy), 58.070091, 'Series legend marker y');
+    assert.equal(Number(circle.r), 2.5);
+    assert.equal(Number(circle['stroke-width']), 1);
+  });
+}
+checkManuscriptWideGeometry(svg, fixture);
+
 function custom(radii, values = [0, 11], condition = {}) {
   const n = 12, mean = values[0] * .25 + values[1] * .75;
   const sd = Math.sqrt((values[0] - mean) ** 2 * .25 + (values[1] - mean) ** 2 * .75);
@@ -169,6 +265,7 @@ assert.match(singleSvg, /3 directions × 4 start angles/);
 assert.match(singleSvg, /data-position-scale="physical"/);
 assert.equal((singleSvg.match(/>37\.25<\/text>/g) ?? []).length, 2);
 const singleAttributes = attributes(singleSvg.match(/^<svg([^>]*)>/)[1]);
+assert.equal(singleAttributes['data-reference-domain'], 'false');
 assert.ok(Number(singleAttributes['data-x-minimum']) > 0 && Number(singleAttributes['data-x-maximum']) < 50,
   'Physical x range comes from requested positions, without a historical 0..114 floor');
 const singleAxes = checkIndependentAxes(singleSvg, single);
@@ -183,6 +280,7 @@ for (const radii of [[20, 60], [0, 250], [20, 20.01]]) {
   near((radii[0] - lo) / (hi - lo), .25, 'First position at one-quarter plot width');
   near((radii[1] - lo) / (hi - lo), .75, 'Second position at three-quarter plot width');
   assert.equal(a['data-position-scale'], 'physical');
+  assert.equal(a['data-reference-domain'], 'false', 'Two positions retain a balanced dynamic domain');
 }
 const spacedThreeSvg = renderCandidateCountsSvg(custom([10, 50, 90]));
 const a3 = attributes(spacedThreeSvg.match(/^<svg([^>]*)>/)[1]);
@@ -199,6 +297,15 @@ assert.equal(threeAxes.combined.maximum, 5);
 assert.match(threeSvg, /data-position-scale="physical"/);
 assert.deepEqual(csvRows(candidateSummaryCsv(three)).rows.slice(0, 6).map(row => Number(row.radius_mm)), [2.5, 2.5, 16.125, 16.125, 47.2, 47.2]);
 assert.equal(JSON.stringify(three), threeBefore, 'Sorting never mutates requested position order');
+
+const changedConditionsAtReferencePositions = custom([102, 10, 80, 50], [1, 4],
+  {rows: 16, rowSpacingMm: 1.25, beamPitch: .5625, Tmm: 3.2});
+const changedConditionSvg = renderCandidateCountsSvg(changedConditionsAtReferencePositions);
+checkManuscriptWideGeometry(changedConditionSvg, changedConditionsAtReferencePositions);
+checkIndependentAxes(changedConditionSvg, changedConditionsAtReferencePositions);
+assert.match(changedConditionSvg, /Collimation: 16 × 1\.25 mm/);
+assert.match(changedConditionSvg, /pitch: 0\.5625/);
+assert.match(changedConditionSvg, /T = 3\.2 mm/);
 
 const unevenReadableSvg = renderCandidateCountsSvg(custom([20, 28, 60]));
 assert.match(unevenReadableSvg, /data-position-scale="physical"/,
@@ -307,4 +414,5 @@ console.log(JSON.stringify({status: 'pass', originalPoints: 52, originalGroups: 
   axisPolicy: 'independent direct/combined; small max+1; large nice integer ticks include upper headroom; all-zero0..1',
   fixtureMaximum: {direct: fixtureAxes.direct.maximum, combined: fixtureAxes.combined.maximum},
   preservation: ['circle sizes', 'common occurrence legend', 'other panel scale and coordinates', 'CSV bytes for unchanged data'],
+  manuscriptStyle: {wideMm: [180, 95], referenceDomain: [-1, 114], dynamicConditionsAndOtherPositions: true},
   frequencyPolicy: 'preserve supplied observed and explicit-zero cells; no huge dense range', widthsMm: {wide: 180, stacked: 100}}));

@@ -481,8 +481,9 @@
     "exports": "separate CSV/JSON; old point temporal data removed from SSPz exports"
   },
   "candidateCountComparison": {
-    "webBuild": "2026-10-20.4",
+    "webBuild": "2026-10-21.1",
     "countAxes": "Independent zero-based automatic axes for real-only and real-plus-conjugate panels, with marker headroom; shared occurrence-size scale in screen and exported figures",
+    "figureStyle": "Manuscript Figure 3 title, typography, legends and 180 x 95 mm wide layout; 10,50,80,102 mm positions share its -1..114 mm domain. Other positions retain adaptive balanced spacing; stacked screen layout remains responsive. Numerical inputs and kernels are unchanged.",
     "page": "candidate-counts.html",
     "input": "Current simulator settings in URL; user-defined1–12positions",
     "initialData": "No fixed publication dataset; calculate at the selected collimation, pitch and positions",
