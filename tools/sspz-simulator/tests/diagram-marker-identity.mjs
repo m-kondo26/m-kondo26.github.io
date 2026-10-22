@@ -148,6 +148,7 @@ assert.equal(JSON.stringify(userDiagram), userRawBefore, "The raw diagram is not
 class RecordingCanvasContext {
   constructor() {
     this.events = [];
+    this.rectangles = [];
     this.stack = [];
     this.path = [];
     this.state = { strokeStyle: "#000000", fillStyle: "#000000", globalAlpha: 1,
@@ -165,8 +166,17 @@ class RecordingCanvasContext {
   closePath() { this.path.push({ op: "Z" }); }
   rect(x, y, width, height) { this.path.push({ op: "R", x, y, width, height }); }
   clip() { this.state.clipped = true; }
-  fillRect() {}
-  fillText(text, x, y) { this.events.push({ type: "text", text: String(text), x, y }); }
+  fillRect(x, y, width, height) {
+    this.rectangles.push({ x, y, width, height, ...this.state });
+  }
+  strokeRect() {}
+  setTransform() {}
+  clearRect() {}
+  measureText(text) {
+    const size = Number.parseFloat(this.font) || 10;
+    return { width: Array.from(String(text)).reduce((sum, char) => sum + size * (char.charCodeAt(0) > 255 ? 1 : 0.52), 0) };
+  }
+  fillText(text, x, y) { this.events.push({ type: "text", text: String(text), x, y, font: this.font }); }
   setLineDash(dash) { this.state.dash = Array.from(dash); }
   fill() { this.record("fill"); }
   stroke() { this.record("stroke"); }
@@ -175,7 +185,7 @@ class RecordingCanvasContext {
       path: this.path.map(operation => ({ ...operation })) });
   }
 }
-for (const property of ["strokeStyle", "fillStyle", "globalAlpha", "globalCompositeOperation", "lineWidth", "lineDashOffset"]) {
+for (const property of ["strokeStyle", "fillStyle", "globalAlpha", "globalCompositeOperation", "lineWidth", "lineDashOffset", "font"]) {
   Object.defineProperty(RecordingCanvasContext.prototype, property, {
     get() { return this.state[property]; },
     set(value) { this.state[property] = value; },
@@ -280,6 +290,65 @@ rendererResults.push(verifyRenderedMarkers({ ...userDiagram, weightedPoints: dua
 assert.throws(() => verifyRenderedMarkers(userDiagram, false, true),
   /one glyph per physical sample/, "Memory-local old unmerged rendering must fail the count assertion");
 
+// The averaging band is a display window, independent of zoom, selected
+// endpoint support and weights. Screen and publication painters use the same T.
+let averagingBandCases = 0;
+for (const thickness of [0, 0.1, 1, 10]) {
+  for (const publicationMode of [false, true]) {
+    for (const mode of ["overview", "zoom"]) {
+      const runtime = rendererRuntime();
+      const ctx = new RecordingCanvasContext();
+      const canvas = { context: ctx, dataset: { publicationMode: String(publicationMode) } };
+      const diagram = { ...userDiagram, averagingWidthMm: thickness,
+        configuredSliceThicknessMm: 99, interpolationBandHalfWidth: 1234 };
+      const before = JSON.stringify(diagram);
+      runtime.drawDiagram(canvas, diagram, mode, 3, 2);
+      const bands = ctx.rectangles.filter(rect => rect.fillStyle === "rgba(220, 229, 237, 0.65)");
+      assert.equal(bands.length, thickness > 0 ? 1 : 0, "T=0 has no artificial minimum-width band");
+      if (thickness > 0) {
+        const half = Math.min(3, thickness / 2);
+        assert.equal(bands[0].x, -half);
+        assert.equal(bands[0].width, 2 * half, "Band clips to the axes while retaining physical T");
+        assert.equal(bands[0].height, 360);
+      }
+      assert.equal(canvas.dataset.averagingBandMinMm, String(-thickness / 2));
+      assert.equal(canvas.dataset.averagingBandMaxMm, String(thickness / 2));
+      assert.equal(canvas.dataset.averagingBandVisible, String(thickness > 0));
+      assert.equal(JSON.stringify(diagram), before, "Display band never rewrites candidates or weights");
+      assert.equal(ctx.stack.length, 0);
+      averagingBandCases++;
+    }
+  }
+}
+
+// Run the real axes-layout and footer painters as well. Use a conservative
+// full-font-size extent below each text anchor, for both PNG and screen scale.
+let averagingLegendCases = 0;
+for (const language of ["ja", "en"]) for (const thickness of [0, 1, 10]) {
+  for (const publicationMode of [false, true]) for (const mode of ["overview", "zoom"]) {
+    const runtime = rendererRuntime();
+    runtime.localizedText = (ja, en) => language === "en" ? en : ja;
+    vm.runInContext(["axisContext", "setFittedFigureFont", "drawDiagramAveragingLegend",
+      "drawDiagramFamilyLegend", "drawWeightLegend", "drawOverviewLegend"].map(functionSource).join("\n"), runtime);
+    const scale = publicationMode ? 2.1 : 1;
+    const ctx = new RecordingCanvasContext();
+    const canvas = { width: 900 * scale, height: 960 * scale, getContext: () => ctx,
+      dataset: { publicationMode: String(publicationMode), renderScale: String(scale) } };
+    runtime.drawDiagram(canvas, { ...userDiagram, averagingWidthMm: thickness }, mode, 3);
+    const texts = ctx.events.filter(event => event.type === "text");
+    assert.ok(texts.some(event => event.text.includes("T = ")), "Averaging legend is actually painted");
+    for (const text of texts) {
+      const fontSize = Number.parseFloat(text.font);
+      assert.ok(text.y + fontSize <= 960, `${language}/${mode}/T${thickness}: footer text fits inside the canvas`);
+      ctx.font = text.font;
+      assert.ok(text.x >= 0 && text.x + ctx.measureText(text.text).width <= 900,
+        `${language}/${mode}/T${thickness}: footer text fits horizontally`);
+    }
+    assert.equal(ctx.stack.length, 0);
+    averagingLegendCases++;
+  }
+}
+
 // No row digits may be drawn on trajectories, for sparse or dense detectors,
 // either geometry condition, or either screen/publication rendering mode.
 // Keep the actual drawDiagram and marker painter; only legend/axis internals
@@ -356,5 +425,5 @@ for (const diagram of [userDiagram, largeDiagram]) {
 console.log(JSON.stringify({ status: "PASS", scope: "Physical-marker presentation identity and local FW=0 weights; no SSPz numerical changes.",
   userFixture: { rawCount: 284, physicalMarkerCount: 214, duplicateGroups: 70,
     beta160SummedWeight: beta160.weight }, fixtureCount: fixtureResults.length, fixtureResults,
-  rendererResults, traceCases, numberFreeDisplayCases: numberFreeDisplayResults.length, numberFreeDisplayResults,
+  rendererResults, traceCases, averagingBandCases, averagingLegendCases, numberFreeDisplayCases: numberFreeDisplayResults.length, numberFreeDisplayResults,
   oldUnmergedRendererNegativeControl: "expected failure confirmed" }, null, 2));

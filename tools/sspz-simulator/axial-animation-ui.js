@@ -146,6 +146,7 @@ function axialMovieBackground(audit,candidatesOnly=false){
   const turnMin=Math.ceil((-limit-max)/c.feed),turnMax=Math.floor((limit-min)/c.feed);
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
   const diagram={totalRows:c.rows,z0:audit.zObject,zoomXLimit:audit.xHalfSpan,overviewXLimit:audit.xHalfSpan,
+    averagingWidthMm:c.axialAverageMm??0,
     angleMin:audit.angleRange?.[0]??0,angleMax:audit.angleRange?.[1]??360,
     interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:candidatesOnly?[]:families,roleMarkersOnly:candidatesOnly,
     traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],

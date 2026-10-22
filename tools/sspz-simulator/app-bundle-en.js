@@ -4126,6 +4126,7 @@ function axialMovieBackground(audit,candidatesOnly=false){
   const turnMin=Math.ceil((-limit-max)/c.feed),turnMax=Math.floor((limit-min)/c.feed);
   const turns=Array.from({length:turnMax-turnMin+1},(_,i)=>turnMin+i);
   const diagram={totalRows:c.rows,z0:audit.zObject,zoomXLimit:audit.xHalfSpan,overviewXLimit:audit.xHalfSpan,
+    averagingWidthMm:c.axialAverageMm??0,
     angleMin:audit.angleRange?.[0]??0,angleMax:audit.angleRange?.[1]??360,
     interpolationBandHalfWidth:c.axialAverageMm/2,traceFamilies:candidatesOnly?[]:families,roleMarkersOnly:candidatesOnly,
     traceGeometry:{...families[0],rowOffsets:Array.from({length:c.rows},(_,i)=>(i-(c.rows-1)/2)*c.rowWidth),feed:c.feed,turns},weightedPoints:[],
@@ -4286,6 +4287,7 @@ function initializeFdkWorkflow(panel){
   firstCard.querySelector('h3').textContent=fdkText('','2A  Candidate arrangement: 0–360° unwrapped diagram');
   firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('','2B  Selected data and weights'));
+  geometry.insertAdjacentHTML('beforeend',`<p class="field-help">${fdkText('','The red line marks the centre plane; the pale band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from interpolation weights on the markers.')}</p>`);
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
   weights.querySelector('.chart-grid').insertAdjacentHTML('beforebegin',`<div class="candidate-display-controls"><label>${fdkText('','Candidate display in 2B and 2C')}<select id="candidate-display-mode"><option value="overview">${fdkText('','Full turn: sampled directions')}</option><option value="detail">${fdkText('','30° detail: every direction')}</option></select></label><label id="candidate-display-window" hidden>${fdkText('','Angular range')}<select id="candidate-display-start">${Array.from({length:12},(_,i)=>`<option value="${i*30}">${i*30}°–${i*30+30}°</option>`).join('')}</select></label></div><p id="candidate-display-status" class="candidate-display-status" aria-live="polite"></p><p class="candidate-display-note">${fdkText('','Markers encode weights on selected points. The full-turn view samples directions; use 30° detail to inspect rapid row changes. Background trajectories include all rows and become lighter with more rows to keep overlaps visible.')}</p>`);
   weights.querySelector('#candidate-display-mode').onchange=updateCandidateDisplay;
@@ -4477,6 +4479,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   });
   const referenceView=q=>paired?q.referenceView:q.view;
   const diagram={totalRows:rows,z0:r.zObject,sourcePhase:c.phase,overviewXLimit:extent,zoomXLimit:zoomLimit,
+    averagingWidthMm:c.axialAverageMm??0,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
     weightedPoints:zoom?samples.filter(q=>angleRange?fold(referenceView(q))>=angleRange.min-1e-9&&fold(referenceView(q))<angleRange.max-1e-9:((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
@@ -5145,6 +5148,7 @@ function initializePositionPreview(){
   <p>${fdkText('','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('','Return to centre')}</button><span>${fdkText('','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
+  <p class="field-help">${fdkText('','In the diagram, the red line marks the centre plane; the light-gray band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from the markers that encode interpolation weights. Interpolation may also use candidates outside the band.')}</p>
   <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('','Playback speed')} <select id="position-speed"><option value="400">${fdkText('','Slow')}</option><option value="150" selected>${fdkText('','Normal')}</option><option value="75">${fdkText('','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
   <p id="position-movie-status" aria-live="polite">${fdkText('','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
   <p class="field-help">${fdkText('','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
@@ -5546,7 +5550,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-21.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-10-22.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -6378,7 +6382,7 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
   const items = [];
   if (diagram.visibleRole !== 'complementary') items.push({ label: diagram.directLegendLabel ?? localizedText("Direct-ray candidate ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly });
   if ((paired || rolesOnly) && diagram.visibleRole !== 'direct') items.push({ label: localizedText("Complementary-ray candidate △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
-  items.push({ label: localizedText("Target plane", "Target plane"), dashed: false, color: RED });
+  items.push({ label: localizedText("Centre plane", "Centre plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -6396,6 +6400,28 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
     setFittedFigureFont(ctx, label, 26, 22, columnWidth - 44);
     ctx.fillText(label, start + (item.noLine ? 0 : 40), y);
   });
+  ctx.restore();
+}
+
+function drawDiagramAveragingLegend(ctx, diagram, left, y, width) {
+  const averagingWidthMm = Math.max(0, Number(diagram.averagingWidthMm ?? diagram.configuredSliceThicknessMm ?? 0) || 0);
+  const label = averagingWidthMm > 0
+    ? localizedText(`Gray band: averaging range (T = ${averagingWidthMm.toFixed(2)} mm)`, `Gray band: averaging range (T = ${averagingWidthMm.toFixed(2)} mm)`)
+    : localizedText("T = 0 mm: centre plane only (no axial averaging)", "T = 0 mm: centre plane only (no axial averaging)");
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  if (averagingWidthMm > 0) {
+    ctx.fillStyle = "rgba(220, 229, 237, 0.65)";
+    ctx.fillRect(left, y - 10, 28, 20);
+    ctx.strokeStyle = "#89939d";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, y - 10, 28, 20);
+  }
+  const textLeft = left + (averagingWidthMm > 0 ? 40 : 0);
+  ctx.fillStyle = MUTED;
+  setFittedFigureFont(ctx, label, 24, 22, width - (textLeft - left));
+  ctx.fillText(label, textLeft, y);
   ctx.restore();
 }
 
@@ -6425,6 +6451,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   const note = diagram.weightLegendNote ?? localizedText("Weights sum per acquired sample; trace overlaps blend.", "Weights sum per acquired sample; trace overlaps blend.");
   setFittedFigureFont(ctx, note, 24, 22, width);
   ctx.fillText(note, left, top + 114);
+  drawDiagramAveragingLegend(ctx, diagram, left, top + 152, width);
   ctx.restore();
 }
 
@@ -6487,11 +6514,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.fillText(scope, left, top);
   drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
   drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width, false);
-  ctx.textAlign = "left";
-  ctx.fillStyle = MUTED;
-  const band = localizedText("Shaded band: zoomed range, independent of thickness T", "Shaded band: zoomed range, independent of thickness T");
-  setFittedFigureFont(ctx, band, 24, 22, width);
-  ctx.fillText(band, left, top + 114);
+  drawDiagramAveragingLegend(ctx, diagram, left, top + 114, width);
   ctx.restore();
 }
 
@@ -6508,14 +6531,26 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
     topMargin: 32,
-    bottomMargin: 278,
+    bottomMargin: 320,
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
-  const bandLimit = Math.min(xLimit, mode === "overview"
-    ? (focusXLimit ?? diagram.zoomXLimit)
-    : Math.max(diagram.interpolationBandHalfWidth ?? 0, 0.15));
-  ctx.fillStyle = PALE;
-  ctx.fillRect(x(-bandLimit), margin.top, x(bandLimit) - x(-bandLimit), innerHeight);
+  const averagingWidthMm = Math.max(0, Number(diagram.averagingWidthMm ?? diagram.configuredSliceThicknessMm ?? 0) || 0);
+  const averagingHalfWidth = averagingWidthMm / 2;
+  if (averagingHalfWidth > 0) {
+    const visibleHalfWidth = Math.min(xLimit, averagingHalfWidth);
+    ctx.save();
+    ctx.fillStyle = "rgba(220, 229, 237, 0.65)";
+    ctx.fillRect(x(-visibleHalfWidth), margin.top, x(visibleHalfWidth) - x(-visibleHalfWidth), innerHeight);
+    ctx.strokeStyle = "#89939d";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    if (averagingHalfWidth <= xLimit) {
+      for (const boundary of [-averagingHalfWidth, averagingHalfWidth]) {
+        ctx.beginPath(); ctx.moveTo(x(boundary), margin.top); ctx.lineTo(x(boundary), margin.top + innerHeight); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
   // Paint supporting guides behind all trajectories, weight glyphs and the
   // target plane. Keep the black frame, ticks and labels in the foreground.
   const angleTicks = angleMax-angleMin===360?[0,60,120,180,240,300,360]:Array.from({length:7},(_,i)=>angleMin+(angleMax-angleMin)*i/6);
@@ -6603,6 +6638,11 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.rowTraceWeighting = diagram.rowTraceWeighting;
   canvas.dataset.rowsPerView = String(diagram.rowsPerAcquiredView);
   canvas.dataset.configuredSliceThicknessMm = String(diagram.configuredSliceThicknessMm);
+  canvas.dataset.averagingBandWidthMm = String(averagingWidthMm);
+  canvas.dataset.averagingBandMinMm = String(-averagingHalfWidth);
+  canvas.dataset.averagingBandMaxMm = String(averagingHalfWidth);
+  canvas.dataset.averagingBandVisible = String(averagingHalfWidth > 0);
+  canvas.dataset.averagingBandEncoding = "constant-light-gray;not-interpolation-weight";
   canvas.dataset.markerScope = mode === "zoom" ? "selected-interpolation-endpoints" : "none";
   canvas.dataset.selectedEndpointStage = diagram.selectedEndpointStage;
   canvas.dataset.doesNotRestrictCandidatePopulation = String(diagram.doesNotRestrictCandidatePopulation);

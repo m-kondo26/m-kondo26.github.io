@@ -724,6 +724,10 @@ replacements.unshift(["実機画像の時間感度と動体応答（HFIの参照
 
 replacements.unshift(["検出器列ごとの投影再配列と、同報で示されたRRI相当の線形補間を採用します。検出器端では取得できた列の重みを正規化する拡張を用います。設定厚Tを幅とする画像の体軸方向の矩形平均化を適用します。これらの追加定義は実機のスライス厚を校正するものではありません。", "Implements rowwise projection rebinning and the RRI-equivalent linear interpolation described in this paper. An explicit detector-edge extension normalizes weights over acquired rows. Images are averaged axially with a rectangular window of configured width T. These added definitions do not calibrate scanner slice thickness."]);
 
+replacements.unshift(["中心断面", "Centre plane"]);
+replacements.unshift(["淡灰色帯：平均化範囲（T = ${averagingWidthMm.toFixed(2)} mm）", "Gray band: averaging range (T = ${averagingWidthMm.toFixed(2)} mm)"]);
+replacements.unshift(["T = 0 mm：中心断面のみ（平均化なし）", "T = 0 mm: centre plane only (no axial averaging)"]);
+
 export function translateEnglishSource(source) {
   let translated = source;
   for (const [japanese, english] of [...replacements].sort((a, b) => b[0].length - a[0].length)) {

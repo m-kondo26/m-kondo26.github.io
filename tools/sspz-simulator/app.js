@@ -95,7 +95,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-21.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-10-22.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -927,7 +927,7 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
   const items = [];
   if (diagram.visibleRole !== 'complementary') items.push({ label: diagram.directLegendLabel ?? localizedText("実データ側 ○", "Direct ○"), dashed: false, color: INK, noLine: rolesOnly });
   if ((paired || rolesOnly) && diagram.visibleRole !== 'direct') items.push({ label: localizedText("対向データ側 △", "Complementary △"), dashed: true, color: INK, noLine: rolesOnly });
-  items.push({ label: localizedText("目的断面", "Target plane"), dashed: false, color: RED });
+  items.push({ label: localizedText("中心断面", "Centre plane"), dashed: false, color: RED });
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -945,6 +945,28 @@ function drawDiagramFamilyLegend(ctx, diagram, left, y, width, includeMarkers = 
     setFittedFigureFont(ctx, label, 26, 22, columnWidth - 44);
     ctx.fillText(label, start + (item.noLine ? 0 : 40), y);
   });
+  ctx.restore();
+}
+
+function drawDiagramAveragingLegend(ctx, diagram, left, y, width) {
+  const averagingWidthMm = Math.max(0, Number(diagram.averagingWidthMm ?? diagram.configuredSliceThicknessMm ?? 0) || 0);
+  const label = averagingWidthMm > 0
+    ? localizedText(`淡灰色帯：平均化範囲（T = ${averagingWidthMm.toFixed(2)} mm）`, `Gray band: averaging range (T = ${averagingWidthMm.toFixed(2)} mm)`)
+    : localizedText("T = 0 mm：中心断面のみ（平均化なし）", "T = 0 mm: centre plane only (no axial averaging)");
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  if (averagingWidthMm > 0) {
+    ctx.fillStyle = "rgba(220, 229, 237, 0.65)";
+    ctx.fillRect(left, y - 10, 28, 20);
+    ctx.strokeStyle = "#89939d";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, y - 10, 28, 20);
+  }
+  const textLeft = left + (averagingWidthMm > 0 ? 40 : 0);
+  ctx.fillStyle = MUTED;
+  setFittedFigureFont(ctx, label, 24, 22, width - (textLeft - left));
+  ctx.fillText(label, textLeft, y);
   ctx.restore();
 }
 
@@ -974,6 +996,7 @@ function drawWeightLegend(ctx, left, top, width, diagram, countText) {
   const note = diagram.weightLegendNote ?? localizedText("同じ取得データの重みを合算。軌道の重なりは混色。", "Weights sum per acquired sample; trace overlaps blend.");
   setFittedFigureFont(ctx, note, 24, 22, width);
   ctx.fillText(note, left, top + 114);
+  drawDiagramAveragingLegend(ctx, diagram, left, top + 152, width);
   ctx.restore();
 }
 
@@ -1036,11 +1059,7 @@ function drawOverviewLegend(ctx, diagram, left, top, width, countText) {
   ctx.fillText(scope, left, top);
   drawDetectorRowLegend(ctx, diagram, left, top + 38, width);
   drawDiagramFamilyLegend(ctx, diagram, left, top + 76, width, false);
-  ctx.textAlign = "left";
-  ctx.fillStyle = MUTED;
-  const band = localizedText("淡色帯：拡大図の表示範囲（設定厚Tとは別）", "Shaded band: zoomed range, independent of thickness T");
-  setFittedFigureFont(ctx, band, 24, 22, width);
-  ctx.fillText(band, left, top + 114);
+  drawDiagramAveragingLegend(ctx, diagram, left, top + 114, width);
   ctx.restore();
 }
 
@@ -1057,14 +1076,26 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
     topMargin: 32,
-    bottomMargin: 278,
+    bottomMargin: 320,
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
-  const bandLimit = Math.min(xLimit, mode === "overview"
-    ? (focusXLimit ?? diagram.zoomXLimit)
-    : Math.max(diagram.interpolationBandHalfWidth ?? 0, 0.15));
-  ctx.fillStyle = PALE;
-  ctx.fillRect(x(-bandLimit), margin.top, x(bandLimit) - x(-bandLimit), innerHeight);
+  const averagingWidthMm = Math.max(0, Number(diagram.averagingWidthMm ?? diagram.configuredSliceThicknessMm ?? 0) || 0);
+  const averagingHalfWidth = averagingWidthMm / 2;
+  if (averagingHalfWidth > 0) {
+    const visibleHalfWidth = Math.min(xLimit, averagingHalfWidth);
+    ctx.save();
+    ctx.fillStyle = "rgba(220, 229, 237, 0.65)";
+    ctx.fillRect(x(-visibleHalfWidth), margin.top, x(visibleHalfWidth) - x(-visibleHalfWidth), innerHeight);
+    ctx.strokeStyle = "#89939d";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    if (averagingHalfWidth <= xLimit) {
+      for (const boundary of [-averagingHalfWidth, averagingHalfWidth]) {
+        ctx.beginPath(); ctx.moveTo(x(boundary), margin.top); ctx.lineTo(x(boundary), margin.top + innerHeight); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
   // Paint supporting guides behind all trajectories, weight glyphs and the
   // target plane. Keep the black frame, ticks and labels in the foreground.
   const angleTicks = angleMax-angleMin===360?[0,60,120,180,240,300,360]:Array.from({length:7},(_,i)=>angleMin+(angleMax-angleMin)*i/6);
@@ -1152,6 +1183,11 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   canvas.dataset.rowTraceWeighting = diagram.rowTraceWeighting;
   canvas.dataset.rowsPerView = String(diagram.rowsPerAcquiredView);
   canvas.dataset.configuredSliceThicknessMm = String(diagram.configuredSliceThicknessMm);
+  canvas.dataset.averagingBandWidthMm = String(averagingWidthMm);
+  canvas.dataset.averagingBandMinMm = String(-averagingHalfWidth);
+  canvas.dataset.averagingBandMaxMm = String(averagingHalfWidth);
+  canvas.dataset.averagingBandVisible = String(averagingHalfWidth > 0);
+  canvas.dataset.averagingBandEncoding = "constant-light-gray;not-interpolation-weight";
   canvas.dataset.markerScope = mode === "zoom" ? "selected-interpolation-endpoints" : "none";
   canvas.dataset.selectedEndpointStage = diagram.selectedEndpointStage;
   canvas.dataset.doesNotRestrictCandidatePopulation = String(diagram.doesNotRestrictCandidatePopulation);

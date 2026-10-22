@@ -24,6 +24,7 @@ function initializeFdkWorkflow(panel){
   firstCard.querySelector('h3').textContent=fdkText('2A　補間候補の配置：0～360°展開図','2A  Candidate arrangement: 0–360° unwrapped diagram');
   firstCard.querySelector('h3').insertAdjacentHTML('afterend',`<p id="fdk-paired-coordinate" hidden></p>`);
   const weights=block('fdk-weight-step',fdkText('2B　選択されたデータと重み','2B  Selected data and weights'));
+  geometry.insertAdjacentHTML('beforeend',`<p class="field-help">${fdkText('赤線は中心断面、淡色帯は−T/2～+T/2の平均化範囲です。帯の濃さは一定で、点の補間重みとは別です。','The red line marks the centre plane; the pale band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from interpolation weights on the markers.')}</p>`);
   weights.insertAdjacentHTML('beforeend',`<p>${fdkText('同じ開始角度・同じ対象位置の重みです。応答の体軸方向平均化を指定した場合は、その幅全体の重みを合計します。','Weights refer to the same start angle and target location. If axial response averaging is enabled, coefficients are summed across that window.')}</p><div class="chart-grid two"><article class="chart-card"><h3 id="fdk-primary-weight-title">RRI</h3><canvas id="fdk-weights-primary" width="900" height="960"></canvas></article><article class="chart-card" id="fdk-rri-weights-card"><h3>RRI</h3><canvas id="fdk-weights-rri" width="900" height="960"></canvas></article></div><p id="fdk-weight-scope"></p>`);
   weights.querySelector('.chart-grid').insertAdjacentHTML('beforebegin',`<div class="candidate-display-controls"><label>${fdkText('2B・2Cの候補点の表示','Candidate display in 2B and 2C')}<select id="candidate-display-mode"><option value="overview">${fdkText('全周：代表角度を表示','Full turn: sampled directions')}</option><option value="detail">${fdkText('30°拡大：間引きなし','30° detail: every direction')}</option></select></label><label id="candidate-display-window" hidden>${fdkText('拡大する角度範囲','Angular range')}<select id="candidate-display-start">${Array.from({length:12},(_,i)=>`<option value="${i*30}">${i*30}°–${i*30+30}°</option>`).join('')}</select></label></div><p id="candidate-display-status" class="candidate-display-status" aria-live="polite"></p><p class="candidate-display-note">${fdkText('記号は選択された点の重みです。全周表示では角度を抜粋します。多列での細かな切り替わりは「30°拡大」で確認できます。背景の線は全列を描き、多列では重なりを見やすくするため薄くしています。','Markers encode weights on selected points. The full-turn view samples directions; use 30° detail to inspect rapid row changes. Background trajectories include all rows and become lighter with more rows to keep overlaps visible.')}</p>`);
   weights.querySelector('#candidate-display-mode').onchange=updateCandidateDisplay;
@@ -215,6 +216,7 @@ function drawFdkCandidateDiagram(canvas,r,zoom,reference=false,role='all',captur
   });
   const referenceView=q=>paired?q.referenceView:q.view;
   const diagram={totalRows:rows,z0:r.zObject,sourcePhase:c.phase,overviewXLimit:extent,zoomXLimit:zoomLimit,
+    averagingWidthMm:c.axialAverageMm??0,
     interpolationBandHalfWidth:(c.axialAverageMm??0)/2,
     traceGeometry:{...trace,rowOffsets,feed:c.feed,turns},traceFamilies,
     weightedPoints:zoom?samples.filter(q=>angleRange?fold(referenceView(q))>=angleRange.min-1e-9&&fold(referenceView(q))<angleRange.max-1e-9:((referenceView(q)-base)%stride+stride)%stride===0).map(q=>({
