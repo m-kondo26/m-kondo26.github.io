@@ -5148,7 +5148,7 @@ function initializePositionPreview(){
   <p>${fdkText('','Choose an evaluation position and prepare all 360 start angles. Keep all 360 profiles in grey and highlight the selected SSPz in red, together with its matching unwrapped diagram.')}</p>
   <div class="position-controls"><label for="position-radius">${fdkText('','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('','Return to centre')}</button><span>${fdkText('','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
-  <p class="field-help">${fdkText('','In the diagram, the red line marks the centre plane; the light-gray band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from the markers that encode interpolation weights. Interpolation may also use candidates outside the band.')}</p>
+  <p class="field-help">${fdkText('','In the diagram, the red line marks the centre plane; the light-gray band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from the markers that encode interpolation weights. Candidates outside the averaging range are also used to interpolate planes within it.')}</p>
   <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('','Playback speed')} <select id="position-speed"><option value="400">${fdkText('','Slow')}</option><option value="150" selected>${fdkText('','Normal')}</option><option value="75">${fdkText('','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
   <p id="position-movie-status" aria-live="polite">${fdkText('','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
   <p class="field-help">${fdkText('','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
@@ -5550,7 +5550,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-22.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-10-22.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
