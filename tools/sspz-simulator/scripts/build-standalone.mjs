@@ -5,7 +5,7 @@ import { buildMethods } from "./build-methods.mjs";
 // Keep embedded worker-source strings identical on Windows and LF checkouts.
 const readFile = async (...args) => (await readSourceFile(...args)).replace(/\r\n/g, '\n');
 
-const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|candidate-density-core|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
+const stripImports = source => source.replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/(?:sim-core|fdk-core|cba-core|detector-aperture|axial-domain|axial-response-core|axial-animation-core|axial-source-support|axial-source-response|candidate-density-core|mori-static-core|zffs-geometry|zffs-response)\.js["'];\s*/gm, "");
 const stripExports = source => source.replace(/^export\s+/gm, "");
 
 const detector = stripExports(await readFile(new URL("../detector-aperture.js", import.meta.url), "utf8"));
@@ -17,20 +17,23 @@ const zffsResponse=stripExports(await readFile(new URL('../axial-domain.js',impo
 const sourceSupport=stripExports(stripImports(await readFile(new URL('../axial-source-support.js',import.meta.url),'utf8')))+'\n'+stripExports(stripImports(await readFile(new URL('../axial-source-response.js',import.meta.url),'utf8')));
 const axialResponse=sourceSupport+'\n'+stripExports(stripImports(await readFile(new URL("../axial-response-core.js",import.meta.url),'utf8')));
 const animation=stripExports(stripImports(await readFile(new URL('../axial-animation-core.js',import.meta.url),'utf8')));
+const stationaryCore = stripExports(await readFile(new URL('../mori-static-core.js', import.meta.url), 'utf8'));
+const stationary = `const moriStaticComparePlane = (() => {\n${stationaryCore}\nreturn moriStaticComparePlane;\n})();`;
 const worker = stripImports(await readFile(new URL("../worker.js", import.meta.url), "utf8"));
 const shapeExport=await readFile(new URL("../shape-export.js", import.meta.url), "utf8");
 const shapeDisplay=await readFile(new URL("../shape-display.js", import.meta.url), "utf8");
 const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'utf8');
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
+const stationaryUi=await readFile(new URL('../nonhelical-ui.js', import.meta.url), 'utf8');
 const taguchiCore='const SSPZTaguchi=(()=>{\n'+stripExports(await readFile(new URL('../taguchi-tsp-core.js',import.meta.url),'utf8'))+'\nreturn {computeTaguchiTsp};})();\n';
 const positionUi=(await readFile(new URL('../temporal-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../position-preview.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../candidate-density-ui.js',import.meta.url),'utf8'));
 const densitySourceGeometry=stripExports(await readFile(new URL('../axial-source-support.js',import.meta.url),'utf8'))+'\n'+fdk.match(/function fdkWidth\([\s\S]*?\n\}/)[0]+'\n'+stripExports(await readFile(new URL('../axial-source-response.js',import.meta.url),'utf8')).match(/function sourceAxialGroups\([\s\S]*?\n\}/)[0];
 const densityCore=stripExports(stripImports(await readFile(new URL('../candidate-density-core.js',import.meta.url),'utf8')));
-const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + mainApp;
+const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + stationaryUi + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
-const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${worker}\n`;
+const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${stationary}\n${worker}\n`;
 // The UI uses only the geometry helper for cached backgrounds. Candidate
 // selection and integration run in the worker, using the numerical core.
 const animationGeometry=animation.slice(0,animation.indexOf('// Coefficients'));
@@ -41,11 +44,11 @@ const englishCore = translateEnglishSource(core);
 const englishWorker = translateEnglishSource(worker);
 // FDK UI strings have explicit Japanese/English alternatives. Remove only
 // Japanese string literals in the English build; the English branch remains.
-const englishFdkUi=(modelChoice+'\n'+fdkUi+'\n'+positionUi)
-  .replace(/fdkText\(`[^`]*[ぁ-んァ-ヶ一-龠々〇][^`]*`,/g,'fdkText(``,')
+const englishFdkUi=(modelChoice+'\n'+fdkUi+'\n'+positionUi+'\n'+stationaryUi)
+  .replace(/(fdkText|localizedText)\(\s*`[^`]*[ぁ-んァ-ヶ一-龠々〇][^`]*`,/g,'$1(``,')
   .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
 const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);
-const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${englishWorker}\n`;
+const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${stationary}\n${englishWorker}\n`;
 const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${densitySourceGeometry}\n${densityCore}\n${taguchiCore}\n${englishApp}\n})();\n`;
 const englishWorkerSource = `globalThis.SSPZ_WORKER_SOURCE = ${JSON.stringify(englishWorkerBundle)};\n`;
 const englishHtml = finalizeEnglishHtml(indexHtml);

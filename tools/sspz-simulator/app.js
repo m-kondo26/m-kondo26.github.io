@@ -189,6 +189,8 @@ function readParams() {
     focalSourceDetectorMm: Number(data.get("focalSourceDetectorMm")),
     detectorModel: "finite-channel",
     beamPitch: Number(data.get("beamPitch")),
+    nonhelicalRow: Number(data.get("nonhelicalRow")),
+    nonhelicalStep: Number(data.get("nonhelicalStep")),
     rotationTime: readRotationTime(),
     sourceRadius: Number(data.get("sourceRadius")),
     radius: Number(data.get("radius")),
@@ -222,6 +224,7 @@ function writeParams(params) {
 
 function updateInputDecorations() {
   syncSharedFocalControls();
+  syncNonhelicalPlaneControl();
   const thickness=Number(form.elements.namedItem('sliceThicknessMm').value);
   form.elements.namedItem('filterWidthMm').value=thickness;
   const average=document.getElementById('fdk-axialAverageMm');if(average)average.value=thickness;
@@ -248,6 +251,10 @@ function syncStaticReferenceLink() {
     if (input) p[key] = typeof value === 'number' ? Number(input.value) : input.value;
   }
   for (const [key, value] of Object.entries({n:p.rows,d:p.rowWidth,R:p.sourceRadius,D:p.focalSourceDetectorMm,r:p.radius,focus:p.focalSizeMm,nv:p.viewSamples,dz:p.zStep,from:'main'})) target.searchParams.set(key,value);
+  if (p.beamPitch === 0) {
+    target.searchParams.set("dz", p.nonhelicalStep);
+    if (p.nonhelicalRow > 0) target.searchParams.set("row", p.nonhelicalRow);
+  }
   if (document.documentElement.lang === 'en') target.searchParams.set('lang','en');
   target.searchParams.set('main',paramsToUrl(p).search);
   link.href = target.href;
@@ -281,6 +288,8 @@ function paramsToUrl(params) {
     nz: params.zSamples,
   };
   for (const [key, value] of Object.entries(compact)) url.searchParams.set(key, value);
+  if (params.nonhelicalRow > 0) url.searchParams.set("sr", params.nonhelicalRow);
+  if (params.nonhelicalStep > 0 && params.nonhelicalStep !== 0.005) url.searchParams.set("sdz", params.nonhelicalStep);
   writeFdkUrl(url, params);
   return url;
 }
@@ -312,6 +321,8 @@ function paramsFromUrl() {
       ? get('zffs_m',1072/600)*get('R',DEFAULT_PARAMS.sourceRadius) : 1070),
     detectorModel: "finite-channel",
     beamPitch: get("p", DEFAULT_PARAMS.beamPitch),
+    nonhelicalRow: query.has("sr") ? get("sr", "") : "",
+    nonhelicalStep: get("sdz", 0.005),
     rotationTime: ["rt", "rotationTime", "rotationTimeSec"].some(key => query.has(key))
       ? parseRotationTime(query.get(["rt", "rotationTime", "rotationTimeSec"].find(key => query.has(key))))
       : WEB_DEFAULT_PARAMS.rotationTime,
@@ -531,6 +542,7 @@ function runSimulation() {
   const params = readParams();
   lastResult = null;
   setBusy(true);
+  setNonhelicalStatus("loading", localizedText("ノンヘリカルの展開図とSSPzを計算中", "Calculating the non-helical diagram and SSPz"));
   lastPlaceholderPaint = 0;
   showCalculatingState(undefined, true);
   progress.value = 0;
@@ -547,6 +559,12 @@ function runSimulation() {
       progress.value = message.value;
       status.textContent = message.label;
       showCalculatingState(message.label);
+    } else if (message.type === "nonhelical-result") {
+      renderNonhelical(message.result);
+      progress.value = 1;
+      status.textContent = localizedText("ノンヘリカルの計算が完了しました", "Non-helical calculation complete");
+      setBusy(false);
+      releaseWorker();
     } else if (message.type === "geometry-result") {
       lastResult = message.result;
       const gap=lastResult.geometryReason==='detector-gap';
@@ -602,11 +620,13 @@ function runSimulation() {
       inspectPrev.disabled = false;
       inspectNext.disabled = false;
     } else if (message.type === "cancelled") {
+      setNonhelicalStatus("cancelled", localizedText("計算を中止しました", "Calculation cancelled"));
       status.textContent = "計算を中止しました";
       setResultPlaceholder("cancelled", "計算を中止しました", "条件を確認し、もう一度「計算する」を押してください。");
       setBusy(false);
       releaseWorker();
     } else if (message.type === "error") {
+      setNonhelicalStatus("error", message.message);
       showError(message.message);
       status.textContent = "計算エラー";
       setResultPlaceholder("error", "図を作成できませんでした", "上のエラー内容を確認してください。");
@@ -615,6 +635,7 @@ function runSimulation() {
     }
   };
   worker.onerror = event => {
+    setNonhelicalStatus("error", event.message || localizedText("計算エラー", "Calculation error"));
     showError(event.message || "Web Workerでエラーが発生しました。");
     status.textContent = "計算エラー";
     setResultPlaceholder("error", "図を作成できませんでした", "上のエラー内容を確認してください。");
@@ -1075,10 +1096,27 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
     y: diagram.yAxisLabel ?? localizedText("実データ側の角度  β  (°)", "Direct-data reference angle  β  (°)"),
     xFormatter: xAxis.formatter,
     yFormatter: value => Number(value).toFixed(0),
+    leftMargin: diagram.compactGeometry ? 132 : undefined,
     topMargin: 32,
-    bottomMargin: 320,
+    bottomMargin: diagram.compactGeometry ? 105 : 320,
   });
   const { ctx, margin, innerWidth, innerHeight, x, yDown } = plot;
+  if (diagram.coverageHalfWidth > 0) {
+    const trace = diagram.traceFamilies[0];
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(margin.left, margin.top, innerWidth, innerHeight);
+    ctx.clip();
+    ctx.beginPath();
+    const edgeAt = (index, side) => x(trace.axial[index] + side * diagram.coverageHalfWidth * trace.scales[index] - diagram.z0);
+    ctx.moveTo(edgeAt(0, -1), yDown(trace.angles[0]));
+    for (let i = 1; i < trace.angles.length; i += 1) ctx.lineTo(edgeAt(i, -1), yDown(trace.angles[i]));
+    for (let i = trace.angles.length - 1; i >= 0; i -= 1) ctx.lineTo(edgeAt(i, 1), yDown(trace.angles[i]));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(20, 87, 138, 0.12)";
+    ctx.fill();
+    ctx.restore();
+  }
   const averagingWidthMm = Math.max(0, Number(diagram.averagingWidthMm ?? diagram.configuredSliceThicknessMm ?? 0) || 0);
   const averagingHalfWidth = averagingWidthMm / 2;
   if (averagingHalfWidth > 0) {
@@ -1147,6 +1185,7 @@ function drawDiagram(canvas, diagram, mode = "zoom", sharedXLimit = null, focusX
   // height in the canvas dimensions rather than squeezing it for the legend.
   plot.labels.xLabelY = margin.top + innerHeight + 86;
   drawAxes(plot, xAxis.ticks, angleTicks, true, false);
+  if (diagram.compactGeometry) return;
   const legendTop = margin.top + innerHeight + 136;
   ctx.save(); ctx.strokeStyle = GRID; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(margin.left, legendTop - 27); ctx.lineTo(margin.left + innerWidth, legendTop - 27); ctx.stroke(); ctx.restore();
@@ -3465,10 +3504,20 @@ async function downloadCanvas(canvasId) {
 }
 
 runButton.addEventListener("click", runSimulation);
-cancelButton.addEventListener("click", () => worker?.postMessage({ type: "cancel" }));
+cancelButton.addEventListener("click", () => {
+  if (Number(form.elements.namedItem("beamPitch").value) === 0) {
+    releaseWorker();
+    const message = localizedText("計算を中止しました", "Calculation cancelled");
+    setNonhelicalStatus("cancelled", message);
+    status.textContent = message;
+    setBusy(false);
+  } else {
+    worker?.postMessage({ type: "cancel" });
+  }
+});
 resetButton.addEventListener("click", () => {
   selectedStateIndex = 0;
-  writeParams(WEB_DEFAULT_PARAMS);
+  writeParams({ ...WEB_DEFAULT_PARAMS, nonhelicalRow: "", nonhelicalStep: 0.005 });
   if (metricSelect) metricSelect.value = "fwhm";
   try { localStorage.removeItem("sspz-unwrapped-params"); } catch { /* storage may be disabled */ }
   try { history.replaceState(null, "", window.location.pathname); } catch { /* file:// may restrict history mutation */ }
@@ -3522,6 +3571,7 @@ downloadCsvButton.addEventListener("click", downloadSweepCsv);
 downloadProfileButton.addEventListener("click", downloadProfileCsv);
 document.querySelector('#download-excel-button').addEventListener('click',downloadAllProfilesExcel);
 downloadComplementaryGeometryButton?.addEventListener("click", downloadComplementaryGeometryCsv);
+document.getElementById("nonhelical-csv").addEventListener("click", downloadNonhelicalCsv);
 let acquisitionGeometryResizeFrame = 0;
 window.addEventListener("resize", () => {
   if (!lastResult) return;

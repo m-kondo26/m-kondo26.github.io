@@ -75,7 +75,14 @@
         </label>
         <label>Beam pitch
           <input id="beamPitch" name="beamPitch" type="number" min="0" max="3" step="0.025" value="0.875">
-          <small class="field-help">At 0, stationary-table diagrams are displayed. Interpolation points and SSPz are not calculated.</small>
+          <small class="field-help">At 0, calculate the non-helical diagram and model SSPz.</small>
+        </label>
+        <label id="nonhelical-plane-control" hidden>Non-helical reconstruction plane (row number)
+          <input id="nonhelicalRow" name="nonhelicalRow" type="number" min="1" max="4" step="1" placeholder="Near centre">
+          <small class="field-help">Leave blank to select a plane at a central detector row.</small>
+        </label>
+        <label id="nonhelical-step-control" hidden>Non-helical axial calculation spacing (mm)
+          <input id="nonhelicalStep" name="nonhelicalStep" type="number" min="0.001" max="1" step="0.001" value="0.005">
         </label>
         <label>Rotation time <span class="unit">s/rot</span>
           <input id="rotationTime" name="rotationTime" type="number" min="0.05" max="5" step="0.05" value="0.5" required>
@@ -124,6 +131,7 @@
             <option value="180">180 views (preview)</option>
             <option value="360" selected>360 views (standard)</option>
             <option value="720">720 views (fine)</option>
+            <option value="900">900 views</option>
             <option value="1200">1200 views (high precision)</option>
             <option value="1440">1440 views</option>
             <option value="2400">2400 views</option>
@@ -154,6 +162,27 @@
         <span id="status" role="status" aria-live="polite">Ready to compute</span>
       </div>
       <div id="error-box" class="error-box" role="alert" hidden></div>
+    </section>
+
+    <section id="nonhelical-panel" aria-labelledby="nonhelical-title" hidden>
+      <div class="section-heading">
+        <h2 id="nonhelical-title">Non-helical sampling diagram and model SSPz</h2>
+      </div>
+      <p id="nonhelical-summary" aria-live="polite"></p>
+      <div class="chart-grid two">
+        <article class="chart-card">
+          <h3>Detector-row diagram at the selected position</h3>
+          <canvas id="nonhelical-diagram" width="900" height="660" aria-label="Non-helical diagram relative to the selected reconstruction plane"></canvas>
+          <p>The shaded band shows beam coverage for the mean focal position. The red line marks the selected reconstruction plane.</p>
+        </article>
+        <article class="chart-card">
+          <h3>SSPz at isocentre and the selected position</h3>
+          <canvas id="nonhelical-profile" width="900" height="660" aria-label="Model SSPz at isocentre and the selected position on the same reconstruction plane"></canvas>
+          <ul id="nonhelical-metrics" aria-label="FWHM by position"></ul>
+          <button id="nonhelical-csv" type="button" class="secondary" disabled>Non-helical SSPz CSV</button>
+        </article>
+      </div>
+      <p class="model-note">The model combines one full turn using the axial row aperture (equal to the row spacing), finite focal spot, linear row interpolation and distance weighting. It reports the angular fraction requiring end-row substitution. The helical thickness T and transaxial aperture are outside this model.</p>
     </section>
 
     <section aria-labelledby="geometry-title">
@@ -505,7 +534,7 @@
     <p id="version">Web build 2026-10-22.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1</p>
   </footer>
 
-  <script src="worker-source-en.js?v=2026-10-22.2"></script>
-  <script src="app-bundle-en.js?v=2026-10-22.2"></script>
+  <script src="worker-source-en.js?v=2026-11-12.1"></script>
+  <script src="app-bundle-en.js?v=2026-11-12.1"></script>
 </body>
 </html>

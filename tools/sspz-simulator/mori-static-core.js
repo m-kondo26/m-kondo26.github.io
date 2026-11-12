@@ -238,15 +238,33 @@ function measure(z,raw,g,zPlane,moments) {
 // One yield per completed detector row lets the browser report progress and
 // service controls without reducing the requested angles or axial samples.
 // All operations and accumulation order are shared with the synchronous API.
+function staticProfileAtRow(c, row, radius, z, grid, geometries) {
+  const result = accumulate(c, row, radius, z, grid, c.viewSamples, geometries);
+  const zPlane = rowZ(c, row);
+  return { row, zPlane, ...measure(z, result.raw, grid, zPlane, result.moments),
+    edgeCount: result.edgeCount, edgeFraction: result.edgeCount / c.viewSamples, weightSum: result.weightSum };
+}
+
+export function moriStaticComparePlane(config, requestedRow) {
+  const c = moriStaticConfig(config);
+  const row = requestedRow ?? Math.floor(c.rows / 2);
+  if (!Number.isInteger(row) || row < 0 || row >= c.rows) throw new RangeError('Invalid reconstruction plane');
+  const z = moriStaticGrid(c);
+  const grid = gridInfo(z);
+  const profiles = c.radii.map(radius => ({
+    radius,
+    ...staticProfileAtRow(c, row, radius, z, grid, sampledGeometry(c, radius)),
+  }));
+  return { version: MORI_STATIC_VERSION, config: c, z, profiles };
+}
+
 export function* moriStaticCalculateSteps(config={}) {
   const c=moriStaticConfig(config),z=moriStaticGrid(c),g=gridInfo(z),groups=[];
   let completed=0;const total=c.rows*c.radii.length;
   for(const radius of c.radii){
     const profiles=[],geometries=sampledGeometry(c,radius);
     for(let row=0;row<c.rows;row++){
-      const result=accumulate(c,row,radius,z,g,c.viewSamples,geometries),zPlane=rowZ(c,row);
-      profiles.push({row,zPlane,...measure(z,result.raw,g,zPlane,result.moments),edgeCount:result.edgeCount,
-        edgeFraction:result.edgeCount/c.viewSamples,weightSum:result.weightSum});
+      profiles.push(staticProfileAtRow(c, row, radius, z, g, geometries));
       yield {completed:++completed,total,radius,row};
     }
     groups.push({radius,profiles});

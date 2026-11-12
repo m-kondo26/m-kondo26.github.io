@@ -134,18 +134,24 @@ function initializeFdkUi(initial){
   document.querySelector('.control-shell').after(panel);
   initializeFdkWorkflow(panel);
   const viewHelp=document.querySelector('#viewSamples')?.parentElement.querySelector('small');
-  const axialViewHelp=viewHelp?.textContent;
   function modeChanged(){
     modelChoice.sync();
     const hadResultOrPending=!!fdkResult||loadingCanvasStatuses.size>0;
     fdkInspectionRequest++;clearTimeout(fdkInspectionTimer);releaseWorker();if(runButton.disabled)setBusy(false);
-    const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=false;panel.hidden=!on;
+    const on=Number(form.elements.namedItem('beamPitch').value)>0;controls.hidden=!on;panel.hidden=!on;
+    document.getElementById('nonhelical-panel').hidden=on;
+    pick.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('条件を変更しました。再計算してください。','Settings changed. Recalculate.'),'idle');}
-    document.querySelectorAll('main > section').forEach(s=>{if(s!==panel&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title'))s.hidden=on;});
+    document.querySelectorAll('main > section').forEach(s=>{
+      if(s!==panel&&s.id!=='nonhelical-panel'&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title')){
+        s.hidden=on||['geometry-title','response-title','shape-title','method-title'].includes(s.getAttribute('aria-labelledby'));
+      }
+    });
     document.getElementById('sspz-variation').hidden=!on;
-    for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',on);
-    const help=document.querySelector('#beamPitch')?.parentElement.querySelector('small');if(help)help.hidden=on;
-    if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の点応答はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):axialViewHelp;
+    for(const k of ['filterSamples','profileMode','reconstructionPath','zSamples'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',true);
+    for(const k of ['sliceThicknessMm','channelApertureMm','channelWidth'])document.getElementById(k)?.closest('label')?.toggleAttribute('hidden',!on);
+    syncNonhelicalPlaneControl();
+    if(viewHelp)viewHelp.textContent=on?fdkText('1回転の実取得ビュー数です。周辺の点応答はビュー数の影響を受けます。720・1440・2400で結果の変化を確認できます。','Acquired views per full turn. Off-centre point responses are sensitive to view sampling; compare 720, 1440 and 2400 views.'):fdkText('0°以上360°未満に等間隔で配置するビュー数です。','Number of evenly spaced views from 0° inclusive to 360° exclusive.');
 
     syncZffsUi();
     if(!runButton.disabled)status.textContent=fdkText('コーン幾何で評価位置を比較します。','Compare evaluation positions using cone geometry.');

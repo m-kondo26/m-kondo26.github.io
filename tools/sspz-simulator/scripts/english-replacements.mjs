@@ -728,6 +728,26 @@ replacements.unshift(["中心断面", "Centre plane"]);
 replacements.unshift(["淡灰色帯：平均化範囲（T = ${averagingWidthMm.toFixed(2)} mm）", "Gray band: averaging range (T = ${averagingWidthMm.toFixed(2)} mm)"]);
 replacements.unshift(["T = 0 mm：中心断面のみ（平均化なし）", "T = 0 mm: centre plane only (no axial averaging)"]);
 
+replacements.unshift(
+  ["900ビュー","900 views"],
+  ["ノンヘリカルの展開図とSSPzを計算中","Calculating the non-helical diagram and SSPz"],
+  ["ノンヘリカルの計算が完了しました","Non-helical calculation complete"],
+  ["0ではノンヘリカルの展開図とモデルSSPzを計算します。","At 0, calculate the non-helical diagram and model SSPz."],
+  ["ノンヘリカルの再構成面（列番号）","Non-helical reconstruction plane (row number)"],
+  ["中央付近","Near centre"],
+  ["空欄では中央付近の列に対応する面を選びます。","Leave blank to select a plane at a central detector row."],
+  ["ノンヘリカルの体軸計算間隔 (mm)","Non-helical axial calculation spacing (mm)"],
+  ["ノンヘリカルの展開図とモデルSSPz","Non-helical sampling diagram and model SSPz"],
+  ["指定位置の検出器列の展開図","Detector-row diagram at the selected position"],
+  ["選択した再構成面を原点とするノンヘリカル展開図","Non-helical diagram relative to the selected reconstruction plane"],
+  ["回転中心と指定位置のSSPz","SSPz at isocentre and the selected position"],
+  ["同じ再構成面で比較した回転中心と指定位置のモデルSSPz","Model SSPz at isocentre and the selected position on the same reconstruction plane"],
+  ["位置ごとのFWHM","FWHM by position"],
+  ["淡い帯は平均焦点でのビームのカバー範囲、赤い線は選択した再構成面です。","The shaded band shows beam coverage for the mean focal position. The red line marks the selected reconstruction plane."],
+  ["ノンヘリカルSSPzのCSV","Non-helical SSPz CSV"],
+  ["列の体軸開口幅を列間隔と同じとし、有限焦点、列間線形補間、距離重みを用いて1回転分の応答を合算します。ヘリカルの設定厚Tと面内開口はこのモデルに適用しません。端列で代用した角度の割合を併記します。","The model combines one full turn using the axial row aperture (equal to the row spacing), finite focal spot, linear row interpolation and distance weighting. It reports the angular fraction requiring end-row substitution. The helical thickness T and transaxial aperture are outside this model."],
+);
+
 export function translateEnglishSource(source) {
   let translated = source;
   for (const [japanese, english] of [...replacements].sort((a, b) => b[0].length - a[0].length)) {

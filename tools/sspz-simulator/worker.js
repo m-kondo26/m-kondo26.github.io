@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PARAMS,
   RECONSTRUCTION_PATHS,
   createProfileAssumptions,
   computeAllCandidateAxialSpreadSeries,
@@ -12,6 +13,7 @@ import { reconstructFdkSeries, reconstructFdk } from "./fdk-core.js";
 import { reconstructRriSeries, reconstructRri } from "./cba-core.js";
 import { computeAxialResponseSeries, computeAxialResponse } from "./axial-response-core.js";
 import { createAxialAnimationAudit } from "./axial-animation-core.js";
+import { moriStaticComparePlane } from "./mori-static-core.js";
 
 let cancelled = false;
 let activeContext = null;
@@ -196,12 +198,38 @@ self.onmessage = async event => {
   positionPreviewToken++;
   activeContext = null;
   try {
-    const params = validateParams(message.params, { allowZeroPitch: true });
+    if (Number(message.params.beamPitch) === 0) {
+      const { rows, rowWidth, sourceRadius, radius, viewSamples, focalSizeMm,
+        focalSourceDetectorMm, nonhelicalStep, nonhelicalRow } = message.params;
+      const params = validateParams({
+        ...DEFAULT_PARAMS, beamPitch: 0, rows, rowWidth, sourceRadius, radius, viewSamples,
+      }, { allowZeroPitch: true });
+      const response = moriStaticComparePlane({
+        rows: params.rows,
+        rowPitch: params.rowWidth,
+        axialAperture: params.rowWidth,
+        sourceRadius: params.sourceRadius,
+        detectorDistance: focalSourceDetectorMm ?? 1070,
+        focalSizeMm: focalSizeMm ?? 0,
+        viewSamples: params.viewSamples,
+        zStep: nonhelicalStep ?? 0.005,
+        radii: params.radius === 0 ? [0] : [0, params.radius],
+      }, nonhelicalRow ? nonhelicalRow - 1 : undefined);
+      const diagram = computeUnwrapped({ ...params, zReference: response.profiles[0].zPlane }, {
+        coneOn: true,
+        reconstructionPath: RECONSTRUCTION_PATHS.DIRECT_FULL_SCAN,
+      });
+      // The stationary diagram shows the selected plane and the acquired rows.
+      diagram.averagingWidthMm = 0;
+      self.postMessage({ type: "nonhelical-result", result: { response, diagram } });
+      return;
+    }
+    const params = validateParams(message.params);
     const detectorGap=params.detectorModel==='finite-channel' && params.radius===0 && params.channelApertureMm<params.channelWidth;
-    if (params.beamPitch === 0 || detectorGap) {
+    if (detectorGap) {
       activeContext = null;
       self.postMessage({ type: "geometry-result", result: {
-        params, geometryOnly: true, geometryReason: params.beamPitch===0?'zero-pitch':'detector-gap',
+        params, geometryOnly: true, geometryReason: 'detector-gap',
         diagramOff: computeUnwrapped(params, { coneOn: false }),
         diagramOn: computeUnwrapped(params, { coneOn: true }),
       } });

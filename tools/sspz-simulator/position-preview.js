@@ -52,7 +52,7 @@ function syncPositionControls(){
   document.getElementById('position-radius-value').textContent=`${radius} mm`;
   const on=Number(form.elements.namedItem('beamPitch').value)>0;
   document.getElementById('position-preview').hidden=!on;
-  runButton.textContent=on?fdkText('全360開始角度を計算する','Calculate all 360 start angles'):fdkText('寝台静止時の展開図を計算する','Calculate stationary-table geometry');
+  runButton.textContent=on?fdkText('全360開始角度を計算する','Calculate all 360 start angles'):fdkText('ノンヘリカルの展開図とSSPzを計算する','Calculate non-helical diagram and SSPz');
   if(!on)for(const id of ['diagram-overview-off','diagram-zoom-off'])document.getElementById(id)?.closest('article')?.setAttribute('hidden','');
   document.getElementById('position-angle').textContent=((Number(document.getElementById('fdk-phase').value)*180/Math.PI)%360).toFixed(1)+'°';
 }
@@ -94,7 +94,14 @@ function schedulePositionPreview(delay=220){
   document.getElementById('position-preview').hidden=Number(form.elements.namedItem('beamPitch').value)<=0;
   holdPositionResult(fdkText('新しい条件を計算中…','Computing the new settings…'));
   status.textContent=fdkText('位置に連動して計算します。全360開始角度は計算ボタンで実行できます。','Position-linked calculation. Use Calculate for all 360 start angles.');
-  if(Number(form.elements.namedItem('beamPitch').value)<=0){clearCanvasStatusAnimations();positionTimer=setTimeout(runSimulation,delay);return;}
+  if(Number(form.elements.namedItem('beamPitch').value)<=0){
+    clearCanvasStatusAnimations();
+    const message=fdkText('ノンヘリカルの条件を計算中…','Calculating non-helical settings…');
+    status.textContent=message;
+    setNonhelicalStatus('loading',message);
+    positionTimer=setTimeout(runSimulation,delay);
+    return;
+  }
   positionTimer=setTimeout(runPositionPreview,delay);
 }
 function runPositionPreview(){
