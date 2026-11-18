@@ -24,13 +24,16 @@ const shapeExport=await readFile(new URL("../shape-export.js", import.meta.url),
 const shapeDisplay=await readFile(new URL("../shape-display.js", import.meta.url), "utf8");
 const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'utf8');
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
+const acquisitionPlayback = stripExports(stripImports(await readFile(new URL("../acquisition-playback-core.js", import.meta.url), "utf8")))
+  + "\n" + (await readFile(new URL("../acquisition-playback-render.js", import.meta.url), "utf8"))
+  + "\n" + (await readFile(new URL("../acquisition-playback-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
 const stationaryUi=await readFile(new URL('../nonhelical-ui.js', import.meta.url), 'utf8');
 const taguchiCore='const SSPZTaguchi=(()=>{\n'+stripExports(await readFile(new URL('../taguchi-tsp-core.js',import.meta.url),'utf8'))+'\nreturn {computeTaguchiTsp};})();\n';
 const positionUi=(await readFile(new URL('../temporal-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../position-preview.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../candidate-density-ui.js',import.meta.url),'utf8'));
 const densitySourceGeometry=stripExports(await readFile(new URL('../axial-source-support.js',import.meta.url),'utf8'))+'\n'+fdk.match(/function fdkWidth\([\s\S]*?\n\}/)[0]+'\n'+stripExports(await readFile(new URL('../axial-source-response.js',import.meta.url),'utf8')).match(/function sourceAxialGroups\([\s\S]*?\n\}/)[0];
 const densityCore=stripExports(stripImports(await readFile(new URL('../candidate-density-core.js',import.meta.url),'utf8')));
-const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + stationaryUi + '\n' + mainApp;
+const app = shapeExport + '\n' + shapeDisplay + '\n' + modelChoice + '\n' + fdkUi + '\n' + positionUi + '\n' + stationaryUi + '\n' + acquisitionPlayback + '\n' + mainApp;
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
 const workerBundle = `"use strict";\n${core}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${stationary}\n${worker}\n`;
@@ -47,7 +50,9 @@ const englishWorker = translateEnglishSource(worker);
 const englishFdkUi=(modelChoice+'\n'+fdkUi+'\n'+positionUi+'\n'+stationaryUi)
   .replace(/(fdkText|localizedText)\(\s*`[^`]*[ぁ-んァ-ヶ一-龠々〇][^`]*`,/g,'$1(``,')
   .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, literal=>/[ぁ-んァ-ヶ一-龠々〇]/.test(literal)?"''":literal);
-const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi+'\n'+mainApp);
+// The acquisition panel and canvases use explicit `text(Japanese, English)` strings.
+const englishAcquisitionPlayback = acquisitionPlayback.replace(/(\btext\(\s*)(?:"(?:\\.|[^"\\])*"|`[^`]*`)(\s*,)/g, '$1""$2');
+const englishApp = translateEnglishSource(shapeExport+'\n'+shapeDisplay+'\n'+englishFdkUi)+'\n'+englishAcquisitionPlayback+'\n'+translateEnglishSource(mainApp);
 const englishWorkerBundle = `"use strict";\n${englishCore}\n${fdk}\n${cba}\n${zffsGeometry}\n${zffsResponse}\n${axialResponse}\n${animation}\n${stationary}\n${englishWorker}\n`;
 const englishAppBundle = `(() => {\n"use strict";\n${englishCore}\n${cbaGeometry}\n${zffsGeometry}\n${animationGeometry}\n${densitySourceGeometry}\n${densityCore}\n${taguchiCore}\n${englishApp}\n})();\n`;
 const englishWorkerSource = `globalThis.SSPZ_WORKER_SOURCE = ${JSON.stringify(englishWorkerBundle)};\n`;

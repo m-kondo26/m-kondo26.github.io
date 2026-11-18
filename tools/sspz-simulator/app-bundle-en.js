@@ -4718,7 +4718,7 @@ function initializeFdkUi(initial){
     pick.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('','Settings changed. Recalculate.'),'idle');}
     document.querySelectorAll('main > section').forEach(s=>{
-      if(s!==panel&&s.id!=='nonhelical-panel'&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title')){
+      if(s!==panel&&s.id!=='acquisition-playback'&&s.id!=='nonhelical-panel'&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title')){
         s.hidden=on||['geometry-title','response-title','shape-title','method-title'].includes(s.getAttribute('aria-labelledby'));
       }
     });
@@ -5589,6 +5589,607 @@ function downloadNonhelicalCsv() {
   downloadBlob(`sspz_nonhelical_row_${row + 1}.csv`, "\uFEFF" + rows.map(values => values.map(csvEscape).join(",")).join("\r\n"));
 }
 
+const ACQUISITION_TURN = 2 * Math.PI;
+const ACQUISITION_RADIANS = Math.PI / 180;
+const ACQUISITION_TRACK_STEPS = 180;
+
+function createAcquisitionPlayback(params = {}) {
+  const rows = Number(params.rows ?? DEFAULT_PARAMS.rows);
+  const rowWidth = Number(params.rowWidth ?? DEFAULT_PARAMS.rowWidth);
+  const radius = Number(params.radius ?? DEFAULT_PARAMS.radius);
+  const sourceRadius = Number(params.sourceRadius ?? DEFAULT_PARAMS.sourceRadius);
+  const detectorDistance = Number(params.focalSourceDetectorMm ?? params.detectorDistance ?? 1070);
+  const beamPitch = Number(params.beamPitch ?? DEFAULT_PARAMS.beamPitch);
+  const rotationTime = Number(params.rotationTime ?? 0.5);
+  const fullFanAngleDeg = Number(params.fullFanAngleDeg ?? 50);
+  const start = Number(params.startAngleDeg ?? Number(params.phase ?? 0) / ACQUISITION_RADIANS);
+
+  if (!Number.isInteger(rows) || rows < 1 || rows > 320) {
+    throw new RangeError("rows: integer between 1 and 320");
+  }
+  if (![rowWidth, sourceRadius, detectorDistance, rotationTime].every(n => Number.isFinite(n) && n > 0)) {
+    throw new RangeError("row width, scanner distances and rotation time must be positive");
+  }
+  if (!Number.isFinite(radius) || radius < 0 || radius >= sourceRadius || detectorDistance <= sourceRadius) {
+    throw new RangeError("evaluation radius must be inside the source orbit and detector distance must exceed the source radius");
+  }
+  if (!Number.isFinite(beamPitch) || beamPitch < 0 || beamPitch > 3) {
+    throw new RangeError("beam pitch must be between 0 and 3");
+  }
+  if (!Number.isFinite(fullFanAngleDeg) || fullFanAngleDeg <= 0 || fullFanAngleDeg >= 180 || !Number.isFinite(start)) {
+    throw new RangeError("valid full fan angle and tube start angle required");
+  }
+
+  const tableFeed = tableFeedMm({ beamPitch, rows, rowWidth });
+  const centerRowIndex = (rows - 1) / 2;
+  // The stationary SSPz calculation uses a 1-based reconstruction row in the form.
+  // Its blank setting selects the upper middle row of an even-row detector.
+  const requestedRow = Number(params.nonhelicalRow ?? 0);
+  const selectedRow = requestedRow === 0 ? Math.floor(rows / 2) + 1 : requestedRow;
+  if (beamPitch === 0 && (!Number.isInteger(selectedRow) || selectedRow < 1 || selectedRow > rows)) {
+    throw new RangeError("stationary reconstruction row is outside the detector");
+  }
+  const referenceZ = beamPitch === 0
+    ? (selectedRow - 1 - centerRowIndex) * rowWidth
+    : Number(params.referenceZ ?? params.zReference ?? 0);
+  const startAngleDeg = ((start % 360) + 360) % 360;
+  const initialBeta = startAngleDeg * ACQUISITION_RADIANS;
+  const halfFan = fullFanAngleDeg * ACQUISITION_RADIANS / 2;
+  const rowOffsets = Array.from({ length: rows }, (_, row) => (row - centerRowIndex) * rowWidth);
+  const detectorScale = detectorDistance / sourceRadius;
+
+  // The evaluation point is at (radius, 0). Its ray direction in screen
+  // coordinates advances monotonically with the clockwise tube angle.
+  const directionOffset = beta => Math.atan2(radius * Math.sin(beta), sourceRadius - radius * Math.cos(beta));
+  const initialDirectionOffset = directionOffset(initialBeta);
+  const halfDetectorWidth = rows * rowWidth / 2;
+  const envelope = halfDetectorWidth * Math.max(detectorScale, 1 + radius / sourceRadius);
+  const limits = [Math.min(-envelope, referenceZ), Math.max(tableFeed + envelope, referenceZ)];
+  const margin = (limits[1] - limits[0]) * 0.06;
+  const domain = [limits[0] - margin, limits[1] + margin];
+  if (!domain.every(Number.isFinite)) {
+    throw new RangeError("invalid longitudinal extent");
+  }
+
+  function frame(fraction, moving) {
+    if (!Number.isFinite(fraction)) throw new RangeError("drawing progress must be finite");
+    const progress = Math.max(0, Math.min(1, fraction));
+    const sourceDeg = 360 * progress;
+    const beta = initialBeta + ACQUISITION_TURN * progress;
+    const offset = directionOffset(beta);
+    const directionDeg = (progress === 0 || progress === 1)
+      ? sourceDeg : sourceDeg + (offset - initialDirectionOffset) / ACQUISITION_RADIANS;
+    const sourceX = sourceRadius * Math.cos(beta);
+    const sourceY = sourceRadius * Math.sin(beta);
+    const dx = radius - sourceX;
+    const dy = -sourceY;
+    const distance = Math.hypot(dx, dy);
+    const sourceZ = moving ? tableFeed * progress : 0;
+    // The physical detector follows the focal spot's translation. At the
+    // evaluation line, similar triangles scale its offsets by distance / D.
+    const detectorZ = rowOffsets.map(z => sourceZ + z * detectorScale);
+    const intersections = rowOffsets.map(z => sourceZ + z * distance / sourceRadius);
+    return {
+      sourceX, sourceY, detectorX: sourceX + dx * detectorDistance / distance,
+      detectorY: sourceY + dy * detectorDistance / distance,
+      distance, sourceDeg, directionDeg, sourceZ, detectorZ, intersections, beta,
+      detectorBeyondTarget: detectorDistance > distance,
+      withinFan: Math.abs(offset) <= halfFan + 1e-12,
+    };
+  }
+
+  const makeTrack = moving => Array.from(
+    { length: ACQUISITION_TRACK_STEPS + 1 },
+    (_, step) => frame(step / ACQUISITION_TRACK_STEPS, moving),
+  );
+  const baseline = makeTrack(false);
+  let movingTrack;
+  function track(moving) {
+    if (!moving || tableFeed === 0) return baseline;
+    movingTrack ??= makeTrack(true);
+    return movingTrack;
+  }
+
+  return {
+    rows, rowWidth, radius, sourceRadius, detectorDistance, tableFeed, rotationTime,
+    referenceZ, domain, fullFanAngleDeg, startAngleDeg, baseline, track, frame,
+    detectorBeyondTarget: detectorDistance > sourceRadius + radius,
+    targetWithinFan: Math.asin(radius / sourceRadius) <= halfFan + 1e-12,
+  };
+}
+
+// One acquisition frame has the same row identity in all three panels.
+const drawAcquisitionPlayback = (() => {
+  const ink = "#173644";
+  const muted = "#47616d";
+  const grid = "#dfebef";
+  const guide = "#8399a2";
+  const ray = "#0b6779";
+  const palette = ["#ad411a", "#866300", "#005993", "#00775b", "#a13160", "#61448c", "#456b20", "#5a5869"];
+  const diagramLayers = new WeakMap();
+
+  function rowColor(row, count) {
+    if (count <= palette.length) return palette[row];
+    return `hsl(${(12 + 312 * row / (count - 1)).toFixed(2)}, 72%, 35%)`;
+  }
+
+  function line(ctx, x1, y1, x2, y2, color, width = 1) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  function dot(ctx, x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  function label(ctx, value, x, y, { color = ink, size = 14, align = "left", bold = false, background = false } = {}) {
+    ctx.font = `${bold ? "600 " : ""}${size}px system-ui, sans-serif`;
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    if (background) {
+      const width = ctx.measureText(value).width;
+      const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fillRect(left - 3, y - size * 0.56, width + 6, size * 1.12);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(value, x, y);
+  }
+
+  function clear(canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return ctx;
+  }
+
+  function drawTransverse(canvas, model, frame, text) {
+    const ctx = clear(canvas);
+    const { sourceRadius: radius, detectorDistance, fullFanAngleDeg } = model;
+    const halfFan = fullFanAngleDeg * Math.PI / 360;
+    const detectorExtent = Math.hypot(radius - detectorDistance * Math.cos(halfFan), detectorDistance * Math.sin(halfFan));
+    const cx = canvas.width / 2;
+    const cy = (canvas.height - 22) / 2;
+    const scale = (Math.min(canvas.width, canvas.height - 22) / 2 - 26) / Math.max(radius, detectorExtent);
+    const x = value => cx + scale * value;
+    const y = value => cy + scale * value;
+    const sx = x(frame.sourceX);
+    const sy = y(frame.sourceY);
+    const tx = x(model.radius);
+    const dx = x(frame.detectorX);
+    const dy = y(frame.detectorY);
+    const axis = frame.beta + Math.PI;
+    const reachesDetector = frame.detectorBeyondTarget && frame.withinFan;
+
+    line(ctx, cx - radius * scale, cy, cx + radius * scale, cy, grid);
+    line(ctx, cx, cy - radius * scale, cx, cy + radius * scale, grid);
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = "#9ab1bd";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * scale, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.arc(sx, sy, detectorDistance * scale, axis - halfFan, axis + halfFan);
+    ctx.closePath();
+    ctx.fillStyle = "#e4f1f4";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, detectorDistance * scale, axis - halfFan, axis + halfFan);
+    ctx.strokeStyle = "#548e9c";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    if (!reachesDetector) ctx.setLineDash([5, 4]);
+    line(ctx, sx, sy, reachesDetector ? dx : tx, reachesDetector ? dy : cy, ray, 2.4);
+    ctx.setLineDash([]);
+    if (reachesDetector) dot(ctx, dx, dy, 3.5, ray);
+    dot(ctx, cx, cy, 3.2, muted);
+    dot(ctx, tx, cy, 4.4, ray);
+    ctx.fillStyle = ink;
+    ctx.fillRect(sx - 4.5, sy - 4.5, 9, 9);
+    label(ctx, "O", cx - 7, cy + 14, { color: muted, align: "right" });
+    label(ctx, "P", tx + 7, cy - 12, { color: ray, bold: true });
+    const centreDx = x(frame.sourceX - frame.sourceX / radius * detectorDistance);
+    const centreDy = y(frame.sourceY - frame.sourceY / radius * detectorDistance);
+    label(ctx, text("", "Detector"), centreDx, centreDy + (centreDy > cy ? 15 : -14),
+      { color: muted, align: "center", size: 13, background: true });
+    label(ctx, text("", "Source"), sx, sy + (sy > cy ? 15 : -14),
+      { align: "center", size: 13, background: true });
+    label(ctx, text("", "O Isocentre     P Target"), cx, canvas.height - 18,
+      { color: muted, align: "center" });
+  }
+
+  function zTicks(min, max) {
+    const target = (max - min) / 5;
+    const unit = 10 ** Math.floor(Math.log10(target));
+    const step = [1, 2, 2.5, 5, 10].find(value => value * unit >= target) * unit;
+    const count = Math.floor(max / step + 1e-9) - Math.ceil(min / step - 1e-9) + 1;
+    return Array.from({ length: count }, (_, index) => (index + Math.ceil(min / step - 1e-9)) * step);
+  }
+
+  function zAxes(ctx, canvas, model, text) {
+    const [min, max] = model.domain;
+    const left = 62;
+    const right = canvas.width - 22;
+    const top = 37;
+    const bottom = canvas.height - 54;
+    const x = value => left + (value - min) / (max - min) * (right - left);
+    for (const value of zTicks(min - model.referenceZ, max - model.referenceZ)) {
+      const xx = x(value + model.referenceZ);
+      line(ctx, xx, top, xx, bottom, grid);
+      label(ctx, String(Number(value.toPrecision(8))), xx, bottom + 17, { color: muted, align: "center" });
+    }
+    if (model.referenceZ >= min && model.referenceZ <= max) {
+      const xx = x(model.referenceZ);
+      line(ctx, xx, top, xx, bottom, "#a7bdc6", 1.2);
+    }
+    line(ctx, left, bottom, right, bottom, guide);
+    const zLabel = model.tableFeed === 0
+      ? text("", "Axial offset from the plane z − z₀ (mm)")
+      : text("", "Axial position z (mm)");
+    label(ctx, zLabel, (left + right) / 2, canvas.height - 14, { align: "center", bold: true });
+    return { x, left, right, top, bottom };
+  }
+
+  function drawLongitudinal(canvas, model, frame, text) {
+    const ctx = clear(canvas);
+    const { x, left, right, top, bottom } = zAxes(ctx, canvas, model, text);
+    const depth = Math.max(model.detectorDistance, model.sourceRadius + model.radius);
+    const depthY = distance => top + (bottom - top - 49) * distance / depth;
+    const focusX = x(frame.sourceZ);
+    const focusY = depthY(0);
+    const detectorY = depthY(model.detectorDistance);
+    const targetY = depthY(frame.distance);
+    const detectorStep = model.rowWidth * model.detectorDistance / model.sourceRadius;
+    const edgeA = x(frame.detectorZ[0] - detectorStep / 2);
+    const edgeB = x(frame.detectorZ[model.rows - 1] + detectorStep / 2);
+    const rowSize = Math.max(1.3, Math.min(4.2, (edgeB - edgeA) / model.rows * 0.31));
+    const numerous = model.rows > 24;
+
+    ctx.setLineDash([5, 4]);
+    line(ctx, left, targetY, right, targetY, guide, 1.3);
+    ctx.setLineDash([]);
+    const visibleA = Math.max(left, edgeA);
+    const visibleB = Math.min(right, edgeB);
+    ctx.fillStyle = "#e8f0f2";
+    ctx.fillRect(visibleA, detectorY - 6, visibleB - visibleA, 12);
+    line(ctx, visibleA, detectorY, visibleB, detectorY, "#90a8b3");
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left - 1, top - 7, right - left + 2, bottom - top);
+    ctx.clip();
+    for (let i = 0; i < model.rows; ++i) {
+      const color = rowColor(i, model.rows);
+      const colX = x(frame.detectorZ[i]);
+      const hitX = x(frame.intersections[i]);
+      ctx.globalAlpha = numerous ? 0.29 : 0.88;
+      if (!frame.withinFan) ctx.setLineDash([4, 4]);
+      line(ctx, focusX, focusY, colX, detectorY, color, numerous ? 0.7 : 1.65);
+      ctx.setLineDash([]);
+      if (!frame.detectorBeyondTarget) {
+        ctx.setLineDash([4, 4]);
+        line(ctx, colX, detectorY, hitX, targetY, color, numerous ? 0.7 : 1.4);
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(colX - rowSize, detectorY - rowSize, 2 * rowSize, 2 * rowSize);
+      dot(ctx, hitX, targetY, rowSize + 0.6, color);
+      if (model.rows <= 10 && (edgeB - edgeA) / model.rows > 13) {
+        label(ctx, String(i + 1), colX, detectorY + 14, { color, align: "center", size: 12, bold: true });
+      }
+    }
+    ctx.restore();
+
+    dot(ctx, focusX, focusY, 4.7, ink);
+    label(ctx, text("", "Source"), focusX, focusY - 15, { align: "center", size: 13, bold: true });
+    label(ctx, text("", "Z line at target P"), left + 4, targetY - 11,
+      { color: muted, size: 12, background: true });
+    label(ctx, text("", "Detector"), (visibleA + visibleB) / 2, detectorY + 32,
+      { color: muted, size: 13, align: "center" });
+  }
+
+  function trackLayer(canvas, model, plot, moving, reference) {
+    const layer = canvas.ownerDocument.createElement("canvas");
+    layer.width = canvas.width;
+    layer.height = canvas.height;
+    const ctx = layer.getContext("2d");
+    const track = model.track(moving);
+    const numerous = model.rows > 24;
+    ctx.globalAlpha = reference ? (numerous ? 0.28 : 0.74) : (numerous ? 0.48 : 1);
+    ctx.lineWidth = numerous ? 0.7 : reference ? 1.35 : 2;
+    const visible = frame => frame.detectorBeyondTarget && frame.withinFan;
+    for (let row = 0; row < model.rows; row++) {
+      ctx.strokeStyle = reference ? "#97a8ad" : rowColor(row, model.rows);
+      const moveTo = sample => ctx.moveTo(plot.x(sample.intersections[row]), plot.y(sample.directionDeg));
+      let dashed = reference || !visible(track[0]) || !visible(track[1]);
+      ctx.setLineDash(dashed ? [4, 4] : []);
+      ctx.beginPath();
+      moveTo(track[0]);
+      for (let i = 1; i < track.length; i++) {
+        const nextDashed = reference || !visible(track[i - 1]) || !visible(track[i]);
+        if (nextDashed !== dashed) {
+          ctx.stroke();
+          dashed = nextDashed;
+          ctx.setLineDash(dashed ? [4, 4] : []);
+          ctx.beginPath();
+          moveTo(track[i - 1]);
+        }
+        ctx.lineTo(plot.x(track[i].intersections[row]), plot.y(track[i].directionDeg));
+      }
+      ctx.stroke();
+    }
+    return layer;
+  }
+
+  function drawUnwrapped(canvas, model, frame, moving, text) {
+    const ctx = clear(canvas);
+    const plot = zAxes(ctx, canvas, model, text);
+    const { x, left, right, top, bottom } = plot;
+    const y = degree => top + (bottom - top) * degree / 360;
+    for (let degree = 0; degree <= 360; degree += 60) {
+      line(ctx, left, y(degree), right, y(degree), degree === 360 ? guide : grid);
+      label(ctx, `${degree}°`, left - 8, y(degree), { align: "right", color: muted });
+    }
+    line(ctx, left, top, left, bottom, guide);
+    ctx.save();
+    ctx.translate(16, (top + bottom) / 2);
+    ctx.rotate(-Math.PI / 2);
+    label(ctx, text("", "Rebinned direction from start"), 0, 0, { align: "center", bold: true });
+    ctx.restore();
+
+    let layers = diagramLayers.get(canvas);
+    if (!layers || layers.model !== model || layers.width !== canvas.width || layers.height !== canvas.height) {
+      layers = { model, width: canvas.width, height: canvas.height };
+      diagramLayers.set(canvas, layers);
+    }
+    const plotLayer = { x, y };
+    const mode = moving ? "moving" : "stationary";
+    const cursor = y(frame.directionDeg);
+    layers[mode] ??= trackLayer(canvas, model, plotLayer, moving, false);
+    if (moving) {
+      layers.reference ??= trackLayer(canvas, model, plotLayer, false, true);
+      ctx.drawImage(layers.reference, 0, 0);
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left - 1, top - 1, right - left + 2, cursor - top + 1);
+    ctx.clip();
+    ctx.drawImage(layers[mode], 0, 0);
+    ctx.restore();
+
+    line(ctx, left, cursor, right, cursor, guide, 1.2);
+    const markerSize = model.rows > 24 ? 1.8 : 4.1;
+    frame.intersections.forEach((position, row) => dot(ctx, x(position), cursor, markerSize, rowColor(row, model.rows)));
+    if (moving) {
+      ctx.setLineDash([4, 4]);
+      line(ctx, left, 17, left + 25, 17, "#97a8ad", 1.6);
+      ctx.setLineDash([]);
+      label(ctx, text("", "Stationary-table trajectories"), left + 32, 17, { color: muted, size: 13 });
+    }
+  }
+
+  return (canvases, model, fraction, moving, text) => {
+    const translate = text ?? ((ja) => ja);
+    const helical = moving && model.tableFeed > 0;
+    const frame = model.frame(fraction, helical);
+    drawTransverse(canvases.xy, model, frame, translate);
+    drawLongitudinal(canvases.section, model, frame, translate);
+    drawUnwrapped(canvases.diagram, model, frame, helical, translate);
+    return frame;
+  };
+})();
+
+// Keep the acquisition explanation independent of the SSPz calculation worker.
+let refreshAcquisitionPlayback = () => {};
+
+function initializeAcquisitionPlayback(form) {
+  const text = fdkText;
+  const panel = document.createElement("section");
+  panel.id = "acquisition-playback";
+  panel.setAttribute("aria-labelledby", "acquisition-playback-title");
+  panel.innerHTML = `
+    <div class="section-heading">
+      <h2 id="acquisition-playback-title">${text("", "Watch the unwrapped diagram take shape")}</h2>
+      <p class="section-note">${text("", "Start with one stationary-table rotation at the current settings. With positive beam pitch, a second rotation shows the table moving at constant speed.")}</p>
+    </div>
+    <div class="acquisition-play-controls">
+      <button type="button" class="primary" id="acquisition-play">${text("", "Play drawing")}</button>
+      <button type="button" class="secondary" id="acquisition-restart">${text("", "Go to start")}</button>
+      <label>${text("", "Playback speed")}
+        <select id="acquisition-speed">
+          <option value="slow">${text("", "Slow (12 s/turn)")}</option>
+          <option value="normal" selected>${text("", "Normal (6 s/turn)")}</option>
+          <option value="actual">${text("", "Configured rotation time")}</option>
+        </select>
+      </label>
+    </div>
+    <label class="acquisition-play-progress">
+      <span>${text("", "Drawing progress")}</span>
+      <input type="range" id="acquisition-progress" min="0" max="2000" step="1" value="0">
+    </label>
+    <p id="acquisition-stage" class="acquisition-play-stage" role="status"></p>
+    <p id="acquisition-readout" class="acquisition-play-readout"></p>
+    <div class="acquisition-play-panels">
+      <figure>
+        <figcaption>${text("", "XY plane")}</figcaption>
+        <canvas id="acquisition-play-xy" width="460" height="360" role="img" aria-label="${text("", "In-plane ray through the target and clockwise-moving focal spot")}"></canvas>
+      </figure>
+      <figure>
+        <figcaption>${text("", "Longitudinal section")}</figcaption>
+        <canvas id="acquisition-play-section" width="460" height="360" role="img" aria-label="${text("", "Intersections of detector row rays with the target's longitudinal line")}"></canvas>
+      </figure>
+      <figure>
+        <figcaption>${text("", "Unwrapped diagram")}</figcaption>
+        <canvas id="acquisition-play-diagram" width="460" height="360" role="img" aria-label="${text("", "Detector row trajectories traced as the interpolation direction advances")}"></canvas>
+      </figure>
+    </div>
+    <p class="field-help acquisition-play-note">${text("", "Matching colors identify the same detector row. Gray dashed lines in helical playback show stationary-table trajectories. The rays shown run from the mean focal position to the row centers on the direct side.")}</p>
+    <p id="acquisition-coverage" class="field-help acquisition-play-note" hidden></p>`;
+  form.closest("section").after(panel);
+
+  const get = id => panel.querySelector("#acquisition-" + id);
+  const play = get("play");
+  const restart = get("restart");
+  const speed = get("speed");
+  const slider = get("progress");
+  const stage = get("stage");
+  const readout = get("readout");
+  const coverage = get("coverage");
+  const diagrams = panel.querySelector(".acquisition-play-panels");
+  const canvases = { xy: get("play-xy"), section: get("play-section"), diagram: get("play-diagram") };
+  const phaseInput = document.getElementById("fdk-phase");
+  const fanInput = document.getElementById("fdk-fullFanAngleDeg");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const decimal = new Intl.NumberFormat(document.documentElement.lang, { maximumFractionDigits: 3 });
+  const rotationDuration = () => speed.value === "actual" ? model.rotationTime * 1000 : speed.value === "slow" ? 12000 : 6000;
+  let model = null;
+  let paramsKey = "";
+  let position = 0;
+  let playing = false;
+  let animationFrame = 0;
+  let lastTime = 0;
+  let holdUntil = 0;
+
+  function stop() {
+    playing = false;
+    cancelAnimationFrame(animationFrame);
+    play.textContent = text("", "Play drawing");
+  }
+
+  function paint() {
+    if (!model) return;
+    const moving = position > 1;
+    const fraction = moving ? position - 1 : position;
+    const frame = drawAcquisitionPlayback(canvases, model, fraction, moving, text);
+    const mode = moving ? text("", "Helical · constant table speed")
+      : text("", "Non-helical · stationary table");
+    const label = mode + (position === Number(slider.max) / 1000 ? text("", " (drawing complete)") : "");
+    if (stage.textContent !== label) stage.textContent = label;
+    slider.value = String(Math.round(position * 1000));
+    slider.setAttribute("aria-valuetext", `${mode} · ${Math.round(fraction * 360)}°`);
+    const turn = Math.round(frame.sourceDeg);
+    const direction = Math.round(frame.directionDeg);
+    const feed = decimal.format(moving ? model.tableFeed : 0);
+    const tableSpeed = decimal.format(moving ? model.tableFeed / model.rotationTime : 0);
+    const scanTime = decimal.format(fraction * model.rotationTime);
+    const shift = decimal.format(moving ? fraction * model.tableFeed : 0);
+    const spacing = model.rows > 1 ? decimal.format(frame.intersections[1] - frame.intersections[0]) : "";
+    readout.textContent = text(
+      "",
+      `Tube angle from start ${turn}° / direction from start ${direction}° · Elapsed ${scanTime} s · Table ${feed} mm/turn (${tableSpeed} mm/s) · Z shift ${shift} mm`);
+    if (spacing) readout.textContent += text("", ` · Row spacing at P ${spacing} mm`);
+    panel.dataset.stage = moving ? "helical" : "stationary";
+    panel.dataset.progress = String(position);
+  }
+
+  function tick(now) {
+    if (!playing) return;
+    const maximum = Number(slider.max) / 1000;
+    const next = Math.min(maximum, position + Math.max(0, now - lastTime) / rotationDuration());
+    lastTime = now;
+    if (now >= holdUntil) {
+      if (maximum === 2 && position < 1 && next >= 1) {
+        position = 1;
+        holdUntil = now + 900;
+      } else {
+        position = next;
+      }
+      paint();
+    }
+    if (position < maximum) animationFrame = requestAnimationFrame(tick);
+    else stop();
+  }
+
+  refreshAcquisitionPlayback = () => {
+    const fieldNumber = name => {
+      const value = form.elements.namedItem(name).value;
+      return value === "" ? NaN : Number(value);
+    };
+    const params = Object.fromEntries(
+      ["rows", "rowWidth", "sourceRadius", "focalSourceDetectorMm", "radius", "beamPitch"]
+        .map(name => [name, fieldNumber(name)]));
+    params.rotationTime = parseRotationTime(form.elements.namedItem("rotationTime").value);
+    params.nonhelicalRow = Number(form.elements.namedItem("nonhelicalRow").value);
+    params.phase = Number(phaseInput.value);
+    params.fullFanAngleDeg = Number(fanInput.value);
+    const key = JSON.stringify(params);
+    if (key === paramsKey) return;
+    paramsKey = key;
+    stop();
+    position = 0;
+    holdUntil = 0;
+    try {
+      model = createAcquisitionPlayback(params);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      model = null;
+    }
+    diagrams.hidden = play.disabled = restart.disabled = speed.disabled = slider.disabled = !model;
+    coverage.hidden = !model || (model.detectorBeyondTarget && model.targetWithinFan);
+    coverage.textContent = coverage.hidden ? "" : text(
+      "",
+      "The target lies outside the detector coverage at some angles. Dashed rays show the geometric extension of the row-center rays.");
+    if (!model) {
+      stage.textContent = text("", "Enter valid acquisition settings to draw the diagram.");
+      readout.textContent = "";
+      delete panel.dataset.stage;
+      delete panel.dataset.progress;
+      return;
+    }
+    slider.max = model.tableFeed > 0 ? "2000" : "1000";
+    paint();
+  };
+
+  play.onclick = () => {
+    if (playing) {
+      stop();
+      return;
+    }
+    if (position >= Number(slider.max) / 1000) position = 0;
+    holdUntil = 0;
+    playing = true;
+    play.textContent = text("", "Pause");
+    lastTime = performance.now();
+    paint();
+    animationFrame = requestAnimationFrame(tick);
+  };
+  restart.onclick = () => {
+    stop();
+    position = 0;
+    paint();
+  };
+  slider.oninput = () => {
+    stop();
+    position = Number(slider.value) / 1000;
+    paint();
+  };
+  if (reducedMotion.matches) speed.value = "slow";
+  reducedMotion.addEventListener("change", () => {
+    stop();
+    if (reducedMotion.matches) speed.value = "slow";
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stop();
+  });
+  phaseInput.addEventListener("input", refreshAcquisitionPlayback);
+  fanInput.addEventListener("input", refreshAcquisitionPlayback);
+  refreshAcquisitionPlayback();
+}
+
 // Browser defaults use the textbook-derived isocenter estimate. The numerical
 // core keeps its historical defaults so incomplete saved conditions retain
 // their original detector settings when loaded below.
@@ -5679,7 +6280,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-22.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -5820,6 +6421,7 @@ function updateInputDecorations() {
   if (inspectStateLabel) inspectStateLabel.textContent = `State ${selectedStateIndex}/359 (s = ${(selectedStateIndex / 360).toFixed(3)})`;
   if (inspectState) inspectState.setAttribute("aria-valuetext", `State ${selectedStateIndex}, relative position ${(selectedStateIndex / 360).toFixed(3)}`);
   syncStaticReferenceLink();
+  refreshAcquisitionPlayback();
 }
 
 // This reference has its own stationary-table operator. Transfer only the
@@ -9208,6 +9810,7 @@ if (legacyUrlNote) {
   if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("Recalculate with cone geometry and a finite transaxial aperture. Distinguish these results from the former axial-only model. Configured thickness T sets the averaging width.", "Recalculation uses cone geometry with a finite transaxial aperture. Keep results from the older axial model separate. Configured thickness T sets the averaging width.");
 }
 initializeFdkUi(initial);
+initializeAcquisitionPlayback(form);
 initializePositionPreview();
 syncCandidateComparisonFromForm();
 schedulePositionPreview(0);

@@ -95,7 +95,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-10-22.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
@@ -236,6 +236,7 @@ function updateInputDecorations() {
   if (inspectStateLabel) inspectStateLabel.textContent = `状態 ${selectedStateIndex}/359（s = ${(selectedStateIndex / 360).toFixed(3)}）`;
   if (inspectState) inspectState.setAttribute("aria-valuetext", `状態${selectedStateIndex}、相対位置${(selectedStateIndex / 360).toFixed(3)}`);
   syncStaticReferenceLink();
+  refreshAcquisitionPlayback();
 }
 
 // This reference has its own stationary-table operator. Transfer only the
@@ -3624,6 +3625,7 @@ if (legacyUrlNote) {
   if (legacyInputMigrated) legacyUrlNote.textContent = localizedText("面内有限開口を含むコーン幾何モデルで再計算します。旧版の体軸補間モデルの結果とは区別してください。設定厚Tは平均化幅として使用します。", "Recalculation uses cone geometry with a finite transaxial aperture. Keep results from the older axial model separate. Configured thickness T sets the averaging width.");
 }
 initializeFdkUi(initial);
+initializeAcquisitionPlayback(form);
 initializePositionPreview();
 syncCandidateComparisonFromForm();
 schedulePositionPreview(0);

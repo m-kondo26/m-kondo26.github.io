@@ -143,7 +143,7 @@ function initializeFdkUi(initial){
     pick.hidden=!on;
     if(hadResultOrPending){fdkResult=null;fdkSelectedResult=null;fdkShapeGroups=null;fdkToggleDownloads(false);for(const cv of panel.querySelectorAll('canvas'))drawCanvasStatus(cv,'Axial interpolation',fdkText('条件を変更しました。再計算してください。','Settings changed. Recalculate.'),'idle');}
     document.querySelectorAll('main > section').forEach(s=>{
-      if(s!==panel&&s.id!=='nonhelical-panel'&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title')){
+      if(s!==panel&&s.id!=='acquisition-playback'&&s.id!=='nonhelical-panel'&&s.id!=='taguchi-tsp'&&s.id!=='sspz-variation'&&!s.classList.contains('control-shell')&&!s.querySelector('#reference-title')){
         s.hidden=on||['geometry-title','response-title','shape-title','method-title'].includes(s.getAttribute('aria-labelledby'));
       }
     });
