@@ -40,6 +40,20 @@ export function geometryExportTimeline(span, degreesPerSecond) {
   };
 }
 
+export function positionExportTimeline(angleCount, startIndex, millisecondsPerAngle) {
+  const secondsPerAngle = millisecondsPerAngle / 1000;
+  const intro = 0.8;
+  return {
+    duration: intro + angleCount * secondsPerAngle + 1.5,
+    // When rendering is slower than playback, give each angle time to be recorded.
+    maxFrameStep: secondsPerAngle * 0.99,
+    indexAt(elapsed) {
+      const step = Math.max(0, Math.min(angleCount - 1, Math.floor((elapsed - intro) / secondsPerAngle)));
+      return (startIndex + step) % angleCount;
+    },
+  };
+}
+
 function acquisitionMp4Movie(model, secondsPerTurn, text) {
   const timeline = acquisitionExportTimeline(secondsPerTurn, model.tableFeed > 0);
   const renderer = createAcquisitionExportRenderer(model, text);
@@ -55,7 +69,7 @@ function acquisitionMp4Movie(model, secondsPerTurn, text) {
   };
 }
 
-async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProgress) {
+async function recordCanvasMp4({ canvas, duration, drawFrame, maxFrameStep = Infinity }, mimeType, onProgress) {
   drawFrame(0);
   const stream = canvas.captureStream(ACQUISITION_EXPORT_FPS);
 
@@ -66,6 +80,8 @@ async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProg
     let complete = false;
     let lastFrame = -1;
     let started = 0;
+    let lastWallTime = 0;
+    let elapsed = 0;
     const chunks = [];
 
     function cleanup() {
@@ -88,14 +104,16 @@ async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProg
 
     function recordFrame(now) {
       try {
-        const elapsed = Math.max(0, (now - started) / 1000);
-        if (elapsed >= duration) {
-          complete = true;
-          recorder.stop();
-          return;
-        }
-        const frameIndex = Math.floor(elapsed * ACQUISITION_EXPORT_FPS);
+        const wallTime = Math.max(0, (now - started) / 1000);
+        const frameIndex = Math.floor(wallTime * ACQUISITION_EXPORT_FPS);
         if (frameIndex !== lastFrame) {
+          elapsed += Math.min(wallTime - lastWallTime, maxFrameStep);
+          lastWallTime = wallTime;
+          if (elapsed >= duration) {
+            complete = true;
+            recorder.stop();
+            return;
+          }
           lastFrame = frameIndex;
           drawFrame(elapsed);
           onProgress(elapsed / duration);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { acquisitionExportTimeline, acquisitionMp4MimeType, geometryExportTimeline } from "../acquisition-export.js";
+import { acquisitionExportTimeline, acquisitionMp4MimeType, geometryExportTimeline, positionExportTimeline } from "../acquisition-export.js";
 
 for (const seconds of [0.05, 0.5, 6, 12]) {
   const stationary = acquisitionExportTimeline(seconds, false);
@@ -25,6 +25,19 @@ for (const degreesPerSecond of [45, 90, 180]) {
   assert.ok(Math.abs(timeline.fractionAt(0.8 + seconds / 2) - 0.5) < 1e-12);
   assert.equal(timeline.fractionAt(timeline.duration), 1);
   assert.ok(Math.abs(timeline.duration - seconds - 2.3) < 1e-12);
+}
+
+for (const milliseconds of [75, 150, 400]) {
+  const seconds = milliseconds / 1000;
+  const timeline = positionExportTimeline(360, 123, milliseconds);
+  assert.equal(timeline.indexAt(0), 123);
+  assert.equal(timeline.indexAt(0.79), 123);
+  const expected = Array.from({ length: 360 }, (_, step) => (123 + step) % 360);
+  const actual = expected.map((_, step) => timeline.indexAt(0.8 + (step + 0.5) * seconds));
+  assert.deepEqual(actual, expected, "Visit each angle once, in order, from the displayed index.");
+  assert.equal(timeline.indexAt(timeline.duration), 122);
+  assert.ok(Math.abs(timeline.duration - 360 * seconds - 2.3) < 1e-12);
+  assert.ok(timeline.maxFrameStep < seconds);
 }
 
 assert.equal(acquisitionMp4MimeType(), "");

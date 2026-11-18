@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {fdkWidth} from '../fdk-core.js';
+import {positionExportTimeline} from "../acquisition-export.js";
 import {candidateDensityWindows} from '../candidate-density-core.js';
 
 // UI-state regression checks. Small labelled arrays stand in for already
@@ -11,6 +12,8 @@ import {candidateDensityWindows} from '../candidate-density-core.js';
 const elements=new Map(),timers=new Map(),workers=[],exports=[],paints=[],lines=[],arrows=[],scenes=[],densityInputs=[];
 const documentListeners=new Map(),motionListeners=new Map();
 let nextTimer=0,nextUrl=0,calculations=0,statusPaints=0;
+let savedMovie, savedMovieState;
+const savedAngleIndices=[];
 const context2d=canvas=>({canvas,save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},
   fillText(){},drawImage(source){paints.push({kind:'background',canvas,source});},
   clearRect(){paints.push({kind:'clear',canvas});}});
@@ -43,13 +46,13 @@ class Element {
   getContext(){return this.ctx??=context2d(this);}
 }
 const el=id=>elements.get(id)??new Element(id.includes('diagram')||id.includes('profile')?'canvas':'div',id);
-const fields=new Map(Object.entries({radius:100,beamPitch:.875,rows:4,rowWidth:1,sliceThicknessMm:1}).map(([key,value])=>{
+const fields=new Map(Object.entries({radius:100,beamPitch:.875,rows:4,rowWidth:1,sliceThicknessMm:1,nonhelicalRow:''}).map(([key,value])=>{
   const input=new Element('input',key);input.value=String(value);return [key,input];
 }));
 el('fdk-phase').value='.37';
 const runButton=el('run-button'),resetButton=el('reset-button'),status=el('status');
 const form={elements:{namedItem:key=>fields.get(key)},querySelectorAll:()=>[...fields.values()]};
-const document={hidden:false,getElementById:el,createElement:tag=>new Element(tag),
+const document={hidden:false,documentElement:{lang:"en"},getElementById:el,createElement:tag=>new Element(tag),
   querySelectorAll:selector=>selector==='#position-preview canvas'?[el('position-diagram'),el('position-profile')]:[],
   addEventListener:(type,handler)=>documentListeners.set(type,handler)};
 const motion={matches:false,addEventListener:(type,handler)=>motionListeners.set(type,handler)};
@@ -59,7 +62,7 @@ class FakeWorker {
   terminate(){this.terminated=true;}
   reply(message){this.onmessage?.({data:message});}
 }
-const readParams=()=>({radius:Number(fields.get('radius').value),beamPitch:Number(fields.get('beamPitch').value),
+const readParams=()=>({rows:Number(fields.get('rows').value),radius:Number(fields.get('radius').value),beamPitch:Number(fields.get('beamPitch').value),
   rowWidth:Number(fields.get('rowWidth').value),phase:Number(el('fdk-phase').value),phaseCount:360});
 const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Blob,Worker:FakeWorker,
   URL:{createObjectURL:()=>`blob:test-${++nextUrl}`,revokeObjectURL(){}},
@@ -68,6 +71,16 @@ const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Bl
   clearTimeout:id=>timers.delete(id),fdkText:(_ja,en)=>en,readParams,paramsToUrl:()=>({search:'?fixture=1'}),
   syncLanguageLinks(){},updateInputDecorations(){},clearError(){},releaseWorker(){},
   initializeTaguchiUi(){},spatialExport:result=>result,updateSspzVariation(){},
+  bindMp4Download({button,isReady,createMovie}){
+    const refresh=()=>{button.disabled=!isReady();};
+    button.onclick=()=>{if(!button.disabled)savedMovie=createMovie();};
+    refresh();return refresh;
+  },
+  positionExportTimeline,
+  createPositionExportRenderer(state){
+    savedMovieState=state;
+    return {canvas:new Element('canvas'),draw:index=>savedAngleIndices.push(index)};
+  },
   setBusy:busy=>{runButton.disabled=busy;},fdkToggleDownloads(){},clearCanvasStatusAnimations(){},
   stopAxialMovie(){},stopGeometryPlayback(){},runSimulation:()=>{calculations++;},
   prepareCandidateDensityFromSeries:series=>densityInputs.push(series),
@@ -96,6 +109,7 @@ globalThis.testApi={initializePositionPreview,preparePositionSeries,renderPositi
 `,sandbox);
 const api=sandbox.testApi;
 api.initializePositionPreview();el('position-speed').value='150';
+assert.equal(el('position-save-mp4').disabled,true);
 const tick=()=>{
   const entry=timers.entries().next().value;assert.ok(entry,'Expected a scheduled callback');
   const [id,timer]=entry;timers.delete(id);timer.callback();
@@ -164,11 +178,13 @@ fire('position-prepare');assert.equal(calculations,1);
 api.beginPositionSeries();
 assert.equal(el('position-prepare').disabled,true);
 assert.equal(el('position-json').disabled,true);assert.equal(el('position-play').disabled,true);
+assert.equal(el('position-save-mp4').disabled,true);
 assert.equal(api.result,previousResult);assert.equal(paints.length,previousPaints);
 assert.equal(el('position-diagram').dataset.renderState,'stale');
 const series=makeSeries(),seriesBefore=nativeSnapshot(series),windowsBefore=candidateDensityWindows(series);
 api.preparePositionSeries(series);
 assert.equal(el('position-prepare').disabled,false);assert.equal(el('position-play').disabled,false);
+assert.equal(el('position-save-mp4').disabled,false);
 assert.equal(api.movie.index,0);assert.equal(el('position-phase').max,359);
 const greyLines=lines.filter(p=>p.color==='#89949e');assert.equal(greyLines.length,360);
 greyLines.forEach((line,index)=>{
@@ -194,6 +210,15 @@ assert.equal(el('position-profile').dataset.phase,String(chosen.phase));
 assert.equal(el('position-phase-value').textContent,api.positionAngle(chosen.phase));
 api.renderPositionFrame(123);assert.equal(scenes.length,sceneCount,'Repeat frame should reuse its cached scene');
 assert.equal(workers.length,0);assert.equal(calculations,1);checks++;
+fire('position-save-mp4');
+assert.equal(savedMovie.filename,'CT-geometry-SSPz_N4_r100_from123_en.mp4');
+assert.equal(savedMovieState.series,series);
+assert.equal(savedMovieState.background,api.movie.background);
+savedMovie.drawFrame(0);
+savedMovie.drawFrame(0.8+237.5*.15);
+savedMovie.drawFrame(savedMovie.duration);
+assert.deepEqual(savedAngleIndices,[123,0,122]);
+assert.equal(api.movie.index,123,'Export leaves the displayed start angle intact.');
 
 // Cached exported weights have an explicit display-only scope and cannot be
 // mistaken for the complete acquired-direction audit used in the full panel.
@@ -246,7 +271,7 @@ fire('position-play');const stale=api.result,paintCount=paints.length,exportCoun
 fields.get('radius').value='150';api.schedulePositionPreview(220);
 assert.equal(api.result,stale);assert.equal(paints.length,paintCount);
 assert.equal(api.movie.valid,false);assert.equal(api.movie.series,null);assert.equal(api.movie.playing,false);
-for(const id of ['position-json','position-play','position-phase'])assert.equal(el(id).disabled,true);
+for(const id of ['position-json','position-play','position-phase','position-save-mp4'])assert.equal(el(id).disabled,true);
 assert.equal(el('position-diagram').dataset.renderState,'stale');assert.equal(el('position-profile').dataset.renderState,'stale');
 assert.match(el('position-status').textContent,/previous plots \(r = 100 mm\)/);
 fire('position-json');assert.equal(exports.length,exportCount);

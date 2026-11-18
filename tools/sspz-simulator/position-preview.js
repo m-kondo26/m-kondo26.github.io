@@ -1,6 +1,7 @@
 // One real response at the current FOV position. Full 360-start-angle analysis
 // remains an explicit action; this worker/result never impersonates that series.
 let positionWorker=null,positionWorkerUrl=null,positionTimer=null,positionRequest=0,positionResult=null;
+let refreshPositionMp4Download = () => {};
 const positionMovie={series:null,index:0,playing:false,timer:null,scenes:new Map(),background:null,axes:null,displayProfiles:null,xLimit:null,valid:false};
 // Display registration only. Native z is already relative to the object point;
 // neither zObject nor the candidate-count windows are changed here.
@@ -104,9 +105,15 @@ function schedulePositionPreview(delay=220){
   }
   positionTimer=setTimeout(runPositionPreview,delay);
 }
+function hasInvalidPositionInput() {
+  return [...form.querySelectorAll('input[type=number]')].some(input =>
+    input.id !== "rotationTime" && input.id !== "nonhelicalRow"
+      && (input.value === "" || input.validity.badInput || input.validity.rangeUnderflow || input.validity.rangeOverflow));
+}
+
 function runPositionPreview(){
   stopPositionPreview();syncPositionControls();
-  if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){
+  if(hasInvalidPositionInput()){
     holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;
   }
   const params=readParams(),requestId=positionRequest;
@@ -140,20 +147,52 @@ function initializePositionPreview(){
   <div class="position-controls"><label for="position-radius">${fdkText('回転中心からの距離 r','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('中心へ戻す','Return to centre')}</button><span>${fdkText('基準開始角度','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('FOVの表示サイズではなく、FOV内の評価位置を変えます。取得ビュー数・補間方法・設定厚Tは現在の入力値を使います。展開図は横軸が体軸位置、縦軸が0～360°の補間対象方向です。','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
   <p class="field-help">${fdkText('展開図の赤線は中心断面、淡灰色の帯は−T/2～+T/2の平均化範囲です。帯の濃さは一定で、点の補間重みの濃淡とは別です。平均化範囲外の候補点も、範囲内の断面の補間に用いられます。','In the diagram, the red line marks the centre plane; the light-gray band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from the markers that encode interpolation weights. Candidates outside the averaging range are also used to interpolate planes within it.')}</p>
-  <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('360開始角度を準備','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('再生速度','Playback speed')} <select id="position-speed"><option value="400">${fdkText('ゆっくり','Slow')}</option><option value="150" selected>${fdkText('標準','Normal')}</option><option value="75">${fdkText('速い','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('表示中の開始角度','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
+  <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('360開始角度を準備','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('▶ 開始角度を再生','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('再生速度','Playback speed')} <select id="position-speed"><option value="400">${fdkText('ゆっくり','Slow')}</option><option value="150" selected>${fdkText('標準','Normal')}</option><option value="75">${fdkText('速い','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('表示中の開始角度','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label>
+    <button type="button" id="position-save-mp4" class="secondary" disabled>${fdkText('MP4を保存','Save MP4')}</button>
+  </div>
+  <div class="acquisition-export-info field-help">
+    <span id="position-export-status" role="status"></span>
+    <a id="position-export-download" hidden>${fdkText('MP4をもう一度ダウンロード','Download the MP4 again')}</a>
+  </div>
   <p id="position-movie-status" aria-live="polite">${fdkText('最初に基準角度の1本を表示します。準備ボタンで全360本を計算します。','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
   <p class="field-help">${fdkText('再生は、同じ評価位置で開始角度だけが異なる360条件の比較です。X線管が撮影中に回る動きではありません。準備後の角度変更では再計算しません。','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('データ配置と補間重み','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label="${fdkText('評価位置の展開図','Unwrapped diagram at the evaluation point')}"></canvas></div></article><article class="chart-card"><h3>${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label="${fdkText('同じ評価位置のSSPz','SSPz at the same evaluation point')}"></canvas></div><p id="position-stats"></p><p>${fdkText('配置の変化が、補間・角度平均・厚さTの平均後にどこまで残るかを見ます。配置が変わっても半値幅が大きく変わるとは限りません。','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <p id="position-alignment" class="field-help"></p><button type="button" id="position-json" class="secondary" disabled>${fdkText('表示中の応答・条件をJSON保存','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('SSPzは全取得ビューから計算しています。展開図の重み記号は全周の代表方向を表示します。全方向の重みは、下の詳細結果で開始角度を選んでJSON保存できます。','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
   document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
+  const speed = document.getElementById("position-speed");
+  refreshPositionMp4Download = bindMp4Download({
+    button: document.getElementById("position-save-mp4"),
+    status: document.getElementById("position-export-status"),
+    download: document.getElementById("position-export-download"),
+    text: fdkText,
+    isReady: () => Boolean(positionMovie.valid && positionMovie.series && positionMovie.background),
+    createMovie() {
+      stopPositionMovie();
+      stopGeometryPlayback();
+      stopAxialMovie();
+      const { series, background, axes, displayProfiles, xLimit, index } = positionMovie;
+      const timeline = positionExportTimeline(series.profiles.length, index, Number(speed.value));
+      const renderer = createPositionExportRenderer({ series, background, axes, displayProfiles, xLimit }, fdkText);
+      const language = document.documentElement.lang;
+      return {
+        filename: `CT-geometry-SSPz_N${series.config.rows}_r${series.config.radius}_from${String(index).padStart(3, "0")}_${language}.mp4`,
+        canvas: renderer.canvas,
+        duration: timeline.duration,
+        maxFrameStep: timeline.maxFrameStep,
+        drawFrame: elapsed => renderer.draw(timeline.indexAt(elapsed)),
+      };
+    },
+    waitingNote: fdkText("360開始角度を準備すると、MP4を保存できます。", "Prepare 360 start angles to enable MP4 export."),
+    readyNote: fdkText("表示中の開始角度から、選択した再生速度で全360条件を1巡します。", "Save one cycle of all 360 conditions, beginning at the displayed start angle and using the selected playback speed."),
+  });
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
   document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_${positionResult.config.axialRule??'rri'}_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'native single-start-angle SSPz plus registered display coordinates; diagramFrame contains display-sampled weights only',result:spatialExport(positionResult),display:positionDisplayExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
-    if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
+    if(hasInvalidPositionInput()){holdPositionResult(fdkText('入力値の範囲を確認してください。','Check the input ranges.'),'error');return;}runSimulation();
   };
   document.getElementById('position-play').onclick=()=>{if(positionMovie.playing)stopPositionMovie();else if(positionMovie.valid&&positionMovie.series){stopAxialMovie();stopGeometryPlayback();positionMovie.playing=true;updatePositionMovieControls();schedulePositionMovie();}};
   document.getElementById('position-phase').oninput=e=>{stopPositionMovie();renderPositionFrame(Number(e.target.value));};
@@ -210,6 +249,7 @@ function renderPositionPreview(r,requestId='series'){
 function positionAngle(phase){return ((phase*180/Math.PI%360+360)%360).toFixed(1)+'°';}
 function updatePositionMovieControls(){
   const m=positionMovie,ready=!!m.series&&m.valid,button=document.getElementById('position-play');if(!button)return;
+  refreshPositionMp4Download();
   for(const id of ['position-play','position-prev','position-next','position-phase'])document.getElementById(id).disabled=!ready;
   button.textContent=m.playing?fdkText('Ⅱ 一時停止','Ⅱ Pause'):fdkText('▶ 開始角度を再生','▶ Play start angles');button.setAttribute('aria-pressed',String(m.playing));
 }
@@ -245,22 +285,50 @@ function preparePositionSeries(r){
   updatePositionMovieControls();
   if(typeof prepareCandidateDensityFromSeries==='function')prepareCandidateDensityFromSeries(r);
 }
+function positionFrameResult(series, index) {
+  const profile = series.profiles[index];
+  const frame = profile.diagramFrame;
+  return {
+    config: { ...series.config, phase: profile.phase }, z: series.z, zObject: series.zObject,
+    raw: profile.raw, profile: profile.profile, fwhm: profile.fwhm, fwtm: profile.fwtm,
+    baseline: profile.baseline, model: series.model,
+    domainCheck: { ...series.domainCheck, rawTailFraction: profile.rawTailFraction },
+    coordinateSystem: frame.coordinateSystem, diagramFrame: frame,
+  };
+}
+
+function positionFrameScene(selected, xLimit) {
+  const { weightAudit, rebinnedWeightAudit } = selected.diagramFrame;
+  return drawFdkCandidateDiagram({ width: 900, dataset: {} },
+    { ...selected, weightAudit, rebinnedWeightAudit }, true, false, "all", true,
+    { fullTurn: true, sharedXLimit: xLimit });
+}
+
+function drawPositionSeriesProfile(canvas, { series, background, axes, displayProfiles }, index) {
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(background, 0, 0);
+  const frameAxes = { ...axes, ctx };
+  const profile = series.profiles[index];
+  const display = displayProfiles[index];
+  fdkDrawLines(frameAxes, display.z, [profile.profile], "#d71920");
+  if (display.fwhm) fdkArrow(frameAxes, display.fwhm, .5, "#59636c");
+  drawPositionProfileTitle(frameAxes, profile.phase, series.config.radius, series.profiles.length);
+}
+
 function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
   index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
-  const p=r.profiles[index],frame=p.diagramFrame;
-  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  const p=r.profiles[index];
   // Compact display coefficients never masquerade as a complete weight audit.
-  positionResult=selected;
+  positionResult=positionFrameResult(r,index);
   if(!m.scenes.has(index)){
-    m.scenes.set(index,drawFdkCandidateDiagram({width:900,dataset:{}},{...selected,weightAudit:frame.weightAudit,rebinnedWeightAudit:frame.rebinnedWeightAudit},true,false,'all',true,{fullTurn:true,sharedXLimit:m.xLimit}));
+    m.scenes.set(index,positionFrameScene(positionResult,m.xLimit));
     while(m.scenes.size>8)m.scenes.delete(m.scenes.keys().next().value);
   }
   drawDiagram(document.getElementById('position-diagram'),m.scenes.get(index),'zoom',m.xLimit);
-  const canvas=document.getElementById('position-profile'),ctx=canvas.getContext('2d');ctx.drawImage(m.background,0,0);
-  const axes={...m.axes,ctx},display=m.displayProfiles[index];fdkDrawLines(axes,display.z,[p.profile],'#d71920');
-  if(display.fwhm)fdkArrow(axes,display.fwhm,.5,'#59636c');
-  drawPositionProfileTitle(axes,p.phase,r.config.radius,r.profiles.length);setPositionAlignment(canvas,display);
+  const canvas=document.getElementById('position-profile');
+  drawPositionSeriesProfile(canvas,m,index);
+  setPositionAlignment(canvas,m.displayProfiles[index]);
   for(const cv of positionCanvases()){loadingCanvasStatuses.delete(cv);cv.removeAttribute('aria-busy');Object.assign(cv.dataset,{radiusMm:String(r.config.radius),startIndex:String(index),phase:String(p.phase),renderState:'ready',responseRequest:'cached-series',xLimit:String(m.xLimit)});}
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);

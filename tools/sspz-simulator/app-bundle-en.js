@@ -5062,6 +5062,7 @@ function spatialExport(result){
 // One real response at the current FOV position. Full 360-start-angle analysis
 // remains an explicit action; this worker/result never impersonates that series.
 let positionWorker=null,positionWorkerUrl=null,positionTimer=null,positionRequest=0,positionResult=null;
+let refreshPositionMp4Download = () => {};
 const positionMovie={series:null,index:0,playing:false,timer:null,scenes:new Map(),background:null,axes:null,displayProfiles:null,xLimit:null,valid:false};
 // Display registration only. Native z is already relative to the object point;
 // neither zObject nor the candidate-count windows are changed here.
@@ -5165,9 +5166,15 @@ function schedulePositionPreview(delay=220){
   }
   positionTimer=setTimeout(runPositionPreview,delay);
 }
+function hasInvalidPositionInput() {
+  return [...form.querySelectorAll('input[type=number]')].some(input =>
+    input.id !== "rotationTime" && input.id !== "nonhelicalRow"
+      && (input.value === "" || input.validity.badInput || input.validity.rangeUnderflow || input.validity.rangeOverflow));
+}
+
 function runPositionPreview(){
   stopPositionPreview();syncPositionControls();
-  if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){
+  if(hasInvalidPositionInput()){
     holdPositionResult(fdkText('','Check the input ranges.'),'error');return;
   }
   const params=readParams(),requestId=positionRequest;
@@ -5201,20 +5208,52 @@ function initializePositionPreview(){
   <div class="position-controls"><label for="position-radius">${fdkText('','Distance from isocentre r')} <output id="position-radius-value"></output></label><input id="position-radius" type="range" min="0" max="250" step="1"><button type="button" id="position-centre">${fdkText('','Return to centre')}</button><span>${fdkText('','Base start angle')}: <b id="position-angle"></b></span></div>
   <p class="field-help">${fdkText('','This moves the evaluation point within the FOV, not the displayed FOV size. Current view count, interpolation and thickness T are retained. The diagram uses axial position horizontally and the 0–360° output direction vertically.')}</p>
   <p class="field-help">${fdkText('','In the diagram, the red line marks the centre plane; the light-gray band spans the averaging range from −T/2 to +T/2. Its constant shading is separate from the markers that encode interpolation weights. Candidates outside the averaging range are also used to interpolate planes within it.')}</p>
-  <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('','Playback speed')} <select id="position-speed"><option value="400">${fdkText('','Slow')}</option><option value="150" selected>${fdkText('','Normal')}</option><option value="75">${fdkText('','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label></div>
+  <div class="position-movie-controls"><button type="button" id="position-prepare">${fdkText('','Prepare 360 start angles')}</button><button type="button" id="position-play" disabled aria-pressed="false">${fdkText('','▶ Play start angles')}</button><button type="button" id="position-prev" disabled>−1°</button><button type="button" id="position-next" disabled>+1°</button><label>${fdkText('','Playback speed')} <select id="position-speed"><option value="400">${fdkText('','Slow')}</option><option value="150" selected>${fdkText('','Normal')}</option><option value="75">${fdkText('','Fast')}</option></select></label><label class="position-phase-control" for="position-phase">${fdkText('','Displayed start angle')} <output id="position-phase-value">—</output><input id="position-phase" type="range" min="0" max="359" step="1" value="0" disabled></label>
+    <button type="button" id="position-save-mp4" class="secondary" disabled>${fdkText('','Save MP4')}</button>
+  </div>
+  <div class="acquisition-export-info field-help">
+    <span id="position-export-status" role="status"></span>
+    <a id="position-export-download" hidden>${fdkText('','Download the MP4 again')}</a>
+  </div>
   <p id="position-movie-status" aria-live="polite">${fdkText('','One base-angle profile is shown first. Prepare calculates all 360 profiles.')}</p>
   <p class="field-help">${fdkText('','Playback compares 360 separate start-angle conditions at the same position, not tube motion during a scan. Once prepared, angle changes require no recalculation.')}</p>
   <p id="position-status" aria-live="polite"></p><div class="position-plots"><article class="chart-card"><h3>${fdkText('','Data geometry and interpolation weights')}</h3><div class="position-canvas"><canvas id="position-diagram" width="900" height="960" role="img" aria-label=''></canvas></div></article><article class="chart-card"><h3>${fdkText('','SSPz at the same evaluation point')}</h3><div class="position-canvas"><canvas id="position-profile" width="1000" height="700" role="img" aria-label=''></canvas></div><p id="position-stats"></p><p>${fdkText('','See how changes in data geometry carry through interpolation, angular averaging and thickness T. Different geometry need not produce a large FWHM change.')}</p></article></div>
   <p id="position-alignment" class="field-help"></p><button type="button" id="position-json" class="secondary" disabled>${fdkText('','Save the displayed response and conditions')}</button><p class="field-help">${fdkText('','SSPz uses all acquired views. Diagram weight markers show sampled directions around the full turn. For complete weights, select a start angle in the detailed results below and export JSON.')}</p>`;
   document.getElementById('fdk-panel').before(section);
   document.getElementById('fdk-panel').before(document.getElementById('sspz-variation'));
+  const speed = document.getElementById("position-speed");
+  refreshPositionMp4Download = bindMp4Download({
+    button: document.getElementById("position-save-mp4"),
+    status: document.getElementById("position-export-status"),
+    download: document.getElementById("position-export-download"),
+    text: fdkText,
+    isReady: () => Boolean(positionMovie.valid && positionMovie.series && positionMovie.background),
+    createMovie() {
+      stopPositionMovie();
+      stopGeometryPlayback();
+      stopAxialMovie();
+      const { series, background, axes, displayProfiles, xLimit, index } = positionMovie;
+      const timeline = positionExportTimeline(series.profiles.length, index, Number(speed.value));
+      const renderer = createPositionExportRenderer({ series, background, axes, displayProfiles, xLimit }, fdkText);
+      const language = document.documentElement.lang;
+      return {
+        filename: `CT-geometry-SSPz_N${series.config.rows}_r${series.config.radius}_from${String(index).padStart(3, "0")}_${language}.mp4`,
+        canvas: renderer.canvas,
+        duration: timeline.duration,
+        maxFrameStep: timeline.maxFrameStep,
+        drawFrame: elapsed => renderer.draw(timeline.indexAt(elapsed)),
+      };
+    },
+    waitingNote: fdkText('', "Prepare 360 start angles to enable MP4 export."),
+    readyNote: fdkText('', "Save one cycle of all 360 conditions, beginning at the displayed start angle and using the selected playback speed."),
+  });
   initializeTaguchiUi();
   const change=value=>{form.elements.namedItem('radius').value=value;updateInputDecorations();schedulePositionPreview();};
   document.getElementById('position-radius').oninput=e=>change(e.target.value);
   document.getElementById('position-centre').onclick=()=>change(0);
   document.getElementById('position-json').onclick=()=>{if(positionResult&&positionMovie.valid)downloadBlob(`Cone_geometry_${positionResult.config.axialRule??'rri'}_r${positionResult.config.radius}mm_angle${(positionResult.config.phase*180/Math.PI).toFixed(1)}_response.json`,JSON.stringify({scope:'native single-start-angle SSPz plus registered display coordinates; diagramFrame contains display-sampled weights only',result:spatialExport(positionResult),display:positionDisplayExport(positionResult)},(_,v)=>ArrayBuffer.isView(v)?Array.from(v):v),'application/json');};
   document.getElementById('position-prepare').onclick=()=>{
-    if([...form.querySelectorAll('input[type=number]')].some(e=>e.id!=='rotationTime'&&(e.value===''||e.validity.badInput||e.validity.rangeUnderflow||e.validity.rangeOverflow))){holdPositionResult(fdkText('','Check the input ranges.'),'error');return;}runSimulation();
+    if(hasInvalidPositionInput()){holdPositionResult(fdkText('','Check the input ranges.'),'error');return;}runSimulation();
   };
   document.getElementById('position-play').onclick=()=>{if(positionMovie.playing)stopPositionMovie();else if(positionMovie.valid&&positionMovie.series){stopAxialMovie();stopGeometryPlayback();positionMovie.playing=true;updatePositionMovieControls();schedulePositionMovie();}};
   document.getElementById('position-phase').oninput=e=>{stopPositionMovie();renderPositionFrame(Number(e.target.value));};
@@ -5271,6 +5310,7 @@ function renderPositionPreview(r,requestId='series'){
 function positionAngle(phase){return ((phase*180/Math.PI%360+360)%360).toFixed(1)+'°';}
 function updatePositionMovieControls(){
   const m=positionMovie,ready=!!m.series&&m.valid,button=document.getElementById('position-play');if(!button)return;
+  refreshPositionMp4Download();
   for(const id of ['position-play','position-prev','position-next','position-phase'])document.getElementById(id).disabled=!ready;
   button.textContent=m.playing?fdkText('','Ⅱ Pause'):fdkText('','▶ Play start angles');button.setAttribute('aria-pressed',String(m.playing));
 }
@@ -5306,22 +5346,50 @@ function preparePositionSeries(r){
   updatePositionMovieControls();
   if(typeof prepareCandidateDensityFromSeries==='function')prepareCandidateDensityFromSeries(r);
 }
+function positionFrameResult(series, index) {
+  const profile = series.profiles[index];
+  const frame = profile.diagramFrame;
+  return {
+    config: { ...series.config, phase: profile.phase }, z: series.z, zObject: series.zObject,
+    raw: profile.raw, profile: profile.profile, fwhm: profile.fwhm, fwtm: profile.fwtm,
+    baseline: profile.baseline, model: series.model,
+    domainCheck: { ...series.domainCheck, rawTailFraction: profile.rawTailFraction },
+    coordinateSystem: frame.coordinateSystem, diagramFrame: frame,
+  };
+}
+
+function positionFrameScene(selected, xLimit) {
+  const { weightAudit, rebinnedWeightAudit } = selected.diagramFrame;
+  return drawFdkCandidateDiagram({ width: 900, dataset: {} },
+    { ...selected, weightAudit, rebinnedWeightAudit }, true, false, "all", true,
+    { fullTurn: true, sharedXLimit: xLimit });
+}
+
+function drawPositionSeriesProfile(canvas, { series, background, axes, displayProfiles }, index) {
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(background, 0, 0);
+  const frameAxes = { ...axes, ctx };
+  const profile = series.profiles[index];
+  const display = displayProfiles[index];
+  fdkDrawLines(frameAxes, display.z, [profile.profile], "#d71920");
+  if (display.fwhm) fdkArrow(frameAxes, display.fwhm, .5, "#59636c");
+  drawPositionProfileTitle(frameAxes, profile.phase, series.config.radius, series.profiles.length);
+}
+
 function renderPositionFrame(index){
   const m=positionMovie,r=m.series;if(!r||!m.valid)return;
   index=((Math.round(index)%r.profiles.length)+r.profiles.length)%r.profiles.length;m.index=index;
-  const p=r.profiles[index],frame=p.diagramFrame;
-  const selected={config:{...r.config,phase:p.phase},z:r.z,zObject:r.zObject,raw:p.raw,profile:p.profile,fwhm:p.fwhm,fwtm:p.fwtm,baseline:p.baseline,model:r.model,domainCheck:{...r.domainCheck,rawTailFraction:p.rawTailFraction},coordinateSystem:frame.coordinateSystem,diagramFrame:frame};
+  const p=r.profiles[index];
   // Compact display coefficients never masquerade as a complete weight audit.
-  positionResult=selected;
+  positionResult=positionFrameResult(r,index);
   if(!m.scenes.has(index)){
-    m.scenes.set(index,drawFdkCandidateDiagram({width:900,dataset:{}},{...selected,weightAudit:frame.weightAudit,rebinnedWeightAudit:frame.rebinnedWeightAudit},true,false,'all',true,{fullTurn:true,sharedXLimit:m.xLimit}));
+    m.scenes.set(index,positionFrameScene(positionResult,m.xLimit));
     while(m.scenes.size>8)m.scenes.delete(m.scenes.keys().next().value);
   }
   drawDiagram(document.getElementById('position-diagram'),m.scenes.get(index),'zoom',m.xLimit);
-  const canvas=document.getElementById('position-profile'),ctx=canvas.getContext('2d');ctx.drawImage(m.background,0,0);
-  const axes={...m.axes,ctx},display=m.displayProfiles[index];fdkDrawLines(axes,display.z,[p.profile],'#d71920');
-  if(display.fwhm)fdkArrow(axes,display.fwhm,.5,'#59636c');
-  drawPositionProfileTitle(axes,p.phase,r.config.radius,r.profiles.length);setPositionAlignment(canvas,display);
+  const canvas=document.getElementById('position-profile');
+  drawPositionSeriesProfile(canvas,m,index);
+  setPositionAlignment(canvas,m.displayProfiles[index]);
   for(const cv of positionCanvases()){loadingCanvasStatuses.delete(cv);cv.removeAttribute('aria-busy');Object.assign(cv.dataset,{radiusMm:String(r.config.radius),startIndex:String(index),phase:String(p.phase),renderState:'ready',responseRequest:'cached-series',xLimit:String(m.xLimit)});}
   Object.assign(canvas.dataset,{profileCount:String(r.profiles.length),selectedColor:'#d71920',profileSource:'precomputed-full-acquired-view-series',profileInterpolation:'native-sample-linear'});
   document.getElementById('position-phase').value=index;document.getElementById('position-phase-value').textContent=positionAngle(p.phase);
@@ -6266,6 +6334,113 @@ function createGeometryExportRenderer(scene, drawingWindow, text, { config = {},
   return { canvas, draw };
 }
 
+// Draw the position movie from the prepared series, using the screen player's axes and weights.
+function createPositionExportRenderer({ series, background, axes, displayProfiles, xLimit }, text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1920;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const diagram = document.createElement("canvas");
+  diagram.width = 900;
+  diagram.height = 960;
+  const profile = document.createElement("canvas");
+  profile.width = background.width;
+  profile.height = background.height;
+  const profileState = { series, background, axes, displayProfiles };
+
+  const ink = "#173644";
+  const accent = "#0b6779";
+  const muted = "#47616d";
+  const rule = "#d6e3e8";
+  const margin = 64;
+  const contentWidth = canvas.width - 2 * margin;
+  const format = new Intl.NumberFormat(document.documentElement.lang || "ja", {
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  });
+  const { config, profiles } = series;
+  const count = profiles.length;
+  const title = text("",
+    "How do position and start angle affect geometry and SSPz?");
+  const subtitle = text("",
+    `Compare ${count} start-angle conditions at an evaluation position of r = ${format.format(config.radius)} mm.`);
+  const diagramTitle = text("", "Data geometry and interpolation weights");
+  const profileTitle = text("", "SSPz at the same evaluation point");
+  const conditions = [
+    text("",
+      `Detector rows ${config.rows} × ${format.format(config.rowWidth)} mm`),
+    text("", `Beam pitch ${format.format(config.beamPitch)}`),
+    text("", `${config.viewSamples} views/turn`),
+    text("",
+      `Configured thickness T = ${format.format(config.axialAverageMm)} mm`),
+    fdkInterpolationLabel(config),
+    config.zFfsEnabled && text("", "z-FFS on"),
+  ].filter(Boolean).join("  |  ");
+
+  const diagramWidth = 662;
+  const diagramHeight = diagramWidth * diagram.height / diagram.width;
+  const diagramX = margin + 14;
+  const profileWidth = 956;
+  const profileHeight = profileWidth * profile.height / profile.width;
+  const profileX = canvas.width - margin - profileWidth;
+  const chartY = 224;
+  const profileY = chartY + (diagramHeight - profileHeight) / 2 - 8;
+
+  function write(label, x, y, size, { color = ink, weight = 400, align = "left", maxWidth = contentWidth } = {}) {
+    ctx.font = `${weight} ${size}px system-ui, sans-serif`;
+    const width = ctx.measureText(label).width;
+    if (width > maxWidth) ctx.font = `${weight} ${size * maxWidth / width}px system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y);
+  }
+
+  let lastIndex = -1;
+  function draw(index) {
+    if (index !== lastIndex) {
+      const selected = positionFrameResult(series, index);
+      drawDiagram(diagram, positionFrameScene(selected, xLimit), "zoom", xLimit);
+      drawPositionSeriesProfile(profile, profileState, index);
+      lastIndex = index;
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = "high";
+    write(title, margin, 77, 55, { weight: 700 });
+    write(subtitle, margin, 142, 28, { color: muted });
+    ctx.fillStyle = rule;
+    ctx.fillRect(margin, 176, contentWidth, 2);
+    write(diagramTitle, diagramX + diagramWidth / 2, 207, 34,
+      { align: "center", weight: 650, maxWidth: diagramWidth });
+    write(profileTitle, profileX + profileWidth / 2, 207, 34,
+      { align: "center", weight: 650, maxWidth: profileWidth });
+    ctx.drawImage(diagram, diagramX, chartY, diagramWidth, diagramHeight);
+    ctx.drawImage(profile, profileX, profileY, profileWidth, profileHeight);
+
+    const p = profiles[index];
+    const widths = [
+      Number.isFinite(p.fwhm?.width) && `FWHM ${p.fwhm.width.toFixed(2)} mm`,
+      Number.isFinite(p.fwtm?.width) && `FWTM ${p.fwtm.width.toFixed(2)} mm`,
+    ].filter(Boolean);
+    if (widths.length) write(widths.join("  |  "), profileX + profileWidth / 2, 925, 29,
+      { align: "center", color: accent, weight: 650, maxWidth: profileWidth });
+
+    const origin = displayProfiles[index].aligned
+      ? text("",
+        "Zero is the object point on the left and the selected SSPz's FWHM midpoint on the right.")
+      : text("", "Zero is the object point in both plots.");
+    ctx.fillStyle = rule;
+    ctx.fillRect(margin, 950, contentWidth, 2);
+    write(conditions, margin, 981, 26, { color: muted });
+    write(origin, margin, 1027, 24, { color: muted });
+  }
+
+  return { canvas, draw };
+}
+
 // Keep the recording timeline separate from disk writing and screen playback.
 const ACQUISITION_MP4_TYPES = [
   "video/mp4;codecs=avc1.420028",
@@ -6308,6 +6483,20 @@ function geometryExportTimeline(span, degreesPerSecond) {
   };
 }
 
+function positionExportTimeline(angleCount, startIndex, millisecondsPerAngle) {
+  const secondsPerAngle = millisecondsPerAngle / 1000;
+  const intro = 0.8;
+  return {
+    duration: intro + angleCount * secondsPerAngle + 1.5,
+    // When rendering is slower than playback, give each angle time to be recorded.
+    maxFrameStep: secondsPerAngle * 0.99,
+    indexAt(elapsed) {
+      const step = Math.max(0, Math.min(angleCount - 1, Math.floor((elapsed - intro) / secondsPerAngle)));
+      return (startIndex + step) % angleCount;
+    },
+  };
+}
+
 function acquisitionMp4Movie(model, secondsPerTurn, text) {
   const timeline = acquisitionExportTimeline(secondsPerTurn, model.tableFeed > 0);
   const renderer = createAcquisitionExportRenderer(model, text);
@@ -6323,7 +6512,7 @@ function acquisitionMp4Movie(model, secondsPerTurn, text) {
   };
 }
 
-async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProgress) {
+async function recordCanvasMp4({ canvas, duration, drawFrame, maxFrameStep = Infinity }, mimeType, onProgress) {
   drawFrame(0);
   const stream = canvas.captureStream(ACQUISITION_EXPORT_FPS);
 
@@ -6334,6 +6523,8 @@ async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProg
     let complete = false;
     let lastFrame = -1;
     let started = 0;
+    let lastWallTime = 0;
+    let elapsed = 0;
     const chunks = [];
 
     function cleanup() {
@@ -6356,14 +6547,16 @@ async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProg
 
     function recordFrame(now) {
       try {
-        const elapsed = Math.max(0, (now - started) / 1000);
-        if (elapsed >= duration) {
-          complete = true;
-          recorder.stop();
-          return;
-        }
-        const frameIndex = Math.floor(elapsed * ACQUISITION_EXPORT_FPS);
+        const wallTime = Math.max(0, (now - started) / 1000);
+        const frameIndex = Math.floor(wallTime * ACQUISITION_EXPORT_FPS);
         if (frameIndex !== lastFrame) {
+          elapsed += Math.min(wallTime - lastWallTime, maxFrameStep);
+          lastWallTime = wallTime;
+          if (elapsed >= duration) {
+            complete = true;
+            recorder.stop();
+            return;
+          }
           lastFrame = frameIndex;
           drawFrame(elapsed);
           onProgress(elapsed / duration);
@@ -6769,7 +6962,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-11-18.3 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
