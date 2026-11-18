@@ -26,6 +26,8 @@ const modelChoice=await readFile(new URL('../model-choice.js',import.meta.url),'
 const fdkUi=(await readFile(new URL('../geometry-construction.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../geometry-playback.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-angle-display.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../zffs-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../axial-animation-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL("../fdk-workflow.js", import.meta.url), "utf8"))+'\n'+(await readFile(new URL("../fdk-ui.js", import.meta.url), "utf8"));
 const acquisitionPlayback = stripExports(stripImports(await readFile(new URL("../acquisition-playback-core.js", import.meta.url), "utf8")))
   + "\n" + (await readFile(new URL("../acquisition-playback-render.js", import.meta.url), "utf8"))
+  + "\n" + (await readFile(new URL("../acquisition-export-render.js", import.meta.url), "utf8"))
+  + "\n" + stripExports(await readFile(new URL("../acquisition-export.js", import.meta.url), "utf8"))
   + "\n" + (await readFile(new URL("../acquisition-playback-ui.js", import.meta.url), "utf8"));
 const mainApp=stripImports(await readFile(new URL("../app.js", import.meta.url), "utf8"));
 const stationaryUi=await readFile(new URL('../nonhelical-ui.js', import.meta.url), 'utf8');

@@ -548,6 +548,12 @@ footer p { margin: 0.2rem 0; }
   gap: .6rem;
 }
 .acquisition-play-controls select { width: auto; max-width: 100%; min-height: 44px; }
+.acquisition-export-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .8rem;
+  margin-top: .55rem;
+}
 .acquisition-play-progress {
   display: flex;
   align-items: center;

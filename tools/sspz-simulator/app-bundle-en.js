@@ -5993,6 +5993,244 @@ const drawAcquisitionPlayback = (() => {
   };
 })();
 
+// Compose just the synchronized simulation on a 16:9 presentation canvas.
+function createAcquisitionExportRenderer(model, text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1920;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const panels = {};
+  for (const name of ["xy", "section", "diagram"]) {
+    const panel = document.createElement("canvas");
+    panel.width = 420;
+    panel.height = 335;
+    panels[name] = panel;
+  }
+
+  const ink = "#173644";
+  const muted = "#47616d";
+  const accent = "#0b6779";
+  const rule = "#d6e3e8";
+  const panelWidth = 576;
+  const panelHeight = panelWidth * panels.xy.height / panels.xy.width;
+  const left = 64;
+  const gap = 32;
+  const contentWidth = canvas.width - 2 * left;
+  const font = new Intl.NumberFormat(document.documentElement.lang || "ja", {
+    maximumFractionDigits: 3,
+    useGrouping: false,
+  });
+  const format = value => font.format(Math.abs(value) < 0.0005 ? 0 : value);
+  const headings = [
+    text("", "XY plane"),
+    text("", "Longitudinal section"),
+    text("", "Unwrapped diagram"),
+  ];
+  const n = model.rows;
+  const width = format(model.rowWidth);
+  const radius = format(model.radius);
+  const pitch = format(model.tableFeed / (n * model.rowWidth));
+  const feed = format(model.tableFeed);
+  const distance = format(model.sourceRadius);
+  const detector = format(model.detectorDistance);
+  const fan = format(model.fullFanAngleDeg);
+  const start = format(model.startAngleDeg);
+  const period = format(model.rotationTime);
+  const reference = format(model.referenceZ);
+  const acquisitionSummary = text(
+    "",
+    `Detector rows ${n} × ${width} mm  |  Target radius ${radius} mm  |  Beam pitch ${pitch}  |  Configured table feed ${feed} mm/turn`);
+  const geometrySummary = text(
+    "",
+    `Source–isocentre ${distance} mm  |  Source–detector ${detector} mm  |  Fan opening ${fan}°  |  Start angle ${start}°  |  Acquisition rotation time ${period} s/turn`);
+  const scope = model.detectorBeyondTarget && model.targetWithinFan
+    ? text("",
+      "Matching colours identify each detector row. The diagram shows direct rays from the mean focal spot to row centres.")
+    : text("",
+      "Matching colours identify each detector row. Dashed rays show geometric extensions outside detector coverage.");
+  const plane = model.tableFeed === 0
+    ? text("", `  |  Reconstruction plane z₀ = ${reference} mm`)
+    : "";
+
+  function write(label, x, y, size, {
+    color = ink, weight = 400, align = "left", maxWidth = contentWidth,
+  } = {}) {
+    ctx.font = `${weight} ${size}px system-ui, sans-serif`;
+    const width = ctx.measureText(label).width;
+    if (width > maxWidth) ctx.font = `${weight} ${size * maxWidth / width}px system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y);
+  }
+
+  function draw(fraction, moving) {
+    const helical = moving && model.tableFeed > 0;
+    const frame = drawAcquisitionPlayback(panels, model, fraction, helical, text);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = "high";
+    write(text("", "How the CT unwrapped diagram takes shape"),
+      left, 100, 60, { weight: 700 });
+    write(helical
+      ? text("", "Helical · constant table speed")
+      : text("", "Non-helical · stationary table"),
+      left, 176, 40, { color: accent, weight: 700 });
+    write(helical
+      ? text("",
+        "Table movement shifts the intersections together along Z at each instant.")
+      : text("",
+        "The diagram traces intersections at the target position as the tube rotates."),
+      left, 229, 29, { color: muted });
+    ctx.fillStyle = rule;
+    ctx.fillRect(left, 273, contentWidth, 2);
+    const frames = Object.values(panels);
+    frames.forEach((panel, i) => {
+      const x = left + (panelWidth + gap) * i;
+      write(headings[i], x + panelWidth / 2, 318, 34, { align: "center", weight: 650 });
+      ctx.drawImage(panel, x, 347, panelWidth, panelHeight);
+    });
+
+    const angle = Math.round(frame.sourceDeg);
+    const direction = Math.round(frame.directionDeg);
+    const shift = format(frame.sourceZ);
+    const spacing = n > 1
+      ? format(frame.intersections[1] - frame.intersections[0])
+      : null;
+    const metrics = [
+      text("",
+        `Tube angle Δ${angle}°  |  Rebinned direction Δ${direction}°`),
+      spacing === null
+        ? text("", "Target P · single detector row")
+        : text("", `Row spacing at P ${spacing} mm`),
+      text("", `Z shift ${shift} mm`),
+    ];
+    metrics.forEach((label, i) => {
+      const x = left + (panelWidth + gap) * i;
+      write(label, x + panelWidth / 2, 839, 25, { align: "center", weight: 600, maxWidth: panelWidth });
+    });
+    ctx.fillStyle = rule;
+    ctx.fillRect(left, 881, contentWidth, 2);
+    write(acquisitionSummary + plane, left, 916, 25, { color: muted });
+    write(geometrySummary, left, 955, 25, { color: muted });
+    write(scope, left, 1005, 24, { color: muted });
+    return frame;
+  }
+
+  return { canvas, draw };
+}
+
+// Keep the recording timeline separate from disk writing and screen playback.
+const ACQUISITION_MP4_TYPES = [
+  "video/mp4;codecs=avc1.420028",
+  "video/mp4;codecs=avc1",
+  "video/mp4;codecs=avc1.4d0028",
+];
+const ACQUISITION_EXPORT_FPS = 30;
+
+function acquisitionMp4MimeType() {
+  if (typeof MediaRecorder !== "function"
+    || typeof HTMLCanvasElement === "undefined"
+    || typeof HTMLCanvasElement.prototype.captureStream !== "function") return "";
+  return ACQUISITION_MP4_TYPES.find(type => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+function acquisitionExportTimeline(secondsPerTurn, includeHelical) {
+  const stationaryStart = 1;
+  const stationaryEnd = stationaryStart + secondsPerTurn;
+  const helicalStage = stationaryEnd + 1;
+  const helicalStart = helicalStage + 0.65;
+  const duration = (includeHelical ? helicalStart + secondsPerTurn : stationaryEnd) + 1.3;
+  return {
+    duration,
+    frameAt(elapsed) {
+      const moving = includeHelical && elapsed >= helicalStage;
+      const start = moving ? helicalStart : stationaryStart;
+      return { fraction: Math.max(0, Math.min(1, (elapsed - start) / secondsPerTurn)), moving };
+    },
+  };
+}
+
+async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onProgress) {
+  const timeline = acquisitionExportTimeline(secondsPerTurn, model.tableFeed > 0);
+  const renderer = createAcquisitionExportRenderer(model, text);
+  renderer.draw(0, false);
+  const stream = renderer.canvas.captureStream(ACQUISITION_EXPORT_FPS);
+
+  return new Promise((resolve, reject) => {
+    let recorder;
+    let request = 0;
+    let finished = false;
+    let complete = false;
+    let lastFrame = -1;
+    let started = 0;
+    const chunks = [];
+
+    function cleanup() {
+      cancelAnimationFrame(request);
+      document.removeEventListener("visibilitychange", tabVisibilityChanged);
+      for (const track of stream.getTracks()) track.stop();
+    }
+
+    function fail(error) {
+      if (finished) return;
+      finished = true;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+      cleanup();
+      reject(error);
+    }
+
+    function tabVisibilityChanged() {
+      if (document.hidden) fail(new DOMException("The tab was hidden during export.", "AbortError"));
+    }
+
+    function recordFrame(now) {
+      try {
+        const elapsed = Math.max(0, (now - started) / 1000);
+        if (elapsed >= timeline.duration) {
+          complete = true;
+          recorder.stop();
+          return;
+        }
+        const frameIndex = Math.floor(elapsed * ACQUISITION_EXPORT_FPS);
+        if (frameIndex !== lastFrame) {
+          lastFrame = frameIndex;
+          const frame = timeline.frameAt(elapsed);
+          renderer.draw(frame.fraction, frame.moving);
+          onProgress(elapsed / timeline.duration);
+        }
+        request = requestAnimationFrame(recordFrame);
+      } catch (error) {
+        fail(error);
+      }
+    }
+
+    try {
+      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = event => fail(event.error || new Error("The recording failed."));
+      recorder.onstop = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        const video = new Blob(chunks, { type: "video/mp4" });
+        if (!complete || !video.size) reject(new Error("The recorder did not finish the video."));
+        else resolve(video);
+      };
+      document.addEventListener("visibilitychange", tabVisibilityChanged);
+      if (document.hidden) {
+        tabVisibilityChanged();
+        return;
+      }
+      recorder.start();
+      started = performance.now();
+      request = requestAnimationFrame(recordFrame);
+    } catch (error) {
+      fail(error);
+    }
+  });
+}
+
 // Keep the acquisition explanation independent of the SSPz calculation worker.
 let refreshAcquisitionPlayback = () => {};
 
@@ -6016,6 +6254,11 @@ function initializeAcquisitionPlayback(form) {
           <option value="actual">${text("", "Configured rotation time")}</option>
         </select>
       </label>
+      <button type="button" class="secondary" id="acquisition-save-mp4">${text("", "Save MP4")}</button>
+    </div>
+    <div class="acquisition-export-info field-help">
+      <span id="acquisition-export-status" role="status"></span>
+      <a id="acquisition-export-download" hidden>${text("", "Download the MP4 again")}</a>
     </div>
     <label class="acquisition-play-progress">
       <span>${text("", "Drawing progress")}</span>
@@ -6044,6 +6287,13 @@ function initializeAcquisitionPlayback(form) {
   const get = id => panel.querySelector("#acquisition-" + id);
   const play = get("play");
   const restart = get("restart");
+  const save = get("save-mp4");
+  const exportStatus = get("export-status");
+  const exportDownload = get("export-download");
+  const mp4MimeType = acquisitionMp4MimeType();
+  exportStatus.textContent = mp4MimeType
+    ? text("", "Save a 16:9 video using the current settings and playback speed.")
+    : text("", "For H.264 MP4 export, open the site in a supported desktop version of Edge or Chrome.");
   const speed = get("speed");
   const slider = get("progress");
   const stage = get("stage");
@@ -6060,6 +6310,7 @@ function initializeAcquisitionPlayback(form) {
   let paramsKey = "";
   let position = 0;
   let playing = false;
+  let exporting = false;
   let animationFrame = 0;
   let lastTime = 0;
   let holdUntil = 0;
@@ -6139,6 +6390,7 @@ function initializeAcquisitionPlayback(form) {
       model = null;
     }
     diagrams.hidden = play.disabled = restart.disabled = speed.disabled = slider.disabled = !model;
+    save.disabled = exporting || !model || !mp4MimeType;
     coverage.hidden = !model || (model.detectorBeyondTarget && model.targetWithinFan);
     coverage.textContent = coverage.hidden ? "" : text(
       "",
@@ -6166,6 +6418,45 @@ function initializeAcquisitionPlayback(form) {
     lastTime = performance.now();
     paint();
     animationFrame = requestAnimationFrame(tick);
+  };
+  save.onclick = async () => {
+    if (exporting || !model || !mp4MimeType) return;
+    const exportModel = model;
+    const secondsPerTurn = rotationDuration() / 1000;
+    const pitch = Number((exportModel.tableFeed / (exportModel.rows * exportModel.rowWidth)).toFixed(6));
+    const filename = `CT-unwrapped_N${exportModel.rows}_d${exportModel.rowWidth}_r${exportModel.radius}_p${pitch}.mp4`;
+    stop();
+    exporting = save.disabled = true;
+    if (exportDownload.hasAttribute("href")) URL.revokeObjectURL(exportDownload.href);
+    exportDownload.removeAttribute("href");
+    exportDownload.hidden = true;
+    let shownPercent = -1;
+    const reportProgress = progress => {
+      const percent = Math.floor(progress * 10) * 10;
+      if (shownPercent === percent) return;
+      shownPercent = percent;
+      exportStatus.textContent = text(
+        "",
+        `Exporting MP4 (${percent}%). Keep this tab visible until export finishes.`);
+    };
+    reportProgress(0);
+    try {
+      const video = await exportAcquisitionMp4(exportModel, secondsPerTurn, mp4MimeType, text, reportProgress);
+      exportDownload.href = URL.createObjectURL(video);
+      exportDownload.download = filename;
+      exportDownload.hidden = false;
+      exportDownload.click();
+      exportStatus.textContent = text("", "MP4 export complete.");
+    } catch (error) {
+      exportStatus.textContent = error.name === "AbortError"
+        ? text("",
+          "The export stopped when the tab was hidden. Keep this tab visible and try again.")
+        : text("",
+          "Could not export MP4. Retry or open the site in desktop Edge or Chrome.");
+    } finally {
+      exporting = false;
+      save.disabled = !model || !mp4MimeType;
+    }
   };
   restart.onclick = () => {
     stop();
@@ -6280,7 +6571,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-11-18.1 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
