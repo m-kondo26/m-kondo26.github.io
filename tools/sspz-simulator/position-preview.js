@@ -306,7 +306,10 @@ function positionFrameScene(selected, xLimit) {
 
 function drawPositionSeriesProfile(canvas, { series, background, axes, displayProfiles }, index) {
   const ctx = canvas.getContext("2d");
+  const renderScale = Math.max(1, Number(background.dataset.renderScale) || 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(background, 0, 0);
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   const frameAxes = { ...axes, ctx };
   const profile = series.profiles[index];
   const display = displayProfiles[index];

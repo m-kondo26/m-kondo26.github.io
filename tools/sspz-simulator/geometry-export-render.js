@@ -10,8 +10,9 @@ function createGeometryExportRenderer(scene, drawingWindow, text, { config = {},
     { role: "all", heading: text("重ね合わせ", "Overlay") },
   ].map(panel => {
     const chart = document.createElement("canvas");
-    chart.width = 900;
-    chart.height = 960;
+    chart.width = 1800;
+    chart.height = 1920;
+    chart.dataset.renderScale = "2";
     return { ...panel, chart };
   });
 

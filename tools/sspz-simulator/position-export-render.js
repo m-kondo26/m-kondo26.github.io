@@ -1,13 +1,22 @@
 // Draw the position movie from the prepared series, using the screen player's axes and weights.
-function createPositionExportRenderer({ series, background, axes, displayProfiles, xLimit }, text) {
+function createPositionExportRenderer({ series, displayProfiles, xLimit }, text) {
   const canvas = document.createElement("canvas");
   canvas.width = 1920;
   canvas.height = 1080;
   const ctx = canvas.getContext("2d", { alpha: false });
 
   const diagram = document.createElement("canvas");
-  diagram.width = 900;
-  diagram.height = 960;
+  diagram.width = 1800;
+  diagram.height = 1920;
+  diagram.dataset.renderScale = "2";
+  const background = document.createElement("canvas");
+  background.width = 2000;
+  background.height = 1400;
+  const axes = positionProfileAxes(background, displayProfiles, series.profiles);
+  drawPositionProfileGuides(axes);
+  series.profiles.forEach((profile, index) => {
+    fdkDrawLines(axes, displayProfiles[index].z, [profile.profile], "#89949e", { opacity: .13, lineWidth: 1.1 });
+  });
   const profile = document.createElement("canvas");
   profile.width = background.width;
   profile.height = background.height;

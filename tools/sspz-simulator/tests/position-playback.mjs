@@ -14,8 +14,9 @@ const documentListeners=new Map(),motionListeners=new Map();
 let nextTimer=0,nextUrl=0,calculations=0,statusPaints=0;
 let savedMovie, savedMovieState;
 const savedAngleIndices=[];
-const context2d=canvas=>({canvas,save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},
-  fillText(){},drawImage(source){paints.push({kind:'background',canvas,source});},
+const context2d=canvas=>({canvas,transform:[1,0,0,1,0,0],save(){},restore(){},setLineDash(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},
+  setTransform(...values){this.transform=values;},fillRect(){},measureText(value){return {width:String(value).length*10};},
+  fillText(){},drawImage(source){paints.push({kind:'background',canvas,source,transform:[...this.transform]});},
   clearRect(){paints.push({kind:'clear',canvas});}});
 class Element {
   constructor(tag='div',id=''){
@@ -95,7 +96,13 @@ const sandbox={document,form,runButton,resetButton,status,FIGURE_FONT:'Arial',Bl
   },
   drawDiagram:(canvas,scene,mode,xLimit)=>paints.push({kind:'diagram',canvas,scene,mode,xLimit}),
   fdkDrawProfile:(canvas,result)=>paints.push({kind:'single-profile',canvas,result}),
-  fdkAxes:(canvas,...args)=>({ctx:canvas.getContext('2d'),b:{left:130,right:965},y:value=>value,args}),
+  fdkAxes:(canvas,...args)=>{
+    const scale=Number(canvas.width)/1000;
+    canvas.dataset.renderScale=String(scale);
+    const ctx=canvas.getContext('2d');ctx.setTransform(scale,0,0,scale,0,0);
+    return {ctx,b:{left:130,right:965},y:value=>value,args};
+  },
+  fdkInterpolationLabel:()=>"RRI",
   fdkDrawLines:(axes,z,profiles,color,style)=>lines.push({canvas:axes.ctx.canvas,z,profiles,color,style,axes}),
   fdkArrow:(axes,width,level,color)=>arrows.push({canvas:axes.ctx.canvas,width,level,color}),
 };
@@ -322,5 +329,38 @@ for(const canvas of [el('position-diagram'),el('position-profile')]){
   assert.equal(canvas.dataset.renderState,'loading');
 }
 const afterClearExports=exports.length;fire('position-json');assert.equal(exports.length,afterClearExports);checks++;
+
+// MP4 export redraws every native profile at double resolution. The physical
+// backing image is copied at identity, then the red curve uses the same logical
+// axes as the grey curves. Repeated frames must not enlarge the bitmap again.
+vm.runInContext(readFileSync(new URL('../position-export-render.js',import.meta.url),'utf8'),sandbox);
+const exportStart=lines.length;
+const highResolutionMovie=sandbox.createPositionExportRenderer({
+  series,background:savedMovieState.background,axes:savedMovieState.axes,
+  displayProfiles:savedMovieState.displayProfiles,xLimit:savedMovieState.xLimit,
+},(_ja,en)=>en);
+assert.equal(highResolutionMovie.canvas.width,1920);
+assert.equal(highResolutionMovie.canvas.height,1080);
+const exportGrey=lines.slice(exportStart).filter(line=>line.color==='#89949e');
+assert.equal(exportGrey.length,360);
+const exportBackground=exportGrey[0].canvas;
+assert.notEqual(exportBackground,savedMovieState.background,'Redraw data instead of enlarging the screen bitmap');
+assert.equal(exportBackground.width,2000);assert.equal(exportBackground.height,1400);
+assert.equal(exportBackground.dataset.renderScale,'2');
+exportGrey.forEach((line,index)=>assertRegisteredLine(line,series.z,series.profiles[index]));
+for(const index of [123,124]){
+  highResolutionMovie.draw(index);
+  const red=lines.filter(line=>line.color==='#d71920').at(-1);
+  assertRegisteredLine(red,series.z,series.profiles[index]);
+  assert.equal(red.canvas.width,2000);assert.equal(red.canvas.height,1400);
+  assert.deepEqual(red.axes.ctx.transform,[2,0,0,2,0,0]);
+  const copy=paints.filter(paint=>paint.kind==='background'&&paint.source===exportBackground).at(-1);
+  assert.equal(copy.canvas,red.canvas);assert.deepEqual(copy.transform,[1,0,0,1,0,0]);
+  const diagram=paints.filter(paint=>paint.kind==='diagram').at(-1).canvas;
+  assert.equal(diagram.width,1800);assert.equal(diagram.height,1920);
+  assert.equal(diagram.dataset.renderScale,'2');
+}
+assert.equal(lines.slice(exportStart).filter(line=>line.color==='#89949e').length,360,'Reuse the high-resolution backing between frames');
+assert.deepEqual(nativeSnapshot(series),seriesBefore,'MP4 rendering preserves native arrays and widths');checks++;
 
 console.log(`PASS: position playback ${checks} lifecycle groups; 360 independently FWHM-registered native curves, asymmetric/flat-top peaks, immutable responses/count windows, raw/display JSON separation, unavailable/reset metadata, phase pairing, wrap/scrub/pause, stale holds and superseded workers`);

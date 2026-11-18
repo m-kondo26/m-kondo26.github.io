@@ -5367,7 +5367,10 @@ function positionFrameScene(selected, xLimit) {
 
 function drawPositionSeriesProfile(canvas, { series, background, axes, displayProfiles }, index) {
   const ctx = canvas.getContext("2d");
+  const renderScale = Math.max(1, Number(background.dataset.renderScale) || 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(background, 0, 0);
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   const frameAxes = { ...axes, ctx };
   const profile = series.profiles[index];
   const display = displayProfiles[index];
@@ -6295,8 +6298,9 @@ function createGeometryExportRenderer(scene, drawingWindow, text, { config = {},
     { role: "all", heading: text("", "Overlay") },
   ].map(panel => {
     const chart = document.createElement("canvas");
-    chart.width = 900;
-    chart.height = 960;
+    chart.width = 1800;
+    chart.height = 1920;
+    chart.dataset.renderScale = "2";
     return { ...panel, chart };
   });
 
@@ -6391,15 +6395,24 @@ function createGeometryExportRenderer(scene, drawingWindow, text, { config = {},
 }
 
 // Draw the position movie from the prepared series, using the screen player's axes and weights.
-function createPositionExportRenderer({ series, background, axes, displayProfiles, xLimit }, text) {
+function createPositionExportRenderer({ series, displayProfiles, xLimit }, text) {
   const canvas = document.createElement("canvas");
   canvas.width = 1920;
   canvas.height = 1080;
   const ctx = canvas.getContext("2d", { alpha: false });
 
   const diagram = document.createElement("canvas");
-  diagram.width = 900;
-  diagram.height = 960;
+  diagram.width = 1800;
+  diagram.height = 1920;
+  diagram.dataset.renderScale = "2";
+  const background = document.createElement("canvas");
+  background.width = 2000;
+  background.height = 1400;
+  const axes = positionProfileAxes(background, displayProfiles, series.profiles);
+  drawPositionProfileGuides(axes);
+  series.profiles.forEach((profile, index) => {
+    fdkDrawLines(axes, displayProfiles[index].z, [profile.profile], "#89949e", { opacity: .13, lineWidth: 1.1 });
+  });
   const profile = document.createElement("canvas");
   profile.width = background.width;
   profile.height = background.height;
