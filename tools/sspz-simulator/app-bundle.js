@@ -5817,6 +5817,13 @@ const drawAcquisitionPlayback = (() => {
   const palette = ["#ad411a", "#866300", "#005993", "#00775b", "#a13160", "#61448c", "#456b20", "#5a5869"];
   const diagramLayers = new WeakMap();
 
+  function canvasDimensions(canvas) {
+    return {
+      width: canvas.logicalWidth ?? canvas.width,
+      height: canvas.logicalHeight ?? canvas.height,
+    };
+  }
+
   function rowColor(row, count) {
     if (count <= palette.length) return palette[row];
     return `hsl(${(12 + 312 * row / (count - 1)).toFixed(2)}, 72%, 35%)`;
@@ -5854,19 +5861,22 @@ const drawAcquisitionPlayback = (() => {
 
   function clear(canvas) {
     const ctx = canvas.getContext("2d");
+    const { width, height } = canvasDimensions(canvas);
+    ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
     return ctx;
   }
 
   function drawTransverse(canvas, model, frame, text) {
     const ctx = clear(canvas);
+    const { width, height } = canvasDimensions(canvas);
     const { sourceRadius: radius, detectorDistance, fullFanAngleDeg } = model;
     const halfFan = fullFanAngleDeg * Math.PI / 360;
     const detectorExtent = Math.hypot(radius - detectorDistance * Math.cos(halfFan), detectorDistance * Math.sin(halfFan));
-    const cx = canvas.width / 2;
-    const cy = (canvas.height - 22) / 2;
-    const scale = (Math.min(canvas.width, canvas.height - 22) / 2 - 26) / Math.max(radius, detectorExtent);
+    const cx = width / 2;
+    const cy = (height - 22) / 2;
+    const scale = (Math.min(width, height - 22) / 2 - 26) / Math.max(radius, detectorExtent);
     // Rotate the transverse picture by a quarter turn, preserving clockwise
     // motion and the geometry relative to P. Physical 0° is on the +Y axis.
     const x = value => cx + scale * value;
@@ -5923,7 +5933,7 @@ const drawAcquisitionPlayback = (() => {
     const sourceOnRight = sx > cx;
     label(ctx, text("焦点", "Source"), sx + (sourceOnRight ? 10 : -10), sy,
       { align: sourceOnRight ? "left" : "right", size: 13, background: true });
-    label(ctx, text("O 回転中心　 P 評価位置", "O Isocentre     P Target"), cx, canvas.height - 18,
+    label(ctx, text("O 回転中心　 P 評価位置", "O Isocentre     P Target"), cx, height - 18,
       { color: muted, align: "center" });
   }
 
@@ -5936,11 +5946,12 @@ const drawAcquisitionPlayback = (() => {
   }
 
   function zAxes(ctx, canvas, model, text) {
+    const { width, height } = canvasDimensions(canvas);
     const [min, max] = model.domain;
     const left = 62;
-    const right = canvas.width - 22;
+    const right = width - 22;
     const top = 37;
-    const bottom = canvas.height - 54;
+    const bottom = height - 54;
     const x = value => left + (value - min) / (max - min) * (right - left);
     for (const value of zTicks(min - model.referenceZ, max - model.referenceZ)) {
       const xx = x(value + model.referenceZ);
@@ -5955,7 +5966,7 @@ const drawAcquisitionPlayback = (() => {
     const zLabel = model.tableFeed === 0
       ? text("再構成面からの位置 z − z₀ (mm)", "Axial offset from the plane z − z₀ (mm)")
       : text("体軸位置 z (mm)", "Axial position z (mm)");
-    label(ctx, zLabel, (left + right) / 2, canvas.height - 14, { align: "center", bold: true });
+    label(ctx, zLabel, (left + right) / 2, height - 14, { align: "center", bold: true });
     return { x, left, right, top, bottom };
   }
 
@@ -6043,10 +6054,12 @@ const drawAcquisitionPlayback = (() => {
   }
 
   function trackLayer(canvas, model, plot, moving, reference) {
+    const { width, height } = canvasDimensions(canvas);
     const layer = canvas.ownerDocument.createElement("canvas");
     layer.width = canvas.width;
     layer.height = canvas.height;
     const ctx = layer.getContext("2d");
+    ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
     const track = model.track(moving);
     const numerous = model.rows > 24;
     ctx.globalAlpha = reference ? (numerous ? 0.28 : 0.74) : (numerous ? 0.48 : 1);
@@ -6077,6 +6090,7 @@ const drawAcquisitionPlayback = (() => {
 
   function drawUnwrapped(canvas, model, frame, moving, text) {
     const ctx = clear(canvas);
+    const { width, height } = canvasDimensions(canvas);
     const plot = zAxes(ctx, canvas, model, text);
     const { x, left, right, top, bottom } = plot;
     const y = degree => top + (bottom - top) * degree / 360;
@@ -6092,8 +6106,9 @@ const drawAcquisitionPlayback = (() => {
     ctx.restore();
 
     let layers = diagramLayers.get(canvas);
-    if (!layers || layers.model !== model || layers.width !== canvas.width || layers.height !== canvas.height) {
-      layers = { model, width: canvas.width, height: canvas.height };
+    if (!layers || layers.model !== model || layers.width !== canvas.width || layers.height !== canvas.height
+      || layers.logicalWidth !== width || layers.logicalHeight !== height) {
+      layers = { model, width: canvas.width, height: canvas.height, logicalWidth: width, logicalHeight: height };
       diagramLayers.set(canvas, layers);
     }
     const plotLayer = { x, y };
@@ -6102,13 +6117,13 @@ const drawAcquisitionPlayback = (() => {
     layers[mode] ??= trackLayer(canvas, model, plotLayer, moving, false);
     if (moving) {
       layers.reference ??= trackLayer(canvas, model, plotLayer, false, true);
-      ctx.drawImage(layers.reference, 0, 0);
+      ctx.drawImage(layers.reference, 0, 0, width, height);
     }
     ctx.save();
     ctx.beginPath();
     ctx.rect(left - 1, top - 1, right - left + 2, cursor - top + 1);
     ctx.clip();
-    ctx.drawImage(layers[mode], 0, 0);
+    ctx.drawImage(layers[mode], 0, 0, width, height);
     ctx.restore();
 
     line(ctx, left, cursor, right, cursor, guide, 1.2);
@@ -6134,16 +6149,24 @@ const drawAcquisitionPlayback = (() => {
 })();
 
 // Compose just the synchronized simulation on a 16:9 presentation canvas.
-function createAcquisitionExportRenderer(model, text) {
+function createAcquisitionExportRenderer(model, text, { scale = 1 } = {}) {
+  if (!Number.isFinite(scale) || scale <= 0) throw new RangeError("Export scale must be positive.");
+  const logicalWidth = 1920;
+  const logicalHeight = 1080;
   const canvas = document.createElement("canvas");
-  canvas.width = 1920;
-  canvas.height = 1080;
+  canvas.width = Math.round(logicalWidth * scale);
+  canvas.height = Math.round(logicalHeight * scale);
   const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.setTransform(canvas.width / logicalWidth, 0, 0, canvas.height / logicalHeight, 0, 0);
+  const panelResolution = Math.max(2, Math.ceil(576 * scale / 420));
   const panels = {};
   for (const name of ["xy", "section", "diagram"]) {
     const panel = document.createElement("canvas");
-    panel.width = 420;
-    panel.height = 335;
+    // Keep labels and geometry in the same logical coordinates at every output size.
+    panel.logicalWidth = 420;
+    panel.logicalHeight = 335;
+    panel.width = panel.logicalWidth * panelResolution;
+    panel.height = panel.logicalHeight * panelResolution;
     panels[name] = panel;
   }
 
@@ -6155,7 +6178,7 @@ function createAcquisitionExportRenderer(model, text) {
   const panelHeight = panelWidth * panels.xy.height / panels.xy.width;
   const left = 64;
   const gap = 32;
-  const contentWidth = canvas.width - 2 * left;
+  const contentWidth = logicalWidth - 2 * left;
   const font = new Intl.NumberFormat(document.documentElement.lang || "ja", {
     maximumFractionDigits: 3,
     useGrouping: false,
@@ -6209,7 +6232,7 @@ function createAcquisitionExportRenderer(model, text) {
     const helical = moving && model.tableFeed > 0;
     const frame = drawAcquisitionPlayback(panels, model, fraction, helical, text);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
     ctx.imageSmoothingQuality = "high";
     write(text("CTの展開図ができるまで", "How the CT unwrapped diagram takes shape"),
       left, 100, 60, { weight: 700 });

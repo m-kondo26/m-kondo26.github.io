@@ -1,14 +1,22 @@
 // Compose just the synchronized simulation on a 16:9 presentation canvas.
-function createAcquisitionExportRenderer(model, text) {
+function createAcquisitionExportRenderer(model, text, { scale = 1 } = {}) {
+  if (!Number.isFinite(scale) || scale <= 0) throw new RangeError("Export scale must be positive.");
+  const logicalWidth = 1920;
+  const logicalHeight = 1080;
   const canvas = document.createElement("canvas");
-  canvas.width = 1920;
-  canvas.height = 1080;
+  canvas.width = Math.round(logicalWidth * scale);
+  canvas.height = Math.round(logicalHeight * scale);
   const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.setTransform(canvas.width / logicalWidth, 0, 0, canvas.height / logicalHeight, 0, 0);
+  const panelResolution = Math.max(2, Math.ceil(576 * scale / 420));
   const panels = {};
   for (const name of ["xy", "section", "diagram"]) {
     const panel = document.createElement("canvas");
-    panel.width = 420;
-    panel.height = 335;
+    // Keep labels and geometry in the same logical coordinates at every output size.
+    panel.logicalWidth = 420;
+    panel.logicalHeight = 335;
+    panel.width = panel.logicalWidth * panelResolution;
+    panel.height = panel.logicalHeight * panelResolution;
     panels[name] = panel;
   }
 
@@ -20,7 +28,7 @@ function createAcquisitionExportRenderer(model, text) {
   const panelHeight = panelWidth * panels.xy.height / panels.xy.width;
   const left = 64;
   const gap = 32;
-  const contentWidth = canvas.width - 2 * left;
+  const contentWidth = logicalWidth - 2 * left;
   const font = new Intl.NumberFormat(document.documentElement.lang || "ja", {
     maximumFractionDigits: 3,
     useGrouping: false,
@@ -74,7 +82,7 @@ function createAcquisitionExportRenderer(model, text) {
     const helical = moving && model.tableFeed > 0;
     const frame = drawAcquisitionPlayback(panels, model, fraction, helical, text);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
     ctx.imageSmoothingQuality = "high";
     write(text("CTの展開図ができるまで", "How the CT unwrapped diagram takes shape"),
       left, 100, 60, { weight: 700 });
