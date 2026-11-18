@@ -33,6 +33,7 @@ function createAcquisitionExportRenderer(model, text) {
   ];
   const n = model.rows;
   const width = format(model.rowWidth);
+  const detectorWidth = format(model.detectorRowWidth);
   const radius = format(model.radius);
   const pitch = format(model.tableFeed / (n * model.rowWidth));
   const feed = format(model.tableFeed);
@@ -43,16 +44,16 @@ function createAcquisitionExportRenderer(model, text) {
   const period = format(model.rotationTime);
   const reference = format(model.referenceZ);
   const acquisitionSummary = text(
-    `検出器 ${n}列 × ${width} mm　｜　評価半径 ${radius} mm　｜　ビームピッチ ${pitch}　｜　設定寝台移動量 ${feed} mm/回転`,
-    `Detector rows ${n} × ${width} mm  |  Target radius ${radius} mm  |  Beam pitch ${pitch}  |  Configured table feed ${feed} mm/turn`);
+    `検出器 ${n}列 × ${width} mm（中心換算）　｜　検出器面の1列幅 ${detectorWidth} mm　｜　評価半径 ${radius} mm　｜　ピッチ ${pitch}　｜　寝台移動量 ${feed} mm/回転`,
+    `Detector rows ${n} × ${width} mm at isocentre  |  Row width at detector face ${detectorWidth} mm  |  Target radius ${radius} mm  |  Pitch ${pitch}  |  Table feed ${feed} mm/turn`);
   const geometrySummary = text(
     `焦点–回転中心 ${distance} mm　｜　焦点–検出器 ${detector} mm　｜　全ファン角 ${fan}°　｜　開始角度 ${start}°　｜　設定回転時間 ${period} s/回転`,
     `Source–isocentre ${distance} mm  |  Source–detector ${detector} mm  |  Fan opening ${fan}°  |  Start angle ${start}°  |  Acquisition rotation time ${period} s/turn`);
   const scope = model.detectorBeyondTarget && model.targetWithinFan
-    ? text("同じ色は同じ検出器列を示します。平均焦点から列中心への一方向の幾何です。",
-      "Matching colours identify each detector row. The diagram shows direct rays from the mean focal spot to row centres.")
-    : text("同じ色は同じ検出器列を示します。検出器の範囲外では光線を破線で延長しています。",
-      "Matching colours identify each detector row. Dashed rays show geometric extensions outside detector coverage.");
+    ? text("区画は検出器面での列幅、区画内の点は列中心です。展開図は列中心に向かう光線と、Pを通るZ方向の直線との交点を示します。",
+      "Blocks show the row widths at the detector face, and dots mark their centres. The unwrapped diagram traces the row-centre rays at the Z line through P.")
+    : text("区画は検出器面での列幅、区画内の点は列中心です。検出器の範囲外では光線を破線で延長しています。",
+      "Blocks show detector-face row widths, and dots mark their centres. Dashed rays show geometric extensions outside detector coverage.");
   const plane = model.tableFeed === 0
     ? text(`　再構成面 z₀ = ${reference} mm`, `  |  Reconstruction plane z₀ = ${reference} mm`)
     : "";
@@ -107,7 +108,7 @@ function createAcquisitionExportRenderer(model, text) {
         `Tube angle Δ${angle}°  |  Rebinned direction Δ${direction}°`),
       spacing === null
         ? text("評価点 P・1列", "Target P · single detector row")
-        : text(`評価点 P での列間隔 ${spacing} mm`, `Row spacing at P ${spacing} mm`),
+        : text(`評価点 P での列中心間隔 ${spacing} mm`, `Row-centre spacing at P ${spacing} mm`),
       text(`Z移動量 ${shift} mm`, `Z shift ${shift} mm`),
     ];
     metrics.forEach((label, i) => {

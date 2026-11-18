@@ -48,6 +48,7 @@ export function createAcquisitionPlayback(params = {}) {
   const halfFan = fullFanAngleDeg * ACQUISITION_RADIANS / 2;
   const rowOffsets = Array.from({ length: rows }, (_, row) => (row - centerRowIndex) * rowWidth);
   const detectorScale = detectorDistance / sourceRadius;
+  const detectorRowWidth = rowWidth * detectorScale;
 
   // The evaluation point is at (radius, 0). Its ray direction in screen
   // coordinates advances monotonically with the clockwise tube angle.
@@ -102,7 +103,7 @@ export function createAcquisitionPlayback(params = {}) {
   }
 
   return {
-    rows, rowWidth, radius, sourceRadius, detectorDistance, tableFeed, rotationTime,
+    rows, rowWidth, detectorRowWidth, radius, sourceRadius, detectorDistance, tableFeed, rotationTime,
     referenceZ, domain, fullFanAngleDeg, startAngleDeg, baseline, track, frame,
     detectorBeyondTarget: detectorDistance > sourceRadius + radius,
     targetWithinFan: Math.asin(radius / sourceRadius) <= halfFan + 1e-12,

@@ -5744,6 +5744,7 @@ function createAcquisitionPlayback(params = {}) {
   const halfFan = fullFanAngleDeg * ACQUISITION_RADIANS / 2;
   const rowOffsets = Array.from({ length: rows }, (_, row) => (row - centerRowIndex) * rowWidth);
   const detectorScale = detectorDistance / sourceRadius;
+  const detectorRowWidth = rowWidth * detectorScale;
 
   // The evaluation point is at (radius, 0). Its ray direction in screen
   // coordinates advances monotonically with the clockwise tube angle.
@@ -5798,7 +5799,7 @@ function createAcquisitionPlayback(params = {}) {
   }
 
   return {
-    rows, rowWidth, radius, sourceRadius, detectorDistance, tableFeed, rotationTime,
+    rows, rowWidth, detectorRowWidth, radius, sourceRadius, detectorDistance, tableFeed, rotationTime,
     referenceZ, domain, fullFanAngleDeg, startAngleDeg, baseline, track, frame,
     detectorBeyondTarget: detectorDistance > sourceRadius + radius,
     targetWithinFan: Math.asin(radius / sourceRadius) <= halfFan + 1e-12,
@@ -5865,14 +5866,17 @@ const drawAcquisitionPlayback = (() => {
     const cx = canvas.width / 2;
     const cy = (canvas.height - 22) / 2;
     const scale = (Math.min(canvas.width, canvas.height - 22) / 2 - 26) / Math.max(radius, detectorExtent);
+    // Rotate the transverse picture by a quarter turn, preserving clockwise
+    // motion and the geometry relative to P. Physical 0° is on the +Y axis.
     const x = value => cx + scale * value;
-    const y = value => cy + scale * value;
-    const sx = x(frame.sourceX);
-    const sy = y(frame.sourceY);
-    const tx = x(model.radius);
-    const dx = x(frame.detectorX);
-    const dy = y(frame.detectorY);
-    const axis = frame.beta + Math.PI;
+    const y = value => cy - scale * value;
+    const sx = x(frame.sourceY);
+    const sy = y(frame.sourceX);
+    const tx = cx;
+    const ty = y(model.radius);
+    const dx = x(frame.detectorY);
+    const dy = y(frame.detectorX);
+    const axis = frame.beta + Math.PI / 2;
     const reachesDetector = frame.detectorBeyondTarget && frame.withinFan;
 
     line(ctx, cx - radius * scale, cy, cx + radius * scale, cy, grid);
@@ -5899,21 +5903,25 @@ const drawAcquisitionPlayback = (() => {
     ctx.stroke();
 
     if (!reachesDetector) ctx.setLineDash([5, 4]);
-    line(ctx, sx, sy, reachesDetector ? dx : tx, reachesDetector ? dy : cy, ray, 2.4);
+    line(ctx, sx, sy, reachesDetector ? dx : tx, reachesDetector ? dy : ty, ray, 2.4);
     ctx.setLineDash([]);
     if (reachesDetector) dot(ctx, dx, dy, 3.5, ray);
     dot(ctx, cx, cy, 3.2, muted);
-    dot(ctx, tx, cy, 4.4, ray);
+    dot(ctx, tx, ty, 4.4, ray);
     ctx.fillStyle = ink;
     ctx.fillRect(sx - 4.5, sy - 4.5, 9, 9);
     label(ctx, "O", cx - 7, cy + 14, { color: muted, align: "right" });
-    label(ctx, "P", tx + 7, cy - 12, { color: ray, bold: true });
-    const centreDx = x(frame.sourceX - frame.sourceX / radius * detectorDistance);
-    const centreDy = y(frame.sourceY - frame.sourceY / radius * detectorDistance);
-    label(ctx, text("", "Detector"), centreDx, centreDy + (centreDy > cy ? 15 : -14),
-      { color: muted, align: "center", size: 13, background: true });
-    label(ctx, text("", "Source"), sx, sy + (sy > cy ? 15 : -14),
-      { align: "center", size: 13, background: true });
+    label(ctx, "P", tx + 9, ty, { color: ray, bold: true });
+    label(ctx, "+Y / 0°", cx, 12, { color: muted, align: "center", size: 13, bold: true });
+    label(ctx, "+X", cx + radius * scale + 7, cy - 14, { color: muted, size: 13, bold: true });
+    const centreDx = x(frame.sourceY - frame.sourceY / radius * detectorDistance);
+    const centreDy = y(frame.sourceX - frame.sourceX / radius * detectorDistance);
+    const detectorOnRight = centreDx > cx;
+    label(ctx, text("", "Detector"), centreDx + (detectorOnRight ? 10 : -10), centreDy,
+      { color: muted, align: detectorOnRight ? "left" : "right", size: 13, background: true });
+    const sourceOnRight = sx > cx;
+    label(ctx, text("", "Source"), sx + (sourceOnRight ? 10 : -10), sy,
+      { align: sourceOnRight ? "left" : "right", size: 13, background: true });
     label(ctx, text("", "O Isocentre     P Target"), cx, canvas.height - 18,
       { color: muted, align: "center" });
   }
@@ -5959,25 +5967,40 @@ const drawAcquisitionPlayback = (() => {
     const focusY = depthY(0);
     const detectorY = depthY(model.detectorDistance);
     const targetY = depthY(frame.distance);
-    const detectorStep = model.rowWidth * model.detectorDistance / model.sourceRadius;
-    const edgeA = x(frame.detectorZ[0] - detectorStep / 2);
-    const edgeB = x(frame.detectorZ[model.rows - 1] + detectorStep / 2);
-    const rowSize = Math.max(1.3, Math.min(4.2, (edgeB - edgeA) / model.rows * 0.31));
+    const rowWidth = model.detectorRowWidth;
+    const halfRowWidth = rowWidth / 2;
+    const edgeA = x(frame.detectorZ[0] - halfRowWidth);
+    const edgeB = x(frame.detectorZ.at(-1) + halfRowWidth);
+    const cellWidth = (edgeB - edgeA) / model.rows;
+    const cellTop = detectorY - 7;
+    const cellHeight = 14;
+    const rowSize = Math.max(1.3, Math.min(4.2, cellWidth * 0.31));
     const numerous = model.rows > 24;
 
     ctx.setLineDash([5, 4]);
     line(ctx, left, targetY, right, targetY, guide, 1.3);
     ctx.setLineDash([]);
-    const visibleA = Math.max(left, edgeA);
-    const visibleB = Math.min(right, edgeB);
-    ctx.fillStyle = "#e8f0f2";
-    ctx.fillRect(visibleA, detectorY - 6, visibleB - visibleA, 12);
-    line(ctx, visibleA, detectorY, visibleB, detectorY, "#90a8b3");
-
     ctx.save();
     ctx.beginPath();
     ctx.rect(left - 1, top - 7, right - left + 2, bottom - top);
     ctx.clip();
+    // Draw each physical row aperture to scale along Z. The coloured ray and
+    // dot identify only its centre; the cell height is schematic.
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < model.rows; ++i) {
+      ctx.fillStyle = rowColor(i, model.rows);
+      ctx.fillRect(edgeA + i * cellWidth, cellTop, cellWidth, cellHeight);
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = guide;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(edgeA, cellTop, edgeB - edgeA, cellHeight);
+    if (cellWidth >= 2.5) {
+      for (let i = 1; i < model.rows; ++i) {
+        const edge = edgeA + i * cellWidth;
+        line(ctx, edge, cellTop, edge, cellTop + cellHeight, guide, 0.8);
+      }
+    }
     for (let i = 0; i < model.rows; ++i) {
       const color = rowColor(i, model.rows);
       const colX = x(frame.detectorZ[i]);
@@ -5992,21 +6015,30 @@ const drawAcquisitionPlayback = (() => {
         ctx.setLineDash([]);
       }
       ctx.globalAlpha = 1;
-      ctx.fillStyle = color;
-      ctx.fillRect(colX - rowSize, detectorY - rowSize, 2 * rowSize, 2 * rowSize);
+      dot(ctx, colX, detectorY, Math.min(4, cellWidth * 0.24), color);
       dot(ctx, hitX, targetY, rowSize + 0.6, color);
-      if (model.rows <= 10 && (edgeB - edgeA) / model.rows > 13) {
+      if (model.rows <= 10 && cellWidth > 13) {
         label(ctx, String(i + 1), colX, detectorY + 14, { color, align: "center", size: 12, bold: true });
       }
     }
     ctx.restore();
 
+    if (cellWidth >= 18) {
+      const midRow = Math.floor((model.rows - 1) / 2);
+      const start = edgeA + midRow * cellWidth;
+      const end = start + cellWidth;
+      const level = detectorY + 26;
+      line(ctx, start, level, end, level, muted);
+      for (const edge of [start, end]) line(ctx, edge, level - 3, edge, level + 3, muted);
+    }
+
     dot(ctx, focusX, focusY, 4.7, ink);
     label(ctx, text("", "Source"), focusX, focusY - 15, { align: "center", size: 13, bold: true });
     label(ctx, text("", "Z line at target P"), left + 4, targetY - 11,
       { color: muted, size: 12, background: true });
-    label(ctx, text("", "Detector"), (visibleA + visibleB) / 2, detectorY + 32,
-      { color: muted, size: 13, align: "center" });
+    const widthLabel = String(Number(rowWidth.toPrecision(3)));
+    label(ctx, text("", `Detector row width ${widthLabel} mm  ·  ● Row centre`),
+      (left + right) / 2, detectorY + 39, { color: muted, size: 12, align: "center" });
   }
 
   function trackLayer(canvas, model, plot, moving, reference) {
@@ -6135,6 +6167,7 @@ function createAcquisitionExportRenderer(model, text) {
   ];
   const n = model.rows;
   const width = format(model.rowWidth);
+  const detectorWidth = format(model.detectorRowWidth);
   const radius = format(model.radius);
   const pitch = format(model.tableFeed / (n * model.rowWidth));
   const feed = format(model.tableFeed);
@@ -6146,15 +6179,15 @@ function createAcquisitionExportRenderer(model, text) {
   const reference = format(model.referenceZ);
   const acquisitionSummary = text(
     "",
-    `Detector rows ${n} × ${width} mm  |  Target radius ${radius} mm  |  Beam pitch ${pitch}  |  Configured table feed ${feed} mm/turn`);
+    `Detector rows ${n} × ${width} mm at isocentre  |  Row width at detector face ${detectorWidth} mm  |  Target radius ${radius} mm  |  Pitch ${pitch}  |  Table feed ${feed} mm/turn`);
   const geometrySummary = text(
     "",
     `Source–isocentre ${distance} mm  |  Source–detector ${detector} mm  |  Fan opening ${fan}°  |  Start angle ${start}°  |  Acquisition rotation time ${period} s/turn`);
   const scope = model.detectorBeyondTarget && model.targetWithinFan
     ? text("",
-      "Matching colours identify each detector row. The diagram shows direct rays from the mean focal spot to row centres.")
+      "Blocks show the row widths at the detector face, and dots mark their centres. The unwrapped diagram traces the row-centre rays at the Z line through P.")
     : text("",
-      "Matching colours identify each detector row. Dashed rays show geometric extensions outside detector coverage.");
+      "Blocks show detector-face row widths, and dots mark their centres. Dashed rays show geometric extensions outside detector coverage.");
   const plane = model.tableFeed === 0
     ? text("", `  |  Reconstruction plane z₀ = ${reference} mm`)
     : "";
@@ -6209,7 +6242,7 @@ function createAcquisitionExportRenderer(model, text) {
         `Tube angle Δ${angle}°  |  Rebinned direction Δ${direction}°`),
       spacing === null
         ? text("", "Target P · single detector row")
-        : text("", `Row spacing at P ${spacing} mm`),
+        : text("", `Row-centre spacing at P ${spacing} mm`),
       text("", `Z shift ${shift} mm`),
     ];
     metrics.forEach((label, i) => {
@@ -6694,18 +6727,18 @@ function initializeAcquisitionPlayback(form) {
     <div class="acquisition-play-panels">
       <figure>
         <figcaption>${text("", "XY plane")}</figcaption>
-        <canvas id="acquisition-play-xy" width="460" height="360" role="img" aria-label="${text("", "In-plane ray through the target and clockwise-moving focal spot")}"></canvas>
+        <canvas id="acquisition-play-xy" width="460" height="360" role="img" aria-label="${text("", "XY plane with tube angle 0° at the top and target P on the Y axis")}"></canvas>
       </figure>
       <figure>
         <figcaption>${text("", "Longitudinal section")}</figcaption>
-        <canvas id="acquisition-play-section" width="460" height="360" role="img" aria-label="${text("", "Intersections of detector row rays with the target's longitudinal line")}"></canvas>
+        <canvas id="acquisition-play-section" width="460" height="360" role="img" aria-label="${text("", "Widths and centres of the detector rows, and where their centre rays cross the target line")}"></canvas>
       </figure>
       <figure>
         <figcaption>${text("", "Unwrapped diagram")}</figcaption>
-        <canvas id="acquisition-play-diagram" width="460" height="360" role="img" aria-label="${text("", "Detector row trajectories traced as the interpolation direction advances")}"></canvas>
+        <canvas id="acquisition-play-diagram" width="460" height="360" role="img" aria-label="${text("", "Unwrapped trajectories of the row-centre-ray intersections at the evaluation position")}"></canvas>
       </figure>
     </div>
-    <p class="field-help acquisition-play-note">${text("", "Matching colors identify the same detector row. Gray dashed lines in helical playback show stationary-table trajectories. The rays shown run from the mean focal position to the row centers on the direct side.")}</p>
+    <p class="field-help acquisition-play-note">${text("", "Tube angle 0° is at the top, with target P on the Y axis. In the Z section, the blocks show the detector-face row widths and the dots inside them mark their centres. The unwrapped diagram traces where the row-centre rays cross the Z line through P. Gray dashed lines show the stationary-table trajectories.")}</p>
     <p id="acquisition-coverage" class="field-help acquisition-play-note" hidden></p>`;
   form.closest("section").after(panel);
 
@@ -6768,11 +6801,13 @@ function initializeAcquisitionPlayback(form) {
     const tableSpeed = decimal.format(moving ? model.tableFeed / model.rotationTime : 0);
     const scanTime = decimal.format(fraction * model.rotationTime);
     const shift = decimal.format(moving ? fraction * model.tableFeed : 0);
+    const detectorWidth = decimal.format(model.detectorRowWidth);
     const spacing = model.rows > 1 ? decimal.format(frame.intersections[1] - frame.intersections[0]) : "";
     readout.textContent = text(
       "",
       `Tube angle from start ${turn}° / direction from start ${direction}° · Elapsed ${scanTime} s · Table ${feed} mm/turn (${tableSpeed} mm/s) · Z shift ${shift} mm`);
-    if (spacing) readout.textContent += text("", ` · Row spacing at P ${spacing} mm`);
+    readout.textContent += text("", ` · Row width at detector face ${detectorWidth} mm`);
+    if (spacing) readout.textContent += text("", ` · Row-centre spacing at P ${spacing} mm`);
     panel.dataset.stage = moving ? "helical" : "stationary";
     panel.dataset.progress = String(position);
   }
@@ -6962,7 +6997,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-11-18.4 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.5 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {

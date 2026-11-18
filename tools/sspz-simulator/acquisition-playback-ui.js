@@ -36,18 +36,18 @@ function initializeAcquisitionPlayback(form) {
     <div class="acquisition-play-panels">
       <figure>
         <figcaption>${text("XY平面", "XY plane")}</figcaption>
-        <canvas id="acquisition-play-xy" width="460" height="360" role="img" aria-label="${text("時計回りに動く焦点と評価点を結ぶ面内の光線", "In-plane ray through the target and clockwise-moving focal spot")}"></canvas>
+        <canvas id="acquisition-play-xy" width="460" height="360" role="img" aria-label="${text("管球角0°を真上にとるXY平面と、Y軸上の評価点P", "XY plane with tube angle 0° at the top and target P on the Y axis")}"></canvas>
       </figure>
       <figure>
         <figcaption>${text("Z方向の断面", "Longitudinal section")}</figcaption>
-        <canvas id="acquisition-play-section" width="460" height="360" role="img" aria-label="${text("検出器列に向かう光線と評価位置の体軸線との交点", "Intersections of detector row rays with the target's longitudinal line")}"></canvas>
+        <canvas id="acquisition-play-section" width="460" height="360" role="img" aria-label="${text("検出器各列の幅と中心、および列中心への光線が評価位置で交わる点", "Widths and centres of the detector rows, and where their centre rays cross the target line")}"></canvas>
       </figure>
       <figure>
         <figcaption>${text("展開図", "Unwrapped diagram")}</figcaption>
-        <canvas id="acquisition-play-diagram" width="460" height="360" role="img" aria-label="${text("補間方向が進むにつれて描き足される列の軌跡", "Detector row trajectories traced as the interpolation direction advances")}"></canvas>
+        <canvas id="acquisition-play-diagram" width="460" height="360" role="img" aria-label="${text("評価位置での列中心光線の交点を補間方向に沿ってつないだ展開図", "Unwrapped trajectories of the row-centre-ray intersections at the evaluation position")}"></canvas>
       </figure>
     </div>
-    <p class="field-help acquisition-play-note">${text("同じ色は同じ検出器列です。ヘリカルの灰色の破線は寝台静止時の軌跡です。平均焦点から列中心への一方向の光線を表示します。", "Matching colors identify the same detector row. Gray dashed lines in helical playback show stationary-table trajectories. The rays shown run from the mean focal position to the row centers on the direct side.")}</p>
+    <p class="field-help acquisition-play-note">${text("管球角0°は真上で、評価点PはY軸上です。Z断面の区画は検出器面での列幅、区画内の点は列中心です。展開図には列中心に向かう光線と、Pを通るZ方向の直線との交点を描きます。ヘリカルの灰色の破線は寝台静止時の軌跡です。", "Tube angle 0° is at the top, with target P on the Y axis. In the Z section, the blocks show the detector-face row widths and the dots inside them mark their centres. The unwrapped diagram traces where the row-centre rays cross the Z line through P. Gray dashed lines show the stationary-table trajectories.")}</p>
     <p id="acquisition-coverage" class="field-help acquisition-play-note" hidden></p>`;
   form.closest("section").after(panel);
 
@@ -110,11 +110,13 @@ function initializeAcquisitionPlayback(form) {
     const tableSpeed = decimal.format(moving ? model.tableFeed / model.rotationTime : 0);
     const scanTime = decimal.format(fraction * model.rotationTime);
     const shift = decimal.format(moving ? fraction * model.tableFeed : 0);
+    const detectorWidth = decimal.format(model.detectorRowWidth);
     const spacing = model.rows > 1 ? decimal.format(frame.intersections[1] - frame.intersections[0]) : "";
     readout.textContent = text(
       `管球角の差 ${turn}° ／ 補間方向の差 ${direction}°　｜　経過 ${scanTime} s　｜　寝台 ${feed} mm/回転（${tableSpeed} mm/s）　｜　Z移動量 ${shift} mm`,
       `Tube angle from start ${turn}° / direction from start ${direction}° · Elapsed ${scanTime} s · Table ${feed} mm/turn (${tableSpeed} mm/s) · Z shift ${shift} mm`);
-    if (spacing) readout.textContent += text(`　｜　Pでの列間隔 ${spacing} mm`, ` · Row spacing at P ${spacing} mm`);
+    readout.textContent += text(`　｜　検出器面の1列幅 ${detectorWidth} mm`, ` · Row width at detector face ${detectorWidth} mm`);
+    if (spacing) readout.textContent += text(`　｜　Pでの列中心間隔 ${spacing} mm`, ` · Row-centre spacing at P ${spacing} mm`);
     panel.dataset.stage = moving ? "helical" : "stationary";
     panel.dataset.progress = String(position);
   }

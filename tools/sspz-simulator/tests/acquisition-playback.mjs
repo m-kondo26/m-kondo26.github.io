@@ -18,7 +18,8 @@ assert.equal(model.rotationTime, 0.75);
 assert.equal(model.baseline.length, 181);
 assert.equal(model.track(false), model.baseline);
 assert.equal(model.track(true), model.track(true));
-assert.ok(quarter.sourceY > 0); // The tube travels from screen right to screen bottom.
+assert.ok(quarter.sourceY > 0); // The drawing rotates this core frame so the tube moves from top to right.
+near(model.detectorRowWidth, 1070 / 600);
 assert.ok(quarter.directionDeg > quarter.sourceDeg);
 near(Math.hypot(quarter.detectorX - quarter.sourceX, quarter.detectorY - quarter.sourceY), 1070);
 near(start.detectorZ[1] - start.detectorZ[0], 1070 / 600);
@@ -53,6 +54,10 @@ for (const scenario of [
         + (moving.detectorZ[k] - moving.sourceZ) * moving.distance / m.detectorDistance);
     }
     const halfDetectorPitch = m.rowWidth * m.detectorDistance / m.sourceRadius / 2;
+    near(m.detectorRowWidth, 2 * halfDetectorPitch);
+    for (let row = 1; row < m.rows; row++) {
+      near(moving.detectorZ[row] - m.detectorRowWidth / 2, moving.detectorZ[row-1] + m.detectorRowWidth / 2);
+    }
     const edges = [moving.detectorZ[0] - halfDetectorPitch, moving.detectorZ.at(-1) + halfDetectorPitch];
     for (const z of [moving.sourceZ, ...moving.intersections, ...edges]) {
       assert.ok(z >= m.domain[0] && z <= m.domain[1]);
