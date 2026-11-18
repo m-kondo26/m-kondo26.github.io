@@ -1,13 +1,22 @@
 // Construct one fixed-phase diagram by advancing acquisition angle across turns.
 // This never changes the selected start phase, sample weights, or SSPz.
 const geometryPlayback={playing:false,pending:false,timer:null,cache:new Map(),scene:null,window:null,fraction:1,lastTime:0};
+let refreshGeometryMp4Download = () => {};
+
 function initializeGeometryPlayback(geometry,weights){
   const controls=document.createElement('div');controls.className='geometry-construction-controls';
+  controls.id = "geometry-construction";
   controls.innerHTML=`<h3>${fdkText('展開図ができるまで','How the unwrapped diagram is drawn')}</h3><div class="geometry-playback-controls">
     <button type="button" id="geometry-play" disabled>${fdkText('▶ 描く過程を再生','▶ Play drawing process')}</button>
     <button type="button" id="geometry-restart" disabled>${fdkText('最初から','Restart')}</button>
     <button type="button" id="geometry-complete" disabled>${fdkText('完成図を表示','Show complete diagram')}</button>
-    <label>${fdkText('再生速度','Playback speed')}<select id="geometry-speed"><option value="45">${fdkText('ゆっくり','Slow')}</option><option value="90" selected>${fdkText('標準','Normal')}</option><option value="180">${fdkText('速い','Fast')}</option></select></label></div>
+    <label>${fdkText('再生速度','Playback speed')}<select id="geometry-speed"><option value="45">${fdkText('ゆっくり','Slow')}</option><option value="90" selected>${fdkText('標準','Normal')}</option><option value="180">${fdkText('速い','Fast')}</option></select></label>
+    <button type="button" class="secondary" id="geometry-save-mp4" disabled>${fdkText('MP4を保存','Save MP4')}</button>
+    </div>
+    <div class="acquisition-export-info field-help">
+      <span id="geometry-export-status" role="status"></span>
+      <a id="geometry-export-download" hidden>${fdkText('MP4をもう一度ダウンロード','Download the MP4 again')}</a>
+    </div>
     <label class="geometry-drawing-progress">${fdkText('描画の進み具合','Drawing progress')}<input id="geometry-progress" type="range" min="0" max="1000" step="1" value="1000" disabled></label>
     <p id="geometry-play-status" role="status"></p>
     <p class="geometry-play-note">${fdkText('開始角度を固定し、左から右へ進む列軌跡を描き足します。1回転ごとに縦軸の0°へ戻り、次の体軸位置へ続きます。実データと、その同じデータを対向側へ写した破線を並べて確認できます。小さな四角は描画中の先端です。右端まで描き終えると、先頭から繰り返します。','The start phase stays fixed while row trajectories grow from left to right. Each turn wraps to 0° and continues at the next axial position. Direct data and the same data mapped to the complementary side are drawn together. Small squares mark the advancing tips. After completing the right edge, playback repeats.')}</p>
@@ -29,6 +38,35 @@ function initializeGeometryPlayback(geometry,weights){
   addRoles(geometry,'fdk-geometry');addRoles(weights,'fdk-weights-primary');
   geometry.querySelector('.geometry-role-grid').insertAdjacentHTML('beforebegin',`<h3>${fdkText('2A　補間候補の配置：0～360°展開図','2A  Candidate arrangement: 0–360° unwrapped diagram')}</h3>`);
   geometry.querySelector('.geometry-role-grid').before(controls);
+  const speed = controls.querySelector("#geometry-speed");
+  refreshGeometryMp4Download = bindMp4Download({
+    button: controls.querySelector("#geometry-save-mp4"),
+    status: controls.querySelector("#geometry-export-status"),
+    download: controls.querySelector("#geometry-export-download"),
+    text: fdkText,
+    isReady: () => Boolean(fdkSelectedResult && !geometryPlayback.pending
+      && geometryPlayback.scene && geometryPlayback.window?.end > geometryPlayback.window?.start),
+    createMovie() {
+      stopGeometryPlayback();
+      stopAxialMovie();
+      const { scene, window: span } = geometryPlayback;
+      const { config } = fdkSelectedResult;
+      const stateIndex = selectedStateIndex;
+      const renderer = createGeometryExportRenderer(scene, span, fdkText, { config, stateIndex });
+      const timeline = geometryExportTimeline(span, Number(speed.value));
+      const language = document.documentElement.lang;
+      return {
+        filename: `CT-unwrapped-2A_N${config.rows}_r${config.radius}_state${String(stateIndex).padStart(3, "0")}_${language}.mp4`,
+        canvas: renderer.canvas,
+        duration: timeline.duration,
+        drawFrame: elapsed => renderer.draw(timeline.fractionAt(elapsed)),
+      };
+    },
+    readyNote: fdkText("表示中の開始角度・条件・再生速度で、2Aの3図をMP4に保存します。",
+      "Save the three 2A diagrams using the displayed settings, start angle, and playback speed."),
+    waitingNote: fdkText("展開図の計算が完了するとMP4を保存できます。",
+      "MP4 export becomes available after the diagram is calculated."),
+  });
   document.getElementById('geometry-play').onclick=()=>{
     if(geometryPlayback.playing)stopGeometryPlayback();else{
       stopAxialMovie();if(geometryPlayback.fraction>=1)geometryPlayback.fraction=0;
@@ -45,6 +83,7 @@ function initializeGeometryPlayback(geometry,weights){
 }
 function updateGeometryPlayControl(){
   const button=document.getElementById('geometry-play');if(!button)return;
+  refreshGeometryMp4Download();
   button.textContent=geometryPlayback.playing?fdkText('Ⅱ 一時停止','Ⅱ Pause'):fdkText('▶ 描く過程を再生','▶ Play drawing process');
   button.setAttribute('aria-pressed',String(geometryPlayback.playing));
   const w=geometryPlayback.window;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { acquisitionExportTimeline, acquisitionMp4MimeType } from "../acquisition-export.js";
+import { acquisitionExportTimeline, acquisitionMp4MimeType, geometryExportTimeline } from "../acquisition-export.js";
 
 for (const seconds of [0.05, 0.5, 6, 12]) {
   const stationary = acquisitionExportTimeline(seconds, false);
@@ -14,6 +14,17 @@ for (const seconds of [0.05, 0.5, 6, 12]) {
   assert.deepEqual(helical.frameAt(2 + seconds + 0.001), { fraction: 0, moving: true });
   assert.ok(Math.abs(helical.frameAt(2.65 + 1.5 * seconds).fraction - 0.5) < 1e-9);
   assert.deepEqual(helical.frameAt(helical.duration), { fraction: 1, moving: true });
+}
+
+const span = { start: -2 * Math.PI, end: 4 * Math.PI };
+for (const degreesPerSecond of [45, 90, 180]) {
+  const timeline = geometryExportTimeline(span, degreesPerSecond);
+  const seconds = 1080 / degreesPerSecond;
+  assert.equal(timeline.fractionAt(0), 0);
+  assert.equal(timeline.fractionAt(0.8), 0);
+  assert.ok(Math.abs(timeline.fractionAt(0.8 + seconds / 2) - 0.5) < 1e-12);
+  assert.equal(timeline.fractionAt(timeline.duration), 1);
+  assert.ok(Math.abs(timeline.duration - seconds - 2.3) < 1e-12);
 }
 
 assert.equal(acquisitionMp4MimeType(), "");

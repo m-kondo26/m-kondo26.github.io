@@ -3706,13 +3706,22 @@ globalThis.SSPZConstruction=Object.freeze({
 // Construct one fixed-phase diagram by advancing acquisition angle across turns.
 // This never changes the selected start phase, sample weights, or SSPz.
 const geometryPlayback={playing:false,pending:false,timer:null,cache:new Map(),scene:null,window:null,fraction:1,lastTime:0};
+let refreshGeometryMp4Download = () => {};
+
 function initializeGeometryPlayback(geometry,weights){
   const controls=document.createElement('div');controls.className='geometry-construction-controls';
+  controls.id = "geometry-construction";
   controls.innerHTML=`<h3>${fdkText('','How the unwrapped diagram is drawn')}</h3><div class="geometry-playback-controls">
     <button type="button" id="geometry-play" disabled>${fdkText('','▶ Play drawing process')}</button>
     <button type="button" id="geometry-restart" disabled>${fdkText('','Restart')}</button>
     <button type="button" id="geometry-complete" disabled>${fdkText('','Show complete diagram')}</button>
-    <label>${fdkText('','Playback speed')}<select id="geometry-speed"><option value="45">${fdkText('','Slow')}</option><option value="90" selected>${fdkText('','Normal')}</option><option value="180">${fdkText('','Fast')}</option></select></label></div>
+    <label>${fdkText('','Playback speed')}<select id="geometry-speed"><option value="45">${fdkText('','Slow')}</option><option value="90" selected>${fdkText('','Normal')}</option><option value="180">${fdkText('','Fast')}</option></select></label>
+    <button type="button" class="secondary" id="geometry-save-mp4" disabled>${fdkText('','Save MP4')}</button>
+    </div>
+    <div class="acquisition-export-info field-help">
+      <span id="geometry-export-status" role="status"></span>
+      <a id="geometry-export-download" hidden>${fdkText('','Download the MP4 again')}</a>
+    </div>
     <label class="geometry-drawing-progress">${fdkText('','Drawing progress')}<input id="geometry-progress" type="range" min="0" max="1000" step="1" value="1000" disabled></label>
     <p id="geometry-play-status" role="status"></p>
     <p class="geometry-play-note">${fdkText('','The start phase stays fixed while row trajectories grow from left to right. Each turn wraps to 0° and continues at the next axial position. Direct data and the same data mapped to the complementary side are drawn together. Small squares mark the advancing tips. After completing the right edge, playback repeats.')}</p>
@@ -3734,6 +3743,35 @@ function initializeGeometryPlayback(geometry,weights){
   addRoles(geometry,'fdk-geometry');addRoles(weights,'fdk-weights-primary');
   geometry.querySelector('.geometry-role-grid').insertAdjacentHTML('beforebegin',`<h3>${fdkText('','2A  Candidate arrangement: 0–360° unwrapped diagram')}</h3>`);
   geometry.querySelector('.geometry-role-grid').before(controls);
+  const speed = controls.querySelector("#geometry-speed");
+  refreshGeometryMp4Download = bindMp4Download({
+    button: controls.querySelector("#geometry-save-mp4"),
+    status: controls.querySelector("#geometry-export-status"),
+    download: controls.querySelector("#geometry-export-download"),
+    text: fdkText,
+    isReady: () => Boolean(fdkSelectedResult && !geometryPlayback.pending
+      && geometryPlayback.scene && geometryPlayback.window?.end > geometryPlayback.window?.start),
+    createMovie() {
+      stopGeometryPlayback();
+      stopAxialMovie();
+      const { scene, window: span } = geometryPlayback;
+      const { config } = fdkSelectedResult;
+      const stateIndex = selectedStateIndex;
+      const renderer = createGeometryExportRenderer(scene, span, fdkText, { config, stateIndex });
+      const timeline = geometryExportTimeline(span, Number(speed.value));
+      const language = document.documentElement.lang;
+      return {
+        filename: `CT-unwrapped-2A_N${config.rows}_r${config.radius}_state${String(stateIndex).padStart(3, "0")}_${language}.mp4`,
+        canvas: renderer.canvas,
+        duration: timeline.duration,
+        drawFrame: elapsed => renderer.draw(timeline.fractionAt(elapsed)),
+      };
+    },
+    readyNote: fdkText('',
+      "Save the three 2A diagrams using the displayed settings, start angle, and playback speed."),
+    waitingNote: fdkText('',
+      "MP4 export becomes available after the diagram is calculated."),
+  });
   document.getElementById('geometry-play').onclick=()=>{
     if(geometryPlayback.playing)stopGeometryPlayback();else{
       stopAxialMovie();if(geometryPlayback.fraction>=1)geometryPlayback.fraction=0;
@@ -3750,6 +3788,7 @@ function initializeGeometryPlayback(geometry,weights){
 }
 function updateGeometryPlayControl(){
   const button=document.getElementById('geometry-play');if(!button)return;
+  refreshGeometryMp4Download();
   button.textContent=geometryPlayback.playing?fdkText('','Ⅱ Pause'):fdkText('','▶ Play drawing process');
   button.setAttribute('aria-pressed',String(geometryPlayback.playing));
   const w=geometryPlayback.window;
@@ -6120,6 +6159,113 @@ function createAcquisitionExportRenderer(model, text) {
   return { canvas, draw };
 }
 
+// Use the same candidate trajectories and shared cutoff as the 2A browser player.
+function createGeometryExportRenderer(scene, drawingWindow, text, { config = {}, stateIndex } = {}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1920;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const panels = [
+    { role: "direct", heading: text("", "Direct data") },
+    { role: "complementary", heading: text("", "Complementary data") },
+    { role: "all", heading: text("", "Overlay") },
+  ].map(panel => {
+    const chart = document.createElement("canvas");
+    chart.width = 900;
+    chart.height = 960;
+    return { ...panel, chart };
+  });
+
+  const ink = "#173644";
+  const accent = "#0b6779";
+  const muted = "#47616d";
+  const rule = "#d6e3e8";
+  const margin = 64;
+  const gap = 26;
+  const contentWidth = canvas.width - 2 * margin;
+  const panelWidth = (contentWidth - 2 * gap) / 3;
+  const panelHeight = panelWidth * 960 / 900;
+  const format = new Intl.NumberFormat(document.documentElement.lang || "ja", {
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  });
+  const count = config.rows ?? scene.totalRows;
+  const width = config.rowWidth;
+  const feed = scene.traceGeometry.feed;
+  const pitch = config.beamPitch ?? feed / (count * width);
+  const conditions = [
+    text("", `Detector rows ${count}`),
+    Number.isFinite(width) && text("", `Row width ${format.format(width)} mm`),
+    Number.isFinite(config.radius) && text("",
+      `Target radius ${format.format(config.radius)} mm`),
+    Number.isFinite(pitch) && text("", `Beam pitch ${format.format(pitch)}`),
+    Number.isFinite(feed) && text("",
+      `Table feed ${format.format(feed)} mm/turn`),
+    Number.isInteger(stateIndex) && text("", `State ${stateIndex}/359`),
+    config.zFfsEnabled && text("", "z-FFS on"),
+  ].filter(Boolean).join("  |  ");
+
+  const title = text("", "How the unwrapped diagram is drawn");
+  const subtitle = text("",
+    "The same acquired data appear on the direct and complementary sides. Trajectories are drawn in acquisition order.");
+  const key = text("",
+    "Small squares mark the advancing tips. Each turn returns to 0° and continues at the next axial position.");
+
+  function write(label, x, y, size, { color = ink, weight = 400, align = "left", maxWidth = contentWidth } = {}) {
+    ctx.font = `${weight} ${size}px system-ui, sans-serif`;
+    const width = ctx.measureText(label).width;
+    if (width > maxWidth) ctx.font = `${weight} ${size * maxWidth / width}px system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y);
+  }
+
+  let lastFraction = null;
+
+  function draw(fraction) {
+    const progress = Math.min(1, Math.max(0, fraction));
+    const span = drawingWindow.end - drawingWindow.start;
+    const cutoff = progress === 1 ? null : drawingWindow.start + progress * span;
+    // Reuse unchanged plots for the first and final holds.
+    if (progress !== lastFraction) {
+      for (const panel of panels) {
+        drawDiagram(panel.chart, SSPZConstruction.role(scene, panel.role, cutoff), "overview");
+      }
+      lastFraction = progress;
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = "high";
+    write(title, margin, 91, 60, { weight: 700 });
+    write(subtitle, margin, 151, 27, { color: muted });
+    ctx.fillStyle = rule;
+    ctx.fillRect(margin, 183, contentWidth, 2);
+    panels.forEach(({ chart, heading }, i) => {
+      const x = margin + i * (panelWidth + gap);
+      write(heading, x + panelWidth / 2, 216, 33, { align: "center", weight: 650, maxWidth: panelWidth });
+      ctx.drawImage(chart, x, 241, panelWidth, panelHeight);
+    });
+
+    const degrees = Math.floor(progress * span * 180 / Math.PI + 1e-8);
+    const turns = Math.floor(degrees / 360);
+    const remainder = degrees % 360;
+    const percent = Math.floor(progress * 100);
+    const status = progress === 1
+      ? text("", "Drawing complete")
+      : text("",
+        `From drawing start: ${turns} turns + ${remainder}°  |  ${percent}%`);
+    ctx.fillStyle = rule;
+    ctx.fillRect(margin, 875, contentWidth, 2);
+    write(status, margin, 906, 31, { color: accent, weight: 650 });
+    write(conditions, margin, 957, 25, { color: muted });
+    write(key, margin, 1001, 25, { color: muted });
+  }
+
+  return { canvas, draw };
+}
+
 // Keep the recording timeline separate from disk writing and screen playback.
 const ACQUISITION_MP4_TYPES = [
   "video/mp4;codecs=avc1.420028",
@@ -6151,11 +6297,35 @@ function acquisitionExportTimeline(secondsPerTurn, includeHelical) {
   };
 }
 
-async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onProgress) {
+function geometryExportTimeline(span, degreesPerSecond) {
+  const drawSeconds = (span.end - span.start) * 180 / Math.PI / degreesPerSecond;
+  const intro = 0.8;
+  return {
+    duration: intro + drawSeconds + 1.5,
+    fractionAt(elapsed) {
+      return Math.max(0, Math.min(1, (elapsed - intro) / drawSeconds));
+    },
+  };
+}
+
+function acquisitionMp4Movie(model, secondsPerTurn, text) {
   const timeline = acquisitionExportTimeline(secondsPerTurn, model.tableFeed > 0);
   const renderer = createAcquisitionExportRenderer(model, text);
-  renderer.draw(0, false);
-  const stream = renderer.canvas.captureStream(ACQUISITION_EXPORT_FPS);
+  const pitch = Number((model.tableFeed / (model.rows * model.rowWidth)).toFixed(6));
+  return {
+    filename: `CT-unwrapped_N${model.rows}_d${model.rowWidth}_r${model.radius}_p${pitch}.mp4`,
+    canvas: renderer.canvas,
+    duration: timeline.duration,
+    drawFrame(elapsed) {
+      const frame = timeline.frameAt(elapsed);
+      renderer.draw(frame.fraction, frame.moving);
+    },
+  };
+}
+
+async function recordCanvasMp4({ canvas, duration, drawFrame }, mimeType, onProgress) {
+  drawFrame(0);
+  const stream = canvas.captureStream(ACQUISITION_EXPORT_FPS);
 
   return new Promise((resolve, reject) => {
     let recorder;
@@ -6187,7 +6357,7 @@ async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onPro
     function recordFrame(now) {
       try {
         const elapsed = Math.max(0, (now - started) / 1000);
-        if (elapsed >= timeline.duration) {
+        if (elapsed >= duration) {
           complete = true;
           recorder.stop();
           return;
@@ -6195,9 +6365,8 @@ async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onPro
         const frameIndex = Math.floor(elapsed * ACQUISITION_EXPORT_FPS);
         if (frameIndex !== lastFrame) {
           lastFrame = frameIndex;
-          const frame = timeline.frameAt(elapsed);
-          renderer.draw(frame.fraction, frame.moving);
-          onProgress(elapsed / timeline.duration);
+          drawFrame(elapsed);
+          onProgress(elapsed / duration);
         }
         request = requestAnimationFrame(recordFrame);
       } catch (error) {
@@ -6206,7 +6375,13 @@ async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onPro
     }
 
     try {
-      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+      recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 8_000_000,
+        // PowerPoint can report the last MP4 fragment start as the duration.
+        // Keep a keyframe and fragment boundary within the final diagram hold.
+        videoKeyFrameIntervalDuration: 500,
+      });
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
       recorder.onerror = event => fail(event.error || new Error("The recording failed."));
       recorder.onstop = () => {
@@ -6229,6 +6404,63 @@ async function exportAcquisitionMp4(model, secondsPerTurn, mimeType, text, onPro
       fail(error);
     }
   });
+}
+
+let mp4DownloadActive = false;
+const mp4DownloadControls = [];
+
+function bindMp4Download({ button, status, download, text, isReady, createMovie, readyNote, waitingNote = readyNote }) {
+  const mimeType = acquisitionMp4MimeType();
+  let wasReady;
+  function refresh() {
+    const ready = isReady();
+    button.disabled = mp4DownloadActive || !ready || !mimeType;
+    if (ready === wasReady) return;
+    wasReady = ready;
+    status.textContent = mimeType ? (ready ? readyNote : waitingNote) : text(
+      "",
+      "For H.264 MP4 export, open the site in a supported desktop version of Edge or Chrome.");
+  }
+  mp4DownloadControls.push(refresh);
+  refresh();
+
+  button.onclick = async () => {
+    if (button.disabled) return;
+    mp4DownloadActive = true;
+    mp4DownloadControls.forEach(update => update());
+    if (download.hasAttribute("href")) URL.revokeObjectURL(download.href);
+    download.removeAttribute("href");
+    download.hidden = true;
+    let shownPercent = -1;
+    const reportProgress = progress => {
+      const percent = Math.floor(progress * 10) * 10;
+      if (shownPercent === percent) return;
+      shownPercent = percent;
+      status.textContent = text(
+        "",
+        `Exporting MP4 (${percent}%). Keep this tab visible until export finishes.`);
+    };
+    reportProgress(0);
+    try {
+      const movie = createMovie();
+      const video = await recordCanvasMp4(movie, mimeType, reportProgress);
+      download.href = URL.createObjectURL(video);
+      download.download = movie.filename;
+      download.hidden = false;
+      download.click();
+      status.textContent = text("", "MP4 export complete.");
+    } catch (error) {
+      status.textContent = error.name === "AbortError"
+        ? text("",
+          "The export stopped when the tab was hidden. Keep this tab visible and try again.")
+        : text("",
+          "Could not export MP4. Retry or open the site in desktop Edge or Chrome.");
+    } finally {
+      mp4DownloadActive = false;
+      mp4DownloadControls.forEach(update => update());
+    }
+  };
+  return refresh;
 }
 
 // Keep the acquisition explanation independent of the SSPz calculation worker.
@@ -6287,13 +6519,6 @@ function initializeAcquisitionPlayback(form) {
   const get = id => panel.querySelector("#acquisition-" + id);
   const play = get("play");
   const restart = get("restart");
-  const save = get("save-mp4");
-  const exportStatus = get("export-status");
-  const exportDownload = get("export-download");
-  const mp4MimeType = acquisitionMp4MimeType();
-  exportStatus.textContent = mp4MimeType
-    ? text("", "Save a 16:9 video using the current settings and playback speed.")
-    : text("", "For H.264 MP4 export, open the site in a supported desktop version of Edge or Chrome.");
   const speed = get("speed");
   const slider = get("progress");
   const stage = get("stage");
@@ -6310,10 +6535,22 @@ function initializeAcquisitionPlayback(form) {
   let paramsKey = "";
   let position = 0;
   let playing = false;
-  let exporting = false;
   let animationFrame = 0;
   let lastTime = 0;
   let holdUntil = 0;
+
+  const refreshMp4Download = bindMp4Download({
+    button: get("save-mp4"),
+    status: get("export-status"),
+    download: get("export-download"),
+    text,
+    isReady: () => Boolean(model),
+    createMovie: () => {
+      stop();
+      return acquisitionMp4Movie(model, rotationDuration() / 1000, text);
+    },
+    readyNote: text("", "Save a 16:9 video using the current settings and playback speed."),
+  });
 
   function stop() {
     playing = false;
@@ -6390,7 +6627,7 @@ function initializeAcquisitionPlayback(form) {
       model = null;
     }
     diagrams.hidden = play.disabled = restart.disabled = speed.disabled = slider.disabled = !model;
-    save.disabled = exporting || !model || !mp4MimeType;
+    refreshMp4Download();
     coverage.hidden = !model || (model.detectorBeyondTarget && model.targetWithinFan);
     coverage.textContent = coverage.hidden ? "" : text(
       "",
@@ -6418,45 +6655,6 @@ function initializeAcquisitionPlayback(form) {
     lastTime = performance.now();
     paint();
     animationFrame = requestAnimationFrame(tick);
-  };
-  save.onclick = async () => {
-    if (exporting || !model || !mp4MimeType) return;
-    const exportModel = model;
-    const secondsPerTurn = rotationDuration() / 1000;
-    const pitch = Number((exportModel.tableFeed / (exportModel.rows * exportModel.rowWidth)).toFixed(6));
-    const filename = `CT-unwrapped_N${exportModel.rows}_d${exportModel.rowWidth}_r${exportModel.radius}_p${pitch}.mp4`;
-    stop();
-    exporting = save.disabled = true;
-    if (exportDownload.hasAttribute("href")) URL.revokeObjectURL(exportDownload.href);
-    exportDownload.removeAttribute("href");
-    exportDownload.hidden = true;
-    let shownPercent = -1;
-    const reportProgress = progress => {
-      const percent = Math.floor(progress * 10) * 10;
-      if (shownPercent === percent) return;
-      shownPercent = percent;
-      exportStatus.textContent = text(
-        "",
-        `Exporting MP4 (${percent}%). Keep this tab visible until export finishes.`);
-    };
-    reportProgress(0);
-    try {
-      const video = await exportAcquisitionMp4(exportModel, secondsPerTurn, mp4MimeType, text, reportProgress);
-      exportDownload.href = URL.createObjectURL(video);
-      exportDownload.download = filename;
-      exportDownload.hidden = false;
-      exportDownload.click();
-      exportStatus.textContent = text("", "MP4 export complete.");
-    } catch (error) {
-      exportStatus.textContent = error.name === "AbortError"
-        ? text("",
-          "The export stopped when the tab was hidden. Keep this tab visible and try again.")
-        : text("",
-          "Could not export MP4. Retry or open the site in desktop Edge or Chrome.");
-    } finally {
-      exporting = false;
-      save.disabled = !model || !mp4MimeType;
-    }
   };
   restart.onclick = () => {
     stop();
@@ -6571,7 +6769,7 @@ const loadingMotionPreference = window.matchMedia("(prefers-reduced-motion: redu
 let canvasStatusAnimation = null;
 let lastCanvasAnimationPaint = 0;
 
-versionLabel.textContent = `Web build 2026-11-18.2 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
+versionLabel.textContent = `Web build 2026-11-18.3 / shared axial response 2026-09-24.1 / optional z-FFS 2026-09-17.1`;
 
 function syncLanguageLinks(search = window.location.search) {
   document.querySelectorAll("[data-language-target]").forEach(link => {
